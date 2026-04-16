@@ -17,6 +17,11 @@ let package = Package(
     ]
 )
 
-// Note: Share extension target requires xcodegen or native Xcode project.
-// See ShareExtension/Info.plist for target configuration.
+// Note: Extension targets (Share, FileProvider) require xcodegen or native Xcode project.
+// - ShareExtension/Info.plist: share-sheet integration
+// - FileProvider/Info.plist: Files.app + Finder integration
+//
+// To build extensions, use:
+//   xcodebuild -scheme Vault -configuration Release build
+// or generate Xcode project with xcodegen and add targets manually.
 
