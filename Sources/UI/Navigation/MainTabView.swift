@@ -59,6 +59,11 @@ struct SettingsView: View {
                 }
                 Toggle("Biometric Lock", isOn: .constant(true))
             }
+            Section("Storage") {
+                NavigationLink("Recycle Bin") {
+                    RecycleBinView()
+                }
+            }
             Section("About") {
                 LabeledContent("Version", value: "1.0.0")
             }
