@@ -16,3 +16,7 @@ let package = Package(
         )
     ]
 )
+
+// Note: Share extension target requires xcodegen or native Xcode project.
+// See ShareExtension/Info.plist for target configuration.
+
