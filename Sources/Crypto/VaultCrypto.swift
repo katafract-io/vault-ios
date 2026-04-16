@@ -72,6 +72,12 @@ public enum VaultCrypto {
         return try encrypt(chunkKeyData, key: folderKey)
     }
 
+    /// Decrypt a chunk key blob with folder key
+    public static func decryptChunkKey(_ encryptedBlob: Data, with folderKey: SymmetricKey) throws -> SymmetricKey {
+        let keyData = try decrypt(encryptedBlob, key: folderKey)
+        return SymmetricKey(data: keyData)
+    }
+
     /// SHA-256 hash of data (for chunk addressing)
     public static func sha256(_ data: Data) -> String {
         let digest = SHA256.hash(data: data)
