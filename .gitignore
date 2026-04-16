@@ -1,0 +1,23 @@
+# Xcode
+.DS_Store
+.xcodeproj/xcuserdata/
+.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+Build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+
+# Swift Package Manager
+.build/
+*.xcframework
+
+# Env
+.env
+.env.local
+
+# OS
+.AppleDouble
+.LSOverride
