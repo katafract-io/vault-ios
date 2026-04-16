@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @ObservedObject private var lock = BiometricLock.shared
+
     var body: some View {
         TabView {
             NavigationStack {
@@ -57,7 +59,7 @@ struct SettingsView: View {
                     Text("Recovery Key")
                         .navigationTitle("Recovery Key")
                 }
-                Toggle("Biometric Lock", isOn: .constant(true))
+                Toggle("Biometric Lock", isOn: $lock.isEnabled)
             }
             Section("Storage") {
                 NavigationLink("Recycle Bin") {

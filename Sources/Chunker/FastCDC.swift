@@ -63,6 +63,7 @@ public struct FastCDC {
         var fp: UInt64 = 0
         var i = minSize
         let limit = min(remaining, maxSize)
+        var boundary = limit
 
         data.withUnsafeBytes { bytes in
             let ptr = bytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
@@ -71,19 +72,25 @@ public struct FastCDC {
             let normalEnd = min(remaining, avgSize)
             while i < normalEnd {
                 fp = (fp >> 1) &+ gear[Int(ptr[offset + i])]
-                if (fp & maskS) == 0 { return }
+                if (fp & maskS) == 0 {
+                    boundary = i
+                    return
+                }
                 i += 1
             }
 
             // Large region: use looser mask
             while i < limit {
                 fp = (fp >> 1) &+ gear[Int(ptr[offset + i])]
-                if (fp & maskL) == 0 { return }
+                if (fp & maskL) == 0 {
+                    boundary = i
+                    return
+                }
                 i += 1
             }
         }
 
-        return i
+        return boundary
     }
 
     private static func computeHash(_ data: Data, offset: Int, length: Int) -> String {
