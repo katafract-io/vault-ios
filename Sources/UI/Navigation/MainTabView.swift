@@ -36,13 +36,6 @@ struct MainTabView: View {
 
 // MARK: - Placeholder Views
 
-struct PhotosView: View {
-    var body: some View {
-        Text("Photos")
-            .navigationTitle("Photos")
-    }
-}
-
 struct RecentsView: View {
     var body: some View {
         Text("Recent Files")
