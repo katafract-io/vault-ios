@@ -1,0 +1,71 @@
+{
+  "identifier": "4C4A2E5A-VAULT-SKTEST",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_applicationInternalID": "",
+    "_developerTeamID": "2SGGP65W6C",
+    "_failTransactionsEnabled": false,
+    "_lastSynchronizedDate": 766195200.0,
+    "_locale": "en_US",
+    "_storefront": "USA",
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [
+    {
+      "id": "SovereignTier",
+      "localizations": [],
+      "name": "Vaultyx Sovereign",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "19.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "SovMonthly",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "1 TB encrypted storage + unlimited photo backup",
+              "displayName": "Sovereign Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.katafract.vault.sovereign.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Sovereign Monthly",
+          "subscriptionGroupID": "SovereignTier",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "159.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "SovYearly",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "1 TB encrypted storage + unlimited photo backup (save 33%)",
+              "displayName": "Sovereign Yearly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.katafract.vault.sovereign.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Sovereign Yearly",
+          "subscriptionGroupID": "SovereignTier",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

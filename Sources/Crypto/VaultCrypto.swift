@@ -112,12 +112,4 @@ public enum VaultCryptoError: Error {
     case invalidKeySize
 }
 
-/// Minimal BIP-39 word list stub — replace with full 2048-word list
-enum BIP39WordList {
-    static let words = [
-        "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
-        "absurd", "abuse", "access", "accident", "account", "accuse", "achieve", "acid",
-        "acoustic", "acquire", "across", "act", "action", "actor", "actual", "adjust"
-    ]
-    // TODO: replace with full 2048-word BIP-39 English wordlist
-}
+// BIP39WordList moved to Sources/Security/BIP39WordList.swift (full 2048-word list).

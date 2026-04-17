@@ -86,8 +86,17 @@ public class VaultSyncEngine: ObservableObject {
         let manifestData = try JSONEncoder().encode(manifest)
         let encryptedManifest = try VaultCrypto.encrypt(manifestData, key: folderKey)
 
-        // 5. Upload manifest
-        try await apiClient.uploadManifest(fileId: fileId, encryptedManifest: encryptedManifest)
+        // 5. Upload manifest, with filename_enc + parent passed alongside so
+        //    the server can index the file for cross-device list sync (both
+        //    fields stay encrypted under the folder key; server never reads them).
+        try await apiClient.uploadManifest(
+            fileId: fileId,
+            encryptedManifest: encryptedManifest,
+            filenameEnc: filenameEnc,
+            parentFolderId: parentFolderId,
+            sizeBytes: Int64(data.count),
+            chunkCount: chunks.count,
+            chunkHashes: chunks.map(\.hash))
 
         // 6. Save to local SwiftData
         let localFile = LocalFile(

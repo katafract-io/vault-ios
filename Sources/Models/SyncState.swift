@@ -1,9 +1,14 @@
 import SwiftData
 import Foundation
 
-/// Local file state and metadata for sync tracking
+/// Local file state and metadata for sync tracking.
+///
+/// `filename` is the plaintext display name, kept client-only. The
+/// server-side manifest stores an encrypted-filename blob; we decrypt once
+/// and cache here so the browser doesn't round-trip the server per row.
 @Model class LocalFile {
     var fileId: String
+    var filename: String = "File"
     var parentFolderId: String?
     var localPath: String?          // nil if not pinned offline
     var manifestVersion: Int
@@ -16,6 +21,7 @@ import Foundation
 
     init(
         fileId: String,
+        filename: String = "File",
         parentFolderId: String? = nil,
         localPath: String? = nil,
         manifestVersion: Int = 0,
@@ -27,6 +33,7 @@ import Foundation
         thumbnailPath: String? = nil
     ) {
         self.fileId = fileId
+        self.filename = filename
         self.parentFolderId = parentFolderId
         self.localPath = localPath
         self.manifestVersion = manifestVersion

@@ -2,7 +2,10 @@ import SwiftUI
 import Photos
 
 struct PhotosView: View {
+    @EnvironmentObject private var services: VaultServices
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @StateObject private var viewModel = PhotosViewModel()
+    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -37,16 +40,26 @@ struct PhotosView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        viewModel.startBackupNow()
+                        if subscriptionStore.isSubscribed {
+                            viewModel.startBackupNow()
+                        } else {
+                            showPaywall = true
+                        }
                     } label: {
                         Label("Backup Now", systemImage: "arrow.clockwise.icloud")
                     }
                     .disabled(viewModel.backupInProgress)
                 }
             }
-            .task { await viewModel.loadAlbums() }
+            .task {
+                viewModel.configure(services: services)
+                await viewModel.loadAlbums()
+            }
             .sheet(item: $viewModel.selectedPhoto) { photo in
                 PhotoDetailView(photo: photo)
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
             }
         }
     }
@@ -132,9 +145,13 @@ struct PhotoGridSection: View {
     var onPhotoTap: (BackedUpPhoto) -> Void
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
 
+    private var backedUpCount: Int {
+        photos.filter { $0.backupState == .backedUp }.count
+    }
+
     var body: some View {
         VStack(alignment: .leading) {
-            Text("\(photos.count) PHOTOS BACKED UP")
+            Text("\(backedUpCount) of \(photos.count) PHOTOS BACKED UP")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)
@@ -142,12 +159,56 @@ struct PhotoGridSection: View {
 
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(photos) { photo in
-                    Color(.systemGray5)
-                        .aspectRatio(1, contentMode: .fill)
-                        .clipped()
+                    // Fixed-aspect container. PhotoThumbnailView fills and
+                    // clips itself internally, so there's no nested
+                    // aspect-ratio fight when the image arrives.
+                    Color.clear
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay {
+                            PhotoThumbnailView(
+                                assetLocalIdentifier: photo.id,
+                                targetSize: CGSize(width: 120, height: 120))
+                        }
+                        .overlay(alignment: .bottomTrailing) {
+                            BackupStateBadge(state: photo.backupState)
+                                .padding(4)
+                        }
+                        .contentShape(Rectangle())
                         .onTapGesture { onPhotoTap(photo) }
                 }
             }
+        }
+    }
+}
+
+/// Small corner badge indicating whether a photo is backed up, pending,
+/// uploading, or failed. Stays out of the way for `.backedUp` (invisible).
+struct BackupStateBadge: View {
+    let state: BackedUpPhoto.BackupState
+
+    var body: some View {
+        switch state {
+        case .backedUp:
+            EmptyView()
+        case .pending:
+            Image(systemName: "icloud.slash")
+                .font(.caption2)
+                .foregroundStyle(.white)
+                .padding(3)
+                .background(Circle().fill(Color.black.opacity(0.4)))
+        case .uploading(let progress):
+            ZStack {
+                Circle().fill(Color.black.opacity(0.4)).frame(width: 18, height: 18)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(Color.white, lineWidth: 2)
+                    .frame(width: 14, height: 14)
+                    .rotationEffect(.degrees(-90))
+            }
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.red)
         }
     }
 }
@@ -158,28 +219,27 @@ struct PhotoDetailView: View {
 
     var body: some View {
         NavigationStack {
-            Color(.systemGray6)
-                .ignoresSafeArea()
-                .overlay(
-                    Image(systemName: "photo")
-                        .font(.system(size: 64))
-                        .foregroundStyle(.secondary)
-                )
-                .navigationTitle(photo.filename)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Done") { dismiss() }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button { } label: { Label("Share", systemImage: "square.and.arrow.up") }
-                            Button { } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
-                            Divider()
-                            Button(role: .destructive) { } label: { Label("Delete", systemImage: "trash") }
-                        } label: { Image(systemName: "ellipsis.circle") }
-                    }
+            PhotoThumbnailView(
+                assetLocalIdentifier: photo.id,
+                targetSize: UIScreen.main.bounds.size,
+                contentMode: .aspectFit
+            )
+            .ignoresSafeArea()
+            .navigationTitle(photo.filename)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") { dismiss() }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                        Button { } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
+                        Divider()
+                        Button(role: .destructive) { } label: { Label("Delete", systemImage: "trash") }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                }
+            }
         }
     }
 }

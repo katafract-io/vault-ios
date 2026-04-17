@@ -3,7 +3,16 @@ import SwiftUI
 @main
 struct VaultApp: App {
     @ObservedObject private var lock = BiometricLock.shared
+    @StateObject private var services: VaultServices
+    @StateObject private var subscriptionStore: SubscriptionStore
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        let services = VaultServices()
+        _services = StateObject(wrappedValue: services)
+        _subscriptionStore = StateObject(
+            wrappedValue: SubscriptionStore(apiClient: services.apiClient))
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -17,6 +26,9 @@ struct VaultApp: App {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: lock.isLocked)
+            .environmentObject(services)
+            .environmentObject(subscriptionStore)
+            .modelContainer(services.modelContainer)
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
