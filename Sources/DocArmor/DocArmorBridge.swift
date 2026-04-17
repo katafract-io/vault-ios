@@ -17,7 +17,7 @@ public struct DocArmorBridge {
     }
 
     /// Virtual folder item representing DocArmor vault
-    public static var virtualFolderItem: VaultFileItem {
+    static var virtualFolderItem: VaultFileItem {
         VaultFileItem(
             id: "docarmor-virtual-folder",
             name: "DocArmor",
