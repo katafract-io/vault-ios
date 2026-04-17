@@ -60,7 +60,7 @@ class FileBrowserViewModel: ObservableObject {
     func renameItem(_ item: VaultFileItem, newName: String) {
         // TODO: rename via API
         if let index = items.firstIndex(where: { $0.id == item.id }) {
-            var updated = items[index]
+            let updated = items[index]
             // Create new item with updated name (VaultFileItem is immutable)
             items[index] = VaultFileItem(
                 id: updated.id,
@@ -78,7 +78,7 @@ class FileBrowserViewModel: ObservableObject {
     func togglePin(_ item: VaultFileItem) {
         // TODO: persist pin state
         if let index = items.firstIndex(where: { $0.id == item.id }) {
-            var updated = items[index]
+            let updated = items[index]
             items[index] = VaultFileItem(
                 id: updated.id,
                 name: updated.name,

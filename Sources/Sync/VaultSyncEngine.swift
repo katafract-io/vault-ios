@@ -51,7 +51,7 @@ public class VaultSyncEngine: ObservableObject {
         var chunkDescriptors: [VaultManifest.ChunkDescriptor] = []
         var encryptedChunks: [(hash: String, data: Data)] = []
 
-        for (index, chunk) in chunks.enumerated() {
+        for (_, chunk) in chunks.enumerated() {
             let chunkData = data[chunk.offset..<(chunk.offset + chunk.length)]
             let chunkKey = VaultCrypto.generateChunkKey()
             let encrypted = try VaultCrypto.encrypt(Data(chunkData), key: chunkKey)

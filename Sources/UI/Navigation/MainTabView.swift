@@ -46,6 +46,7 @@ struct RecentsView: View {
 }
 
 struct SettingsView: View {
+    @ObservedObject private var lock = BiometricLock.shared
     var body: some View {
         List {
             StorageQuotaView(usedBytes: 42_000_000_000, totalBytes: 1_099_511_627_776)
