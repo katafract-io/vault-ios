@@ -12,6 +12,7 @@ Build/
 
 # Swift Package Manager
 .build/
+.swiftpm/
 *.xcframework
 
 # Env

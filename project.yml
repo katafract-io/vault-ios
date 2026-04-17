@@ -1,0 +1,95 @@
+name: Vaultyx
+options:
+  bundleIdPrefix: com.katafract
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: 2SGGP65W6C
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.10"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  Vaultyx:
+    type: application
+    platform: iOS
+    bundleId: com.katafract.vault
+    sources:
+      - path: Sources
+        excludes:
+          - "**/.DS_Store"
+    entitlements:
+      path: Sources/App/Vaultyx.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.katafract.vault
+        com.apple.developer.fileprovider.testing-mode: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault
+        INFOPLIST_FILE: Sources/App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PRODUCT_NAME: Vaultyx
+    dependencies:
+      - target: VaultFileProvider
+      - target: VaultShare
+
+  VaultFileProvider:
+    type: app-extension
+    platform: iOS
+    bundleId: com.katafract.vault.fileprovider
+    sources:
+      - path: FileProvider
+        excludes:
+          - "**/.DS_Store"
+    entitlements:
+      path: FileProvider/VaultFileProvider.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.katafract.vault
+        com.apple.developer.fileprovider.testing-mode: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault.fileprovider
+        INFOPLIST_FILE: FileProvider/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        PRODUCT_NAME: VaultFileProvider
+
+  VaultShare:
+    type: app-extension
+    platform: iOS
+    bundleId: com.katafract.vault.share
+    sources:
+      - path: ShareExtension
+        excludes:
+          - "**/.DS_Store"
+    entitlements:
+      path: ShareExtension/VaultShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.katafract.vault
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault.share
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        PRODUCT_NAME: VaultShare
+
+schemes:
+  Vaultyx:
+    build:
+      targets:
+        Vaultyx: all
+        VaultFileProvider: all
+        VaultShare: all
+    run:
+      config: Debug
+    archive:
+      config: Release
