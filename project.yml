@@ -86,10 +86,19 @@ schemes:
   Vaultyx:
     build:
       targets:
+        # Only the app target. Extensions build automatically via Vaultyx's
+        # dependencies. Listing extensions here makes xcodegen emit
+        # wasCreatedForAppExtension="YES" and causes Xcode to treat the
+        # scheme as an extension scheme ("select app to run" prompt).
         Vaultyx: all
-        VaultFileProvider: all
-        VaultShare: all
     run:
+      config: Debug
+      executable: Vaultyx
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
       config: Debug
     archive:
       config: Release

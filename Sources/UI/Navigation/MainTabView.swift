@@ -47,18 +47,39 @@ struct RecentsView: View {
 
 struct SettingsView: View {
     @ObservedObject private var lock = BiometricLock.shared
+    @EnvironmentObject private var services: VaultServices
+    @Environment(\.modelContext) private var modelContext
+    @State private var usedBytes: Int64 = -1
+    @State private var showPhrase = false
+    @State private var showRestore = false
+
+    private let sovereignQuota: Int64 = 1_099_511_627_776  // 1 TiB
+
     var body: some View {
         List {
-            StorageQuotaView(usedBytes: 42_000_000_000, totalBytes: 1_099_511_627_776)
+            StorageQuotaView(usedBytes: usedBytes, totalBytes: sovereignQuota)
                 .listRowInsets(EdgeInsets())
             Section("Account") {
                 LabeledContent("Plan", value: "Sovereign")
                 LabeledContent("Storage", value: "1 TB")
             }
             Section("Security") {
-                NavigationLink("Recovery Key") {
-                    Text("Recovery Key")
-                        .navigationTitle("Recovery Key")
+                Button {
+                    showPhrase = true
+                } label: {
+                    HStack {
+                        Text("Show Recovery Phrase")
+                            .foregroundStyle(Color.primary)
+                        Spacer()
+                        Image(systemName: "key.horizontal.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Button {
+                    showRestore = true
+                } label: {
+                    Text("Restore from Recovery Phrase")
+                        .foregroundStyle(Color.primary)
                 }
                 Toggle("Biometric Lock", isOn: $lock.isEnabled)
             }
@@ -72,6 +93,17 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .task {
+            usedBytes = StorageUsageCalculator.compute(from: modelContext)
+        }
+        .sheet(isPresented: $showPhrase) {
+            RecoveryPhraseView(
+                phrase: RecoveryPhrase.phrase(for: services.masterKey),
+                mode: .settings)
+        }
+        .sheet(isPresented: $showRestore) {
+            RestoreFromPhraseView()
+        }
     }
 }
 
