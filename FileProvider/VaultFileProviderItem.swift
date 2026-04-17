@@ -44,8 +44,4 @@ final class VaultFileProviderItem: NSObject, NSFileProviderItem {
             metadataVersion: "1".data(using: .utf8)!
         )
     }
-
-    var cloudDownloadingStatus: NSFileProviderItemDownloadingStatus {
-        .notDownloaded
-    }
 }
