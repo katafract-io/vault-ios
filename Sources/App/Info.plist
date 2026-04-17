@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Vault</string>
+    <string>Vaultyx</string>
     <key>CFBundleDisplayName</key>
-    <string>Vault</string>
+    <string>Vaultyx</string>
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleVersion</key>
@@ -19,11 +19,11 @@
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
     <key>NSFaceIDUsageDescription</key>
-    <string>Vault uses Face ID to protect your encrypted files.</string>
+    <string>Vaultyx uses Face ID to protect your encrypted files.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Vault needs access to your photos for backup.</string>
+    <string>Vaultyx needs access to your photos for backup.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>Vault needs permission to save files to your photo library.</string>
+    <string>Vaultyx needs permission to save files to your photo library.</string>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

@@ -1,10 +1,10 @@
-# Vault iOS/macOS
+# Vaultyx iOS/macOS
 
 Zero-knowledge client-side encrypted file storage for iOS and macOS.
 
 ## Product Overview
 
-**Vault** is a privacy-first file storage solution where:
+**Vaultyx** is a privacy-first file storage solution where:
 - All encryption happens on your device
 - Server (Shards/S3) sees only ciphertext and chunk hashes
 - Files are split into content-addressed chunks via FastCDC
@@ -108,7 +108,7 @@ try await apiClient.uploadManifest(fileId: "file-123", encryptedManifest: encryp
 
 Build via Xcode:
 ```bash
-xcodebuild -scheme Vault -configuration Release build
+xcodebuild -scheme Vaultyx -configuration Release build
 ```
 
 ## Files

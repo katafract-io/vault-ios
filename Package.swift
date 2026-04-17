@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Vault",
+    name: "Vaultyx",
     platforms: [
         .iOS(.v17),
         .macOS(.v14)
