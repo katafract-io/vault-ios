@@ -44,6 +44,8 @@ public final class SubscriptionStore: ObservableObject {
     private var transactionListener: Task<Void, Never>?
 
     public var isSubscribed: Bool {
+        if ScreenshotMode.mockSubscribed { return true }
+        if ScreenshotMode.mockUnsubscribed { return false }
         switch subscriptionState {
         case .subscribed, .redeemed: return true
         case .unknown, .notSubscribed: return false

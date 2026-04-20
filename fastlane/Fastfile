@@ -1,0 +1,42 @@
+# Katafract screenshot pipeline (Layer 2) — fastlane lanes
+# Per-app: copy to <repo>/fastlane/Fastfile, no customization needed unless app
+# has special build requirements.
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Capture screenshots locally (output: fastlane/screenshots/)"
+  lane :screenshots do
+    capture_ios_screenshots
+  end
+
+  desc "Capture + upload App Store Version screenshots to ASC (no binary, no metadata)"
+  lane :submit_version_screenshots do
+    capture_ios_screenshots
+    deliver(
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_app_version_update: true,
+      overwrite_screenshots: true,
+      force: true,
+      run_precheck_before_submit: false
+    )
+  end
+
+  desc "Re-upload screenshots from existing fastlane/screenshots/ without re-capturing"
+  lane :resubmit_version_screenshots do
+    deliver(
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_app_version_update: true,
+      overwrite_screenshots: true,
+      force: true,
+      run_precheck_before_submit: false
+    )
+  end
+
+  # Subscription + IAP review screenshots are uploaded via the shared CLI on
+  # artemis: `python -m services.asc_screenshot_upload sub|iap ...`. fastlane
+  # deliver does NOT handle those well. See SCREENSHOT_PIPELINE.md for the
+  # commands.
+end

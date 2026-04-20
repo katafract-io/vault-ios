@@ -71,7 +71,7 @@ struct PaywallView: View {
             benefit("Multi-device sync + offline pinning", icon: "arrow.triangle.2.circlepath")
             benefit("Recycle bin + file versioning", icon: "clock.arrow.circlepath")
             benefit("Priority support", icon: "envelope.badge.shield.half.filled")
-            benefit("DocArmor Pro included free", icon: "lock.shield.fill")
+            benefit("DocArmor cloud backup included", icon: "lock.shield.fill")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
