@@ -55,8 +55,8 @@ extension ScreenshotMode {
     /// `Product.products(for:)` returns empty (rare — .storekit config
     /// is the primary source of truth in the Sim).
     static let mockedDisplayPrices: [String: String] = [
-        "com.katafract.vault.sovereign.monthly": "$14.99",
-        "com.katafract.vault.sovereign.yearly":  "$119.99",
+        "com.katafract.vault.sovereign.monthly": "$18.00",
+        "com.katafract.vault.sovereign.yearly":  "$144.00",
     ]
 }
 #endif
