@@ -1,5 +1,6 @@
 import SwiftUI
 import StoreKit
+import KatafractStyle
 
 /// Paywall shown when a non-subscriber attempts a gated action (upload,
 /// create folder, enable backup). Two pricing tiles + benefits list +
@@ -50,14 +51,16 @@ struct PaywallView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Image(systemName: "lock.shield.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
+                .font(.system(size: 56, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(Color.kataChampagne, Color.kataSapphire)
             Text("Vaultyx Sovereign")
-                .font(.largeTitle.bold())
+                .font(.kataDisplay(32))
+                .foregroundStyle(Color.primary)
             Text("Own your digital perimeter. Zero-knowledge storage across Katafract's global node network.")
-                .font(.subheadline)
+                .font(.kataBody(15))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -75,15 +78,20 @@ struct PaywallView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(Color.kataSapphire.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.kataGold.opacity(0.25), lineWidth: 1)
+        )
     }
 
     private func benefit(_ text: String, icon: String) -> some View {
         Label {
-            Text(text).font(.subheadline)
+            Text(text).font(.kataBody(15))
         } icon: {
-            Image(systemName: icon).foregroundStyle(.tint).frame(width: 24)
+            Image(systemName: icon)
+                .foregroundStyle(Color.kataGold)
+                .frame(width: 24)
         }
     }
 
