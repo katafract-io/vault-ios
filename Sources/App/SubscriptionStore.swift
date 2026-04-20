@@ -56,7 +56,7 @@ public final class SubscriptionStore: ObservableObject {
         self.apiClient = apiClient
         transactionListener = listenForTransactions()
         Task {
-            await restoreAuthToken()
+            _ = await restoreAuthToken()
             await loadProducts()
             await refreshEntitlements()
         }
@@ -72,13 +72,14 @@ public final class SubscriptionStore: ObservableObject {
     /// client. If the token is still valid server-side, `validateStoredToken`
     /// flips subscriptionState to `.redeemed`. Otherwise we fall back to
     /// whatever StoreKit says.
-    private func restoreAuthToken() async {
+    private func restoreAuthToken() async -> String? {
         guard let tokenData = Keychain.get(forKey: Self.authTokenKeychainKey),
               let token = String(data: tokenData, encoding: .utf8) else {
-            return
+            return nil
         }
         await apiClient.setAuthToken(token)
         await validateStoredToken(token)
+        return token
     }
 
     private func validateStoredToken(_ token: String) async {
@@ -235,7 +236,11 @@ public final class SubscriptionStore: ObservableObject {
     private func handleVerifiedTransaction(_ transaction: Transaction, jws: String) async {
         #if targetEnvironment(simulator)
         // Simulator JWS fails server x5c verification (see feedback_simulator_no_token.md).
-        // Trust local StoreKit for UI; skip server exchange.
+        // Trust local StoreKit for UI; skip server exchange. Load Keychain token so
+        // manual-paste tokens work on simulator.
+        if let token = restoreAuthToken() {
+            await apiClient.setAuthToken(token)
+        }
         subscriptionState = .subscribed(
             productId: transaction.productID,
             expiresAt: transaction.expirationDate)
