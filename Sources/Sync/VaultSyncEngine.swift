@@ -35,7 +35,8 @@ public class VaultSyncEngine: ObservableObject {
         localURL: URL,
         parentFolderId: String?,
         folderKey: SymmetricKey,
-        masterKey: SymmetricKey
+        masterKey: SymmetricKey,
+        filename: String? = nil
     ) async throws -> String {
         syncState = .uploading
         activeUploads += 1
@@ -101,6 +102,7 @@ public class VaultSyncEngine: ObservableObject {
         // 6. Save to local SwiftData
         let localFile = LocalFile(
             fileId: fileId,
+            filename: filename ?? localURL.lastPathComponent,
             parentFolderId: parentFolderId,
             manifestVersion: 1,
             chunkHashes: chunks.map(\.hash),
@@ -118,11 +120,12 @@ public class VaultSyncEngine: ObservableObject {
 
     private func uploadChunksBatch(_ chunks: [(hash: String, data: Data)], fileId: String) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
-            var inFlight = 0
+            let maxConcurrent = 8
+            var running = 0
             for chunk in chunks {
-                if inFlight >= 8 {
+                if running >= maxConcurrent {
                     try await group.next()
-                    inFlight -= 1
+                    running -= 1
                 }
                 group.addTask {
                     let url = try await self.apiClient.presignPut(fileId: fileId, chunkHash: chunk.hash)
@@ -130,9 +133,14 @@ public class VaultSyncEngine: ObservableObject {
                     req.httpMethod = "PUT"
                     req.httpBody = chunk.data
                     req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-                    _ = try await URLSession.shared.data(for: req)
+                    let (_, response) = try await URLSession.shared.data(for: req)
+                    guard let httpResponse = response as? HTTPURLResponse,
+                          (200...299).contains(httpResponse.statusCode) else {
+                        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                        throw VaultSyncEngineError.httpError(statusCode: code)
+                    }
                 }
-                inFlight += 1
+                running += 1
             }
             try await group.waitForAll()
         }
@@ -218,4 +226,5 @@ public enum VaultSyncEngineError: Error {
     case invalidBase64
     case decryptionFailed
     case manifestDecodeError
+    case httpError(statusCode: Int)
 }

@@ -103,34 +103,23 @@ class FileBrowserViewModel: ObservableObject {
             do {
                 let folderKey = try await services.keyManager.getOrCreateFolderKey(
                     folderId: folderId)
-                let context = ModelContext(services.modelContainer)
                 for url in urls {
                     // Document picker gives us security-scoped URLs; must open them.
                     let scoped = url.startAccessingSecurityScopedResource()
                     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
 
                     let filename = url.lastPathComponent
-                    let size = (try? FileManager.default
-                        .attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
 
                     let fileId = try await services.syncEngine.uploadFile(
                         localURL: url,
                         parentFolderId: folderId == "root" ? nil : folderId,
                         folderKey: folderKey,
-                        masterKey: services.masterKey)
-
-                    let local = LocalFile(
-                        fileId: fileId,
-                        filename: filename,
-                        parentFolderId: folderId == "root" ? nil : folderId,
-                        sizeBytes: size,
-                        modifiedAt: Date(),
-                        syncState: "synced")
-                    context.insert(local)
+                        masterKey: services.masterKey,
+                        filename: filename)
                 }
-                try? context.save()
                 await load(folderId: currentFolderId)
             } catch {
+                print("[Vaultyx Upload] failed: \(error)")
                 self.error = "Upload failed: \(error.localizedDescription)"
             }
         }
