@@ -90,6 +90,33 @@ struct SettingsView: View {
             }
             Section("About") {
                 LabeledContent("Version", value: "1.0.0")
+                Link(destination: URL(string: "mailto:feedback@katafract.com?subject=Vaultyx%20feedback")!) {
+                    HStack {
+                        Text("Send Feedback")
+                            .foregroundStyle(Color.primary)
+                        Spacer()
+                        Image(systemName: "envelope.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Link(destination: URL(string: "https://katafract.com/support")!) {
+                    HStack {
+                        Text("Support")
+                            .foregroundStyle(Color.primary)
+                        Spacer()
+                        Image(systemName: "questionmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Link(destination: URL(string: "https://katafract.com/privacy/vaultyx")!) {
+                    HStack {
+                        Text("Privacy Policy")
+                            .foregroundStyle(Color.primary)
+                        Spacer()
+                        Image(systemName: "hand.raised.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
         .navigationTitle("Settings")
