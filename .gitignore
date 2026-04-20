@@ -1,7 +1,7 @@
 # Xcode
 .DS_Store
-.xcodeproj/xcuserdata/
-.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
 DerivedData/
 Build/
 *.pbxuser
@@ -22,3 +22,11 @@ Build/
 # OS
 .AppleDouble
 .LSOverride
+
+# Ruby / fastlane
+vendor/
+.bundle/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/

@@ -54,6 +54,7 @@ class PhotosViewModel: ObservableObject {
     }
 
     func loadAlbums() async {
+        if ScreenshotMode.isActive { return }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return }
 

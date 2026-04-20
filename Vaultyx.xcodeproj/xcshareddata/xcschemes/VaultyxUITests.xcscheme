@@ -15,9 +15,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "4C1FEDC6D48618F38825A460"
-               BuildableName = "Vaultyx.app"
-               BlueprintName = "Vaultyx"
+               BlueprintIdentifier = "0C3A387E25CA827AD2C7B92D"
+               BuildableName = "VaultyxUITests.xctest"
+               BlueprintName = "VaultyxUITests"
                ReferencedContainer = "container:Vaultyx.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -32,9 +32,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4C1FEDC6D48618F38825A460"
-            BuildableName = "Vaultyx.app"
-            BlueprintName = "Vaultyx"
+            BlueprintIdentifier = "0C3A387E25CA827AD2C7B92D"
+            BuildableName = "VaultyxUITests.xctest"
+            BlueprintName = "VaultyxUITests"
             ReferencedContainer = "container:Vaultyx.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
@@ -64,21 +64,15 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4C1FEDC6D48618F38825A460"
-            BuildableName = "Vaultyx.app"
-            BlueprintName = "Vaultyx"
+            BlueprintIdentifier = "0C3A387E25CA827AD2C7B92D"
+            BuildableName = "VaultyxUITests.xctest"
+            BlueprintName = "VaultyxUITests"
             ReferencedContainer = "container:Vaultyx.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
-      <CommandLineArguments>
-      </CommandLineArguments>
-      <StoreKitConfigurationFileReference
-         identifier = "../../Vaultyx.storekit">
-      </StoreKitConfigurationFileReference>
+      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -86,18 +80,15 @@
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4C1FEDC6D48618F38825A460"
-            BuildableName = "Vaultyx.app"
-            BlueprintName = "Vaultyx"
+            BlueprintIdentifier = "0C3A387E25CA827AD2C7B92D"
+            BuildableName = "VaultyxUITests.xctest"
+            BlueprintName = "VaultyxUITests"
             ReferencedContainer = "container:Vaultyx.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
-      <CommandLineArguments>
-      </CommandLineArguments>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">
