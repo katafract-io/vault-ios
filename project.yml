@@ -15,6 +15,11 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     CODE_SIGN_STYLE: Automatic
 
+packages:
+  Katafract:
+    url: https://github.com/katafractured/Katafract.git
+    from: 0.1.0
+
 targets:
   Vaultyx:
     type: application
@@ -40,6 +45,8 @@ targets:
     dependencies:
       - target: VaultFileProvider
       - target: VaultShare
+      - package: Katafract
+        product: KatafractStyle
 
   VaultFileProvider:
     type: app-extension
