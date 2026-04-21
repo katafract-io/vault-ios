@@ -100,6 +100,19 @@ class FileBrowserViewModel: ObservableObject {
         }
         let folderId = currentFolderId ?? "root"
         Task {
+            // Estimate total bytes for LiveActivity progress tracking.
+            // Reads file sizes without loading contents — safe and fast.
+            let totalBytes: Int64 = urls.reduce(0) { acc, url in
+                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
+                return acc + size
+            }
+            let batchId = UUID().uuidString
+            let activityMgr = VaultActivityManager.shared
+            activityMgr.startBatch(batchId: batchId, totalFiles: urls.count, totalBytes: totalBytes)
+
+            var bytesUploaded: Int64 = 0
+            var filesRemaining = urls.count
+
             do {
                 let folderKey = try await services.keyManager.getOrCreateFolderKey(
                     folderId: folderId)
@@ -109,6 +122,15 @@ class FileBrowserViewModel: ObservableObject {
                     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
 
                     let filename = url.lastPathComponent
+                    let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
+
+                    // Transition to uploading before each file
+                    activityMgr.update(
+                        stage: .uploading,
+                        bytesUploaded: bytesUploaded,
+                        totalBytes: totalBytes,
+                        filesRemaining: filesRemaining
+                    )
 
                     let fileId = try await services.syncEngine.uploadFile(
                         localURL: url,
@@ -116,11 +138,28 @@ class FileBrowserViewModel: ObservableObject {
                         folderKey: folderKey,
                         masterKey: services.masterKey,
                         filename: filename)
+
+                    // Brief sealing transition after upload completes
+                    activityMgr.update(
+                        stage: .sealing,
+                        bytesUploaded: bytesUploaded + fileSize,
+                        totalBytes: totalBytes,
+                        filesRemaining: filesRemaining
+                    )
+
+                    bytesUploaded += fileSize
+                    filesRemaining -= 1
                 }
+                activityMgr.completeBatch(filesRemaining: 0, totalBytes: totalBytes)
                 await load(folderId: currentFolderId)
             } catch {
                 print("[Vaultyx Upload] failed: \(error)")
                 self.error = "Upload failed: \(error.localizedDescription)"
+                activityMgr.failBatch(
+                    bytesUploaded: bytesUploaded,
+                    totalBytes: totalBytes,
+                    filesRemaining: filesRemaining
+                )
             }
         }
     }
