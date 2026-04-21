@@ -1,0 +1,15 @@
+{
+  "originHash" : "5b994c3f0992eaf3f2ace141ef47f1a7f5fa19d91fd5296c084b938d58c13590",
+  "pins" : [
+    {
+      "identity" : "katafractstyle",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/katafractured/KatafractStyle.git",
+      "state" : {
+        "revision" : "f297433be58a5a1a7f442cedf6f3e0976bef508d",
+        "version" : "0.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}
