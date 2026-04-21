@@ -60,11 +60,24 @@ struct FileBrowserView: View {
     var body: some View {
         Group {
             if viewModel.items.isEmpty && !viewModel.isLoading {
-                EmptyFolderView(onUpload: { showUploadPicker = true })
+                VStack(spacing: 0) {
+                    if viewModel.uploadInProgress {
+                        FileUploadProgressBanner(
+                            fileIndex: viewModel.batchFileIndex,
+                            totalFiles: viewModel.batchTotalFiles,
+                            bytesUploaded: viewModel.batchBytesUploaded,
+                            totalBytes: viewModel.batchTotalBytes,
+                            onCancel: viewModel.cancelUpload
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    EmptyFolderView(onUpload: { showUploadPicker = true })
+                }
+                .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
             } else if viewMode == .list {
-                listView
+                listViewWithBanner
             } else {
-                gridView
+                gridViewWithBanner
             }
         }
         .overlay { UndoToast(model: undo) }
@@ -161,6 +174,24 @@ struct FileBrowserView: View {
     }
 
     @ViewBuilder
+    private var listViewWithBanner: some View {
+        VStack(spacing: 0) {
+            if viewModel.uploadInProgress {
+                FileUploadProgressBanner(
+                    fileIndex: viewModel.batchFileIndex,
+                    totalFiles: viewModel.batchTotalFiles,
+                    bytesUploaded: viewModel.batchBytesUploaded,
+                    totalBytes: viewModel.batchTotalBytes,
+                    onCancel: viewModel.cancelUpload
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            listView
+        }
+        .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
+    }
+
+    @ViewBuilder
     private var listView: some View {
         List {
             ForEach(sortedItems) { item in
@@ -192,6 +223,24 @@ struct FileBrowserView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var gridViewWithBanner: some View {
+        VStack(spacing: 0) {
+            if viewModel.uploadInProgress {
+                FileUploadProgressBanner(
+                    fileIndex: viewModel.batchFileIndex,
+                    totalFiles: viewModel.batchTotalFiles,
+                    bytesUploaded: viewModel.batchBytesUploaded,
+                    totalBytes: viewModel.batchTotalBytes,
+                    onCancel: viewModel.cancelUpload
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            gridView
+        }
+        .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
     }
 
     @ViewBuilder

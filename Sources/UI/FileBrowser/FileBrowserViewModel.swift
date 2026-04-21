@@ -9,8 +9,16 @@ class FileBrowserViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
+    // Upload progress state — drives FileUploadProgressBanner
+    @Published var uploadInProgress: Bool = false
+    @Published var batchBytesUploaded: Int64 = 0
+    @Published var batchTotalBytes: Int64 = 0
+    @Published var batchFileIndex: Int = 0
+    @Published var batchTotalFiles: Int = 0
+
     private weak var services: VaultServices?
     private var currentFolderId: String?
+    private var uploadTask: Task<Void, Never>?
 
     func configure(services: VaultServices) {
         self.services = services
@@ -93,13 +101,17 @@ class FileBrowserViewModel: ObservableObject {
 
     /// Encrypt + chunk + upload the user-picked URLs, then persist display
     /// metadata locally so the browser shows them immediately.
+    ///
+    /// Cancel-safe: if `cancelUpload()` is called, the task is cancelled and
+    /// `CancellationError` is caught silently — no error alert is shown. The
+    /// LiveActivity is ended with the "failed" stage so it doesn't orphan.
     func uploadFiles(_ urls: [URL]) {
         guard let services else {
             error = "VaultServices not configured"
             return
         }
         let folderId = currentFolderId ?? "root"
-        Task {
+        uploadTask = Task {
             // Estimate total bytes for LiveActivity progress tracking.
             // Reads file sizes without loading contents — safe and fast.
             let totalBytes: Int64 = urls.reduce(0) { acc, url in
@@ -110,19 +122,33 @@ class FileBrowserViewModel: ObservableObject {
             let activityMgr = VaultActivityManager.shared
             activityMgr.startBatch(batchId: batchId, totalFiles: urls.count, totalBytes: totalBytes)
 
+            // Expose batch state for FileUploadProgressBanner
+            batchTotalBytes = totalBytes
+            batchTotalFiles = urls.count
+            batchBytesUploaded = 0
+            batchFileIndex = 0
+            uploadInProgress = true
+
             var bytesUploaded: Int64 = 0
             var filesRemaining = urls.count
 
             do {
                 let folderKey = try await services.keyManager.getOrCreateFolderKey(
                     folderId: folderId)
-                for url in urls {
+                for (idx, url) in urls.enumerated() {
+                    // Check for cancellation between files — exits cleanly
+                    try Task.checkCancellation()
+
                     // Document picker gives us security-scoped URLs; must open them.
                     let scoped = url.startAccessingSecurityScopedResource()
                     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
 
                     let filename = url.lastPathComponent
                     let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
+
+                    // Update banner state
+                    batchFileIndex = idx + 1
+                    batchBytesUploaded = bytesUploaded
 
                     // Transition to uploading before each file
                     activityMgr.update(
@@ -132,7 +158,7 @@ class FileBrowserViewModel: ObservableObject {
                         filesRemaining: filesRemaining
                     )
 
-                    let fileId = try await services.syncEngine.uploadFile(
+                    let _ = try await services.syncEngine.uploadFile(
                         localURL: url,
                         parentFolderId: folderId == "root" ? nil : folderId,
                         folderKey: folderKey,
@@ -149,9 +175,23 @@ class FileBrowserViewModel: ObservableObject {
 
                     bytesUploaded += fileSize
                     filesRemaining -= 1
+                    batchBytesUploaded = bytesUploaded
                 }
                 activityMgr.completeBatch(filesRemaining: 0, totalBytes: totalBytes)
+                uploadInProgress = false
+                uploadTask = nil
                 await load(folderId: currentFolderId)
+            } catch is CancellationError {
+                // User-initiated cancel — end LiveActivity cleanly, no error alert.
+                activityMgr.failBatch(
+                    bytesUploaded: bytesUploaded,
+                    totalBytes: totalBytes,
+                    filesRemaining: filesRemaining
+                )
+                uploadInProgress = false
+                uploadTask = nil
+                // Refresh cache to show any files that did complete before cancel.
+                refreshFromCache()
             } catch {
                 print("[Vaultyx Upload] failed: \(error)")
                 self.error = "Upload failed: \(error.localizedDescription)"
@@ -160,8 +200,16 @@ class FileBrowserViewModel: ObservableObject {
                     totalBytes: totalBytes,
                     filesRemaining: filesRemaining
                 )
+                uploadInProgress = false
+                uploadTask = nil
             }
         }
+    }
+
+    /// Cancel the in-progress batch upload. Swallows silently — cancel is
+    /// user-initiated and must never surface an error alert.
+    func cancelUpload() {
+        uploadTask?.cancel()
     }
 
     func createFolder(_ name: String) {
