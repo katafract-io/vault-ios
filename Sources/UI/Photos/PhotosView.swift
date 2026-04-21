@@ -1,5 +1,6 @@
 import SwiftUI
 import Photos
+import KatafractStyle
 
 struct PhotosView: View {
     @EnvironmentObject private var services: VaultServices
@@ -29,11 +30,22 @@ struct PhotosView: View {
 
                     Divider().padding(.vertical, 8)
 
-                    // Photo grid
-                    PhotoGridSection(
-                        photos: viewModel.backedUpPhotos,
-                        onPhotoTap: { viewModel.selectedPhoto = $0 }
-                    )
+                    // Photo grid OR sealed-album empty state
+                    if showEmptyState {
+                        PhotosEmptyStateView(onBackupTap: {
+                            if subscriptionStore.isSubscribed {
+                                viewModel.startBackupNow()
+                            } else {
+                                showPaywall = true
+                            }
+                        })
+                        .padding(.top, 24)
+                    } else {
+                        PhotoGridSection(
+                            photos: viewModel.backedUpPhotos,
+                            onPhotoTap: { viewModel.selectedPhoto = $0 }
+                        )
+                    }
                 }
             }
             .navigationTitle("Photos")
@@ -62,6 +74,114 @@ struct PhotosView: View {
                 PaywallView()
             }
         }
+    }
+
+    private var showEmptyState: Bool {
+        !viewModel.backupInProgress &&
+        !viewModel.backedUpPhotos.contains(where: { $0.backupState == .backedUp })
+    }
+}
+
+// MARK: - Photos empty state — "sealed album"
+
+struct PhotosEmptyStateView: View {
+    var onBackupTap: () -> Void
+
+    @State private var cardScale: CGFloat = 0.92
+    @State private var cardOpacity: Double = 0
+    @State private var borderProgress: CGFloat = 0
+
+    var body: some View {
+        VStack(spacing: 20) {
+            sealedAlbumCard
+
+            VStack(spacing: 8) {
+                Text("No photos yet — sealed and waiting.")
+                    .font(.kataHeadline(22, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+
+                Text("Back up your photo library. Everything is encrypted on this device before it leaves.")
+                    .font(.kataBody(14))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            Button(action: onBackupTap) {
+                Label("Back up photos", systemImage: "arrow.up.circle.fill")
+                    .font(.kataHeadline(15, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .frame(maxWidth: 240)
+                    .frame(height: 48)
+                    .background(Color.kataPremiumGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .padding(.top, 4)
+        }
+        .padding(.bottom, 40)
+        .frame(maxWidth: .infinity)
+        .onAppear {
+            withAnimation(.spring(duration: 0.6, bounce: 0.2)) {
+                cardScale = 1.0
+                cardOpacity = 1.0
+            }
+            withAnimation(.easeOut(duration: 0.9).delay(0.2)) {
+                borderProgress = 1.0
+            }
+        }
+    }
+
+    private var sealedAlbumCard: some View {
+        ZStack {
+            // Base card with sapphire gradient
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [
+                        Color.kataSapphire.opacity(0.25),
+                        Color.kataSapphire.opacity(0.6)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+                .background(Color.black.opacity(0.4),
+                            in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+            // Photo-grid watermark (3×4) at low opacity
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                ForEach(0..<12, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                        .aspectRatio(1, contentMode: .fit)
+                }
+            }
+            .padding(18)
+            .allowsHitTesting(false)
+
+            // Centered shield overlay
+            ZStack {
+                Image(systemName: "shield.fill")
+                    .font(.system(size: 72, weight: .regular))
+                    .foregroundStyle(LinearGradient(
+                        colors: [.kataSapphire, .kataSapphire.opacity(0.75)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+
+                Image(systemName: "photo.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(Color.kataGold)
+                    .offset(y: 2)
+            }
+
+            // Gold hairline border (animated draw)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .trim(from: 0, to: borderProgress)
+                .stroke(Color.kataGold.opacity(0.35), lineWidth: 0.5)
+        }
+        .frame(width: 180, height: 240)
+        .scaleEffect(cardScale)
+        .opacity(cardOpacity)
     }
 }
 
