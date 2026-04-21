@@ -71,9 +71,18 @@ struct FileBrowserView: View {
                         )
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
+                    if viewModel.downloadInProgress {
+                        FileDownloadProgressBanner(
+                            filename: viewModel.downloadFilename,
+                            progress: viewModel.downloadProgress,
+                            onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                     EmptyFolderView(onUpload: { showUploadPicker = true })
                 }
                 .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
+                .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
             } else if viewMode == .list {
                 listViewWithBanner
             } else {
@@ -186,9 +195,18 @@ struct FileBrowserView: View {
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+            if viewModel.downloadInProgress {
+                FileDownloadProgressBanner(
+                    filename: viewModel.downloadFilename,
+                    progress: viewModel.downloadProgress,
+                    onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
             listView
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
+        .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
     }
 
     @ViewBuilder
@@ -238,9 +256,18 @@ struct FileBrowserView: View {
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+            if viewModel.downloadInProgress {
+                FileDownloadProgressBanner(
+                    filename: viewModel.downloadFilename,
+                    progress: viewModel.downloadProgress,
+                    onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
             gridView
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
+        .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
     }
 
     @ViewBuilder
