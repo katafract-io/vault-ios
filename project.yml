@@ -45,8 +45,31 @@ targets:
     dependencies:
       - target: VaultFileProvider
       - target: VaultShare
+      - target: VaultyxLiveActivity
       - package: KatafractStyle
         product: KatafractStyle
+
+  VaultyxLiveActivity:
+    type: app-extension
+    platform: iOS
+    bundleId: com.katafract.vault.liveactivity
+    sources:
+      - path: VaultyxLiveActivity
+        excludes:
+          - "**/.DS_Store"
+    entitlements:
+      path: VaultyxLiveActivity/VaultyxLiveActivity.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.katafract.enclave
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault.liveactivity
+        INFOPLIST_FILE: VaultyxLiveActivity/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        PRODUCT_NAME: VaultyxLiveActivity
+        SWIFT_VERSION: "5.10"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 
   VaultFileProvider:
     type: app-extension
@@ -132,3 +155,16 @@ schemes:
         - VaultyxUITests
       gatherCoverageData: false
       storeKitConfiguration: Vaultyx.storekit
+
+  VaultyxLiveActivity:
+    build:
+      targets:
+        VaultyxLiveActivity: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
