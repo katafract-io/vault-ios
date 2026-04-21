@@ -158,7 +158,7 @@ public actor VaultAPIClient {
 
     public func fetchManifest(fileId: String) async throws -> Data {
         let response: ManifestResponse = try await get("/v1/vault/manifest/\(fileId)", authOverride: nil)
-        guard let data = Data(base64Encoded: response.manifestB64) else {
+        guard let data = Data(base64Encoded: response.manifest_data) else {
             throw VaultAPIClientError.invalidBase64
         }
         return data
@@ -189,7 +189,10 @@ public actor VaultAPIClient {
         body: Body,
         authOverride: String?
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw VaultAPIClientError.invalidURL
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let bearer = authOverride ?? authToken {
@@ -205,7 +208,10 @@ public actor VaultAPIClient {
         _ path: String,
         body: Body
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw VaultAPIClientError.invalidURL
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token = authToken {
@@ -220,7 +226,10 @@ public actor VaultAPIClient {
     private func delete<Response: Decodable>(
         _ path: String
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw VaultAPIClientError.invalidURL
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         if let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -234,7 +243,10 @@ public actor VaultAPIClient {
         _ path: String,
         authOverride: String?
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw VaultAPIClientError.invalidURL
+        }
+        var request = URLRequest(url: url)
         if let bearer = authOverride ?? authToken {
             request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         }
@@ -320,7 +332,13 @@ public actor VaultAPIClient {
     }
 
     private struct ManifestResponse: Decodable {
-        let manifestB64: String
+        let file_id: String
+        let manifest_data: String
+        let size_bytes: Int64
+        let chunk_count: Int
+        let created_at: Int
+        let modified_at: Int
+        let version: Int
     }
 
     private struct KeyResponse: Decodable {
