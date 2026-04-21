@@ -52,11 +52,13 @@ struct RecentsView: View {
 struct SettingsView: View {
     @ObservedObject private var lock = BiometricLock.shared
     @EnvironmentObject private var services: VaultServices
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @State private var usedBytes: Int64 = -1
     @State private var showPhrase = false
     @State private var showRestore = false
+    @State private var showPaywall = false
 
     private let sovereignQuota: Int64 = 1_099_511_627_776  // 1 TiB
 
@@ -66,9 +68,33 @@ struct SettingsView: View {
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
 
+            // MARK: Upgrade CTA — visible to non-subscribers (path A for Apple review)
+            if !subscriptionStore.isSubscribed {
+                Section {
+                    Button {
+                        KataHaptic.revealed.fire()
+                        showPaywall = true
+                    } label: {
+                        Text("Upgrade to Sovereign — 7-day free trial")
+                            .font(.kataHeadline(17, weight: .medium))
+                            .foregroundStyle(Color.kataIce)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.kataSapphire)
+                            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                }
+            }
+
             Section {
-                settingsRow(icon: "person.crop.circle.fill", title: "Plan", value: "Sovereign")
-                settingsRow(icon: "externaldrive.fill", title: "Storage", value: "1 TB")
+                if subscriptionStore.isSubscribed {
+                    settingsRow(icon: "person.crop.circle.fill", title: "Plan", value: "Sovereign")
+                    settingsRow(icon: "externaldrive.fill", title: "Storage", value: "1 TB")
+                } else {
+                    settingsRow(icon: "person.crop.circle.fill", title: "Plan", value: "Free")
+                }
             } header: {
                 sectionHeader("Account")
             }
@@ -145,6 +171,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showRestore) {
             RestoreFromPhraseView()
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
         }
     }
 
@@ -259,6 +288,9 @@ struct SettingsView: View {
 
 struct EmptyFolderView: View {
     var onUpload: () -> Void
+    /// Called when the non-subscriber "Start with Sovereign" CTA is tapped.
+    /// Pass nil when the caller knows the user is already subscribed.
+    var onUpgrade: (() -> Void)? = nil
 
     @State private var shieldScale: CGFloat = 0.94
     @State private var haloOpacity: Double = 0
@@ -311,16 +343,31 @@ struct EmptyFolderView: View {
                     .padding(.horizontal, 32)
             }
 
-            Button(action: onUpload) {
-                Label("Upload Files", systemImage: "arrow.up.doc.fill")
-                    .font(.kataHeadline(16, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.85))
-                    .frame(maxWidth: 260)
-                    .frame(height: 52)
-                    .background(Color.kataPremiumGradient)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // MARK: Sovereign CTA — shown to non-subscribers in empty state (path C for Apple review)
+            if let onUpgrade {
+                Button {
+                    KataHaptic.revealed.fire()
+                    onUpgrade()
+                } label: {
+                    Text("Start with Sovereign — 7-day free trial")
+                        .font(.kataHeadline(16, weight: .semibold))
+                        .foregroundStyle(Color.kataIce)
+                        .frame(maxWidth: 300)
+                        .frame(height: 52)
+                        .background(Color.kataSapphire)
+                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                }
+            } else {
+                Button(action: onUpload) {
+                    Label("Upload Files", systemImage: "arrow.up.doc.fill")
+                        .font(.kataHeadline(16, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.85))
+                        .frame(maxWidth: 260)
+                        .frame(height: 52)
+                        .background(Color.kataPremiumGradient)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
             }
-            .padding(.top, 4)
 
             Spacer()
             Spacer()
