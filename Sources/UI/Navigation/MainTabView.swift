@@ -1,4 +1,5 @@
 import SwiftUI
+import KatafractStyle
 
 struct MainTabView: View {
     @ObservedObject private var lock = BiometricLock.shared
@@ -33,6 +34,7 @@ struct MainTabView: View {
                 Label("Settings", systemImage: "gearshape.fill")
             }
         }
+        .tint(.kataSapphire)
     }
 }
 
@@ -45,10 +47,13 @@ struct RecentsView: View {
     }
 }
 
+// MARK: - Settings
+
 struct SettingsView: View {
     @ObservedObject private var lock = BiometricLock.shared
     @EnvironmentObject private var services: VaultServices
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @State private var usedBytes: Int64 = -1
     @State private var showPhrase = false
     @State private var showRestore = false
@@ -59,66 +64,76 @@ struct SettingsView: View {
         List {
             StorageQuotaView(usedBytes: usedBytes, totalBytes: sovereignQuota)
                 .listRowInsets(EdgeInsets())
-            Section("Account") {
-                LabeledContent("Plan", value: "Sovereign")
-                LabeledContent("Storage", value: "1 TB")
+                .listRowBackground(Color.clear)
+
+            Section {
+                settingsRow(icon: "person.crop.circle.fill", title: "Plan", value: "Sovereign")
+                settingsRow(icon: "externaldrive.fill", title: "Storage", value: "1 TB")
+            } header: {
+                sectionHeader("Account")
             }
-            Section("Security") {
-                Button {
-                    showPhrase = true
-                } label: {
-                    HStack {
-                        Text("Show Recovery Phrase")
-                            .foregroundStyle(Color.primary)
-                        Spacer()
-                        Image(systemName: "key.horizontal.fill")
-                            .foregroundStyle(.secondary)
-                    }
+
+            Section {
+                heroRecoveryRow
+
+                settingsButtonRow(
+                    icon: "key.horizontal.fill",
+                    title: "Restore from Recovery Phrase",
+                    action: { showRestore = true }
+                )
+
+                HStack(spacing: 12) {
+                    Image(systemName: "faceid")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.kataSapphire)
+                        .frame(width: 28)
+                    Toggle("Biometric Lock", isOn: $lock.isEnabled)
+                        .tint(.kataSapphire)
+                        .font(.kataBody(15))
                 }
-                Button {
-                    showRestore = true
-                } label: {
-                    Text("Restore from Recovery Phrase")
-                        .foregroundStyle(Color.primary)
-                }
-                Toggle("Biometric Lock", isOn: $lock.isEnabled)
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+            } header: {
+                sectionHeader("Security")
             }
-            Section("Storage") {
-                NavigationLink("Recycle Bin") {
+
+            Section {
+                NavigationLink {
                     RecycleBinView()
+                } label: {
+                    labeledRow(icon: "trash.fill", title: "Recycle Bin")
                 }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+            } header: {
+                sectionHeader("Storage")
             }
-            Section("About") {
-                LabeledContent("Version", value: "1.0.0")
-                Link(destination: URL(string: "mailto:feedback@katafract.com?subject=Vaultyx%20feedback")!) {
-                    HStack {
-                        Text("Send Feedback")
-                            .foregroundStyle(Color.primary)
-                        Spacer()
-                        Image(systemName: "envelope.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Link(destination: URL(string: "https://katafract.com/support")!) {
-                    HStack {
-                        Text("Support")
-                            .foregroundStyle(Color.primary)
-                        Spacer()
-                        Image(systemName: "questionmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Link(destination: URL(string: "https://katafract.com/privacy/vaultyx")!) {
-                    HStack {
-                        Text("Privacy Policy")
-                            .foregroundStyle(Color.primary)
-                        Spacer()
-                        Image(systemName: "hand.raised.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+
+            Section {
+                settingsRow(icon: "info.circle.fill", title: "Version", value: "1.0.0")
+                settingsLinkRow(
+                    icon: "envelope.fill",
+                    title: "Send Feedback",
+                    url: "mailto:feedback@katafract.com?subject=Vaultyx%20feedback"
+                )
+                settingsLinkRow(
+                    icon: "questionmark.circle.fill",
+                    title: "Support",
+                    url: "https://katafract.com/support"
+                )
+                settingsLinkRow(
+                    icon: "hand.raised.fill",
+                    title: "Privacy Policy",
+                    url: "https://katafract.com/privacy/vaultyx"
+                )
+            } header: {
+                sectionHeader("About")
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(
+            colorScheme == .dark
+                ? AnyView(backgroundTint)
+                : AnyView(Color(.systemGroupedBackground))
+        )
         .navigationTitle("Settings")
         .task {
             usedBytes = StorageUsageCalculator.compute(from: modelContext)
@@ -132,19 +147,192 @@ struct SettingsView: View {
             RestoreFromPhraseView()
         }
     }
+
+    // MARK: - Row builders
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.kataCaption(11, weight: .semibold))
+            .tracking(1.2)
+            .foregroundStyle(Color.kataSapphire.opacity(colorScheme == .dark ? 0.85 : 1.0))
+            .padding(.top, 4)
+    }
+
+    private func settingsRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(Color.kataSapphire)
+                .frame(width: 28)
+            Text(title)
+                .font(.kataBody(15))
+                .foregroundStyle(.primary)
+            Spacer()
+            Text(value)
+                .font(.kataBody(15))
+                .foregroundStyle(.secondary)
+        }
+        .listRowBackground(Color.kataSapphire.opacity(0.04))
+    }
+
+    private func settingsButtonRow(
+        icon: String,
+        title: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            labeledRow(icon: icon, title: title)
+        }
+        .listRowBackground(Color.kataSapphire.opacity(0.04))
+    }
+
+    private func settingsLinkRow(icon: String, title: String, url: String) -> some View {
+        Link(destination: URL(string: url)!) {
+            labeledRow(icon: icon, title: title, trailingSymbol: "arrow.up.right")
+        }
+        .listRowBackground(Color.kataSapphire.opacity(0.04))
+    }
+
+    private func labeledRow(
+        icon: String,
+        title: String,
+        trailingSymbol: String? = nil
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(Color.kataSapphire)
+                .frame(width: 28)
+            Text(title)
+                .font(.kataBody(15))
+                .foregroundStyle(.primary)
+            Spacer()
+            if let trailingSymbol {
+                Image(systemName: trailingSymbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var heroRecoveryRow: some View {
+        Button {
+            KataHaptic.revealed.fire()
+            showPhrase = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color.kataGold)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show Recovery Phrase")
+                        .font(.kataBody(16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("24-word master key. Write it down once.")
+                        .font(.kataCaption(11))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.kataGold.opacity(0.8))
+            }
+            .padding(.vertical, 2)
+        }
+        .listRowBackground(Color.kataGold.opacity(0.06))
+    }
+
+    private var backgroundTint: some View {
+        ZStack {
+            Color.black
+            Color.kataSapphire.opacity(0.05)
+        }
+        .ignoresSafeArea()
+    }
 }
+
+// MARK: - Files empty state — "The Sealed Vault"
 
 struct EmptyFolderView: View {
     var onUpload: () -> Void
 
+    @State private var shieldScale: CGFloat = 0.94
+    @State private var haloOpacity: Double = 0
+
     var body: some View {
-        ContentUnavailableView {
-            Label("Empty Folder", systemImage: "folder")
-        } description: {
-            Text("Upload files to get started")
-        } actions: {
-            Button("Upload Files", action: onUpload)
-                .buttonStyle(.borderedProminent)
+        VStack(spacing: 24) {
+            Spacer()
+
+            ZStack {
+                RadialGradient(
+                    colors: [Color.kataSapphire.opacity(0.25), Color.kataSapphire.opacity(0)],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: 140
+                )
+                .frame(width: 280, height: 280)
+                .opacity(haloOpacity)
+
+                ZStack {
+                    Image(systemName: "shield.fill")
+                        .font(.system(size: 120, weight: .regular))
+                        .foregroundStyle(LinearGradient(
+                            colors: [.kataSapphire, .kataSapphire.opacity(0.7)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ))
+
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 44, weight: .semibold))
+                        .foregroundStyle(Color.kataGold)
+                        .offset(y: 2)
+                        .symbolEffect(
+                            .pulse,
+                            options: .repeating,
+                            value: haloOpacity
+                        )
+                }
+                .scaleEffect(shieldScale)
+            }
+
+            VStack(spacing: 10) {
+                Text("Your vault is empty")
+                    .font(.kataHeadline(26, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text("Add your first file — it'll be encrypted on this device before it ever leaves.")
+                    .font(.kataBody(15))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            Button(action: onUpload) {
+                Label("Upload Files", systemImage: "arrow.up.doc.fill")
+                    .font(.kataHeadline(16, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .frame(maxWidth: 260)
+                    .frame(height: 52)
+                    .background(Color.kataPremiumGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(.top, 4)
+
+            Spacer()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .onAppear {
+            withAnimation(.spring(duration: 0.6, bounce: 0.2)) {
+                shieldScale = 1.0
+            }
+            withAnimation(.easeIn(duration: 0.8)) {
+                haloOpacity = 1.0
+            }
         }
     }
 }
