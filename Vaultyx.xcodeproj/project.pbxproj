@@ -37,6 +37,7 @@
 		686E81F9A034C5FD34908239 /* MasterKeyBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56EFC2D4148C3F943FD1145C /* MasterKeyBootstrap.swift */; };
 		6CE6B4F454D6004B1C6B36F0 /* PhotosView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A8556A97A4E3B84F26823AA /* PhotosView.swift */; };
 		6CFC3F3E28AEE9B5D26D6884 /* SnapshotHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CFF3976A29D6C52E0BB18B0 /* SnapshotHelper.swift */; };
+		74B04C84BEB4F8A0DC4179A8 /* FileUploadProgressBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF65489DA0A2D603C5825F51 /* FileUploadProgressBanner.swift */; };
 		781EDBA16BA48455306F69D9 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7EC3FB8141B0F4D7CC1960 /* FileBrowserView.swift */; };
 		794722FF3786E664549B4A65 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA84B36B69F5E4E05B2F6AD /* ShareViewController.swift */; };
 		7980FC2D27B6826C7B2E5E96 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C228B6C51D78AFA3F2DED89 /* Keychain.swift */; };
@@ -186,6 +187,7 @@
 		D5906A8BF8BC26BD6FFA7E98 /* DocArmorFolderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocArmorFolderView.swift; sourceTree = "<group>"; };
 		D995CE496B48FA55FD9DEF6A /* FileBrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModel.swift; sourceTree = "<group>"; };
 		DDEE00DCCBEBF9B2575EEBFE /* TokenRedemptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRedemptionView.swift; sourceTree = "<group>"; };
+		DF65489DA0A2D603C5825F51 /* FileUploadProgressBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileUploadProgressBanner.swift; path = Sources/UI/FileBrowser/FileUploadProgressBanner.swift; sourceTree = SOURCE_ROOT; };
 		E2BCBEFBBE8AC2609E25215F /* FastCDC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastCDC.swift; sourceTree = "<group>"; };
 		E6224F29A715A5E7D5B92110 /* VaultShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VaultShare.entitlements; sourceTree = "<group>"; };
 		E6689E73FC23CF8E1C76216D /* VaultFileProviderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileProviderItem.swift; sourceTree = "<group>"; };
@@ -351,6 +353,7 @@
 				E013B80AC71124C74DE2B55D /* UITests */,
 				3D3A1FD2183C857158A62230 /* VaultyxLiveActivity */,
 				A6E36D091AF0E1C6BC0EFA1B /* Products */,
+				DF65489DA0A2D603C5825F51 /* FileUploadProgressBanner.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -588,7 +591,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 7B085974777A404875EE55AC /* Build configuration list for PBXProject "Vaultyx" */;
+			buildConfigurationList = 7B085974777A404875EE55AC /* Build configuration list for PBXProject "VaultFileProvider" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -707,6 +710,7 @@
 				B726502AEAF163541D69BD5E /* VaultSyncEngine.swift in Sources */,
 				8751ACD78548AE1FD6453A3D /* VaultTreeSync.swift in Sources */,
 				2670E40A7A865D8B915F0B09 /* VaultyxUploadAttributes.swift in Sources */,
+				74B04C84BEB4F8A0DC4179A8 /* FileUploadProgressBanner.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1068,7 +1072,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		7B085974777A404875EE55AC /* Build configuration list for PBXProject "Vaultyx" */ = {
+		7B085974777A404875EE55AC /* Build configuration list for PBXProject "VaultFileProvider" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				EC311AD7A117C365D6AC5367 /* Debug */,
