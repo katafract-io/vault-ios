@@ -16,9 +16,15 @@ class FileBrowserViewModel: ObservableObject {
     @Published var batchFileIndex: Int = 0
     @Published var batchTotalFiles: Int = 0
 
+    // Download progress state — drives FileDownloadProgressBanner
+    @Published var downloadInProgress: Bool = false
+    @Published var downloadProgress: Double = 0
+    @Published var downloadFilename: String = ""
+
     private weak var services: VaultServices?
     private var currentFolderId: String?
     private var uploadTask: Task<Void, Never>?
+    private var downloadTask: Task<URL?, Never>?
 
     func configure(services: VaultServices) {
         self.services = services
@@ -212,6 +218,11 @@ class FileBrowserViewModel: ObservableObject {
         uploadTask?.cancel()
     }
 
+    /// Cancel the in-progress download. Swallows silently — user-initiated.
+    func cancelDownload() {
+        downloadTask?.cancel()
+    }
+
     func createFolder(_ name: String) {
         guard let services else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -353,21 +364,45 @@ class FileBrowserViewModel: ObservableObject {
         }
     }
 
+    /// Download + decrypt a file and return a local tmp URL for QuickLook.
+    ///
+    /// Drives `downloadInProgress` / `downloadProgress` / `downloadFilename`
+    /// for FileDownloadProgressBanner. Cancel-safe: `CancellationError` is
+    /// caught silently — no error alert surfaces on user-initiated cancel.
     func materializeLocalURL(for item: VaultFileItem) async -> URL? {
         guard let services else {
             error = "VaultServices not configured"
             return nil
         }
         let folderId = currentFolderId ?? "root"
+
+        // Expose progress state for the download banner
+        downloadFilename = item.name
+        downloadProgress = 0
+        downloadInProgress = true
+        defer { downloadInProgress = false }
+
         do {
             let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId)
             let plaintext = try await services.syncEngine.downloadFile(
-                fileId: item.id, folderKey: folderKey)
+                fileId: item.id,
+                folderKey: folderKey,
+                progress: { [weak self] fraction in
+                    // progress callback arrives on whatever executor the engine
+                    // uses; hop to MainActor to update @Published safely.
+                    Task { @MainActor [weak self] in
+                        self?.downloadProgress = fraction
+                    }
+                }
+            )
             let tmp = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension((item.name as NSString).pathExtension)
             try plaintext.write(to: tmp, options: .atomic)
             return tmp
+        } catch is CancellationError {
+            // User-initiated cancel from sheet dismiss or Cancel button — silent.
+            return nil
         } catch {
             self.error = "Couldn't open \(item.name): \(error.localizedDescription)"
             return nil
