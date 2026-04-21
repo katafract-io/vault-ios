@@ -79,7 +79,10 @@ struct FileBrowserView: View {
                         )
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    EmptyFolderView(onUpload: { showUploadPicker = true })
+                    EmptyFolderView(
+                        onUpload: { gate { showUploadPicker = true } },
+                        onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
+                    )
                 }
                 .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
                 .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
