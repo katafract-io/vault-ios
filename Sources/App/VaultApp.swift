@@ -6,6 +6,7 @@ struct VaultApp: App {
     @StateObject private var services: VaultServices
     @StateObject private var subscriptionStore: SubscriptionStore
     @Environment(\.scenePhase) private var scenePhase
+    @State private var splashComplete = ScreenshotMode.isActive  // skip splash in screenshot mode
 
     init() {
         let services = VaultServices()
@@ -23,6 +24,16 @@ struct VaultApp: App {
                 if lock.isLocked {
                     LockScreenView()
                         .transition(.opacity)
+                }
+
+                if !splashComplete {
+                    LaunchSplashView(onFinished: {
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            splashComplete = true
+                        }
+                    })
+                    .transition(.opacity)
+                    .zIndex(999)
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: lock.isLocked)

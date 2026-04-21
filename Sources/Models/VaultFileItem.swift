@@ -10,7 +10,7 @@ struct VaultFileItem: Identifiable, Hashable {
     let isPinned: Bool
     var thumbnailImage: UIImage?
 
-    enum SyncStateDisplay {
+    enum SyncStateDisplay: Equatable {
         case synced
         case uploading(Double)
         case downloading(Double)

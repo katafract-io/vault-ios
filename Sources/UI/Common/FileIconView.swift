@@ -1,19 +1,31 @@
 import SwiftUI
+import KatafractStyle
 
+/// Monochromatic sapphire file-type tile — 40×40pt rounded-10 with subtle
+/// fill + hairline stroke. Replaces the previous rainbow-iconography look
+/// (Drive-esque) with quiet, premium Katafract-family chrome.
 struct FileIconView: View {
     let item: VaultFileItem
 
     var body: some View {
-        Image(systemName: iconName)
-            .font(.title2)
-            .foregroundStyle(iconColor)
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.kataSapphire.opacity(0.08))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.kataSapphire.opacity(0.2), lineWidth: 0.5)
+            )
+            .overlay(
+                Image(systemName: iconName)
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(Color.kataSapphire)
+            )
     }
 
     var iconName: String {
         if item.isFolder { return "folder.fill" }
         let ext = (item.name as NSString).pathExtension.lowercased()
         switch ext {
-        case "pdf": return "doc.fill"
+        case "pdf": return "doc.text.fill"
         case "jpg", "jpeg", "png", "heic", "gif", "webp": return "photo.fill"
         case "mp4", "mov", "m4v": return "video.fill"
         case "mp3", "m4a", "wav", "aac": return "music.note"
@@ -24,44 +36,105 @@ struct FileIconView: View {
         default: return "doc.fill"
         }
     }
-
-    var iconColor: Color {
-        if item.isFolder { return .blue }
-        let ext = (item.name as NSString).pathExtension.lowercased()
-        switch ext {
-        case "pdf": return .red
-        case "jpg", "jpeg", "png", "heic", "gif", "webp": return .purple
-        case "mp4", "mov": return .orange
-        case "mp3", "m4a", "wav": return .green
-        case "doc", "docx": return .blue
-        case "xls", "xlsx": return .green
-        default: return .gray
-        }
-    }
 }
 
+/// Compact sync-state badge used in the file row trailing region.
+///
+///   - `.synced`        → small gold `lock.shield.fill` (the "quietly expensive" flex)
+///   - `.uploading(x)`  → sapphire-tinted capsule with progress percent
+///   - `.downloading(x)` → same shape, different glyph
+///   - `.conflict`      → amber warning triangle
+///   - `.offline`       → sapphire pin glyph (not orange — we're not Google Drive)
 struct SyncStatusBadge: View {
     let state: VaultFileItem.SyncStateDisplay
 
     var body: some View {
         switch state {
         case .synced:
-            EmptyView()
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.kataGold.opacity(0.85))
+                .accessibilityLabel("Encrypted, synced")
         case .uploading(let progress):
-            CircularProgressView(progress: progress, color: .blue)
-                .frame(width: 16, height: 16)
+            UploadingPill(progress: progress, mode: .uploading)
         case .downloading(let progress):
-            CircularProgressView(progress: progress, color: .green)
-                .frame(width: 16, height: 16)
+            UploadingPill(progress: progress, mode: .downloading)
         case .conflict:
             Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.yellow)
-                .font(.caption)
+                .accessibilityLabel("Sync conflict")
         case .offline:
             Image(systemName: "pin.fill")
-                .foregroundStyle(.orange)
-                .font(.caption2)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.kataSapphire.opacity(0.85))
+                .accessibilityLabel("Kept offline")
         }
+    }
+}
+
+/// The in-progress capsule. `Sealed` is a terminal celebration state that
+/// plays briefly after an uploading badge completes — fires a success haptic
+/// and swaps to gold shield-check. Callers own the "uploading → sealed"
+/// transition by watching the underlying sync state.
+struct UploadingPill: View {
+    enum Mode { case uploading, downloading, sealed }
+
+    let progress: Double
+    let mode: Mode
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: glyph)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(glyphColor)
+                .symbolEffect(.pulse, options: .repeating, value: mode)
+
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+                .foregroundStyle(textColor)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule().fill(backgroundColor)
+        )
+        .overlay(
+            Capsule().stroke(strokeColor, lineWidth: 0.5)
+        )
+    }
+
+    private var glyph: String {
+        switch mode {
+        case .uploading:   return "arrow.up.circle.fill"
+        case .downloading: return "arrow.down.circle.fill"
+        case .sealed:      return "checkmark.shield.fill"
+        }
+    }
+
+    private var label: String {
+        switch mode {
+        case .uploading, .downloading:
+            return "\(Int(progress * 100))%"
+        case .sealed:
+            return "Sealed"
+        }
+    }
+
+    private var glyphColor: Color {
+        mode == .sealed ? Color.kataGold : Color.kataSapphire
+    }
+
+    private var textColor: Color {
+        mode == .sealed ? Color.kataGold.opacity(0.9) : Color.kataSapphire.opacity(0.85)
+    }
+
+    private var backgroundColor: Color {
+        mode == .sealed ? Color.kataGold.opacity(0.15) : Color.kataSapphire.opacity(0.18)
+    }
+
+    private var strokeColor: Color {
+        mode == .sealed ? Color.kataGold.opacity(0.4) : Color.kataSapphire.opacity(0.4)
     }
 }
 
@@ -85,12 +158,20 @@ struct CircularProgressView: View {
             id: "1", name: "document.pdf", isFolder: false,
             sizeBytes: 1000, modifiedAt: Date(), syncState: .synced, isPinned: false
         ))
+        .frame(width: 40, height: 40)
+
         FileIconView(item: VaultFileItem(
             id: "2", name: "Photos", isFolder: true,
             sizeBytes: 0, modifiedAt: Date(), syncState: .synced, isPinned: false
         ))
-        SyncStatusBadge(state: .uploading(0.5))
+        .frame(width: 40, height: 40)
+
+        SyncStatusBadge(state: .synced)
+        SyncStatusBadge(state: .uploading(0.42))
+        SyncStatusBadge(state: .downloading(0.78))
+        UploadingPill(progress: 1, mode: .sealed)
         SyncStatusBadge(state: .conflict)
         SyncStatusBadge(state: .offline)
     }
+    .padding()
 }

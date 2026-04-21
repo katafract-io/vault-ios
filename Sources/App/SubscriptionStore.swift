@@ -238,7 +238,7 @@ public final class SubscriptionStore: ObservableObject {
         // Simulator JWS fails server x5c verification (see feedback_simulator_no_token.md).
         // Trust local StoreKit for UI; skip server exchange. Load Keychain token so
         // manual-paste tokens work on simulator.
-        if let token = restoreAuthToken() {
+        if let token = await restoreAuthToken() {
             await apiClient.setAuthToken(token)
         }
         subscriptionState = .subscribed(

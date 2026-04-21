@@ -44,6 +44,8 @@
 		898A5F2A42F458D9140D0EC5 /* BackedUpAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65236AC6D8C50795EF537D27 /* BackedUpAsset.swift */; };
 		8B6DC046CDF9D96782C89D48 /* VaultyxScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6EB55A307D831805926CED /* VaultyxScreenshotTests.swift */; };
 		93F96A9CFF784471A6030B61 /* FileIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7599892F6A4C813BA72A0119 /* FileIconView.swift */; };
+		9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */; };
+		9A51A23C185C664790A6DB49 /* KatafractStyle in Frameworks */ = {isa = PBXBuildFile; productRef = C731E6EA2BCFCB88CFEA28B3 /* KatafractStyle */; };
 		A32B8BE42C5BC137DF1703EF /* VaultKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57206996A054400EEF17E246 /* VaultKeyManager.swift */; };
 		AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC99130FB3DFEE8DB5125AA1 /* FileVersionsView.swift */; };
 		B09E84ACCB6D75A18920538E /* VaultAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39481199B6CB3F3482004760 /* VaultAPIClient.swift */; };
@@ -147,6 +149,7 @@
 		9F55995F7286672B4B213056 /* FileGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileGridView.swift; sourceTree = "<group>"; };
 		A4B0EE392223CAD920DFA13B /* VaultFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFolder.swift; sourceTree = "<group>"; };
 		A4CCFA1ADAABA739E8476F41 /* VaultFileProvider.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VaultFileProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSplashView.swift; sourceTree = "<group>"; };
 		AF366EE5FA273857E1DB4409 /* VaultServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultServices.swift; sourceTree = "<group>"; };
 		B0C82E3F9197932F80C91151 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 		B734F330E1459EE76E1B8FF0 /* VaultFileProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VaultFileProvider.entitlements; sourceTree = "<group>"; };
@@ -168,6 +171,17 @@
 		EA3AE803C9F313353B48A89C /* BIP39WordList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39WordList.swift; sourceTree = "<group>"; };
 		F830083E2B12A292C784C99C /* VaultEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultEnumerator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		24D81607E7E78E2DF14EA8CE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9A51A23C185C664790A6DB49 /* KatafractStyle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		03684D0367C92D661A483331 /* FileBrowser */ = {
@@ -237,6 +251,7 @@
 			children = (
 				1A1FB77CC808FDDFF55990C1 /* ContentView.swift */,
 				5D2D0C8F6A636C6333585B7F /* Info.plist */,
+				A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */,
 				56EFC2D4148C3F943FD1145C /* MasterKeyBootstrap.swift */,
 				901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */,
 				5202E341C8D1959F0077CB3E /* SubscriptionStore.swift */,
@@ -451,6 +466,7 @@
 			buildPhases = (
 				ABC2103D7D4D4D0DB6262A62 /* Sources */,
 				18CD258F99D811D37EA3B963 /* Resources */,
+				24D81607E7E78E2DF14EA8CE /* Frameworks */,
 				BB39D374C511455F29681B13 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -461,6 +477,7 @@
 			);
 			name = Vaultyx;
 			packageProductDependencies = (
+				C731E6EA2BCFCB88CFEA28B3 /* KatafractStyle */,
 			);
 			productName = Vaultyx;
 			productReference = 2F3EC444FCA480154B1E7818 /* Vaultyx.app */;
@@ -520,6 +537,9 @@
 			);
 			mainGroup = A3D77689CF04A159933CE06A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B725EABE887E81F8784A8532 /* XCRemoteSwiftPackageReference "KatafractStyle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A6E36D091AF0E1C6BC0EFA1B /* Products */;
 			projectDirPath = "";
@@ -582,6 +602,7 @@
 				0768763F3FE4FA32EB871EF8 /* FileRowView.swift in Sources */,
 				AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */,
 				7980FC2D27B6826C7B2E5E96 /* Keychain.swift in Sources */,
+				9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */,
 				E66703D0A812B99E037A6F5C /* LockScreenView.swift in Sources */,
 				DC7744F9666277289AFB7642 /* MainTabView.swift in Sources */,
 				686E81F9A034C5FD34908239 /* MasterKeyBootstrap.swift in Sources */,
@@ -966,6 +987,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B725EABE887E81F8784A8532 /* XCRemoteSwiftPackageReference "KatafractStyle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/katafractured/KatafractStyle.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C731E6EA2BCFCB88CFEA28B3 /* KatafractStyle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B725EABE887E81F8784A8532 /* XCRemoteSwiftPackageReference "KatafractStyle" */;
+			productName = KatafractStyle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6726577CA9BEF50368DB229B /* Project object */;
 }
