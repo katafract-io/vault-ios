@@ -28,6 +28,23 @@ jobs:
           fi
           grep -v '^#' "$HOME/runner-env/vaultyx.env" | grep '=' >> "$GITHUB_ENV"
 
+      - name: Ensure ASC private key on disk (local file or secret fallback)
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          if [ ! -f "$ASC_KEY_PATH" ]; then
+            if [ -n "$ASC_PRIVATE_KEY" ]; then
+              mkdir -p "$(dirname "$ASC_KEY_PATH")"
+              printf '%s' "$ASC_PRIVATE_KEY" > "$ASC_KEY_PATH"
+              chmod 600 "$ASC_KEY_PATH"
+              echo "wrote ASC key from secret"
+            else
+              echo "::error::no ASC_PRIVATE_KEY secret and no local file at $ASC_KEY_PATH"; exit 1
+            fi
+          else
+            echo "using local ASC key at $ASC_KEY_PATH"
+          fi
+
       - name: Unlock keychain
         run: |
           security unlock-keychain -p "" "$KEYCHAIN"
@@ -97,5 +114,5 @@ jobs:
         run: |
           if grep -q "UPLOAD SUCCEEDED" /tmp/altool.log 2>/dev/null; then
             UUID=$(grep -oE 'Delivery UUID: [a-f0-9-]+' /tmp/altool.log | head -1 | cut -d' ' -f3)
-            echo "- Build $BUILD_NUM uploaded to TestFlight, Delivery UUID $UUID" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Build $BUILD_NUM uploaded, Delivery UUID $UUID" >> "$GITHUB_STEP_SUMMARY"
           fi
