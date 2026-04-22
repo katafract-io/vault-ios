@@ -13,6 +13,8 @@ struct FileBrowserView: View {
     @State private var showNewFolder = false
     @State private var showPaywall = false
     @State private var selectedFile: VaultFileItem?
+    @State private var shareFile: VaultFileItem?
+    @State private var shareURL: URL?
     @State private var previewURL: URL?
     @State private var renameTarget: VaultFileItem?
     @State private var renamingName: String = ""
@@ -294,6 +296,23 @@ struct FileBrowserView: View {
             .padding()
         }
     }
+}
+
+
+/// Simple wrapper for UIActivityViewController to share files.
+struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
+    let items: [Any]
+    @Environment(\.dismiss) var dismiss
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        vc.completionWithItemsHandler = { _, _, _, _ in
+            dismiss()
+        }
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
