@@ -18,7 +18,7 @@ settings:
 packages:
   KatafractStyle:
     url: https://github.com/katafractured/KatafractStyle.git
-    from: 0.1.0
+    from: 0.1.2
 
 targets:
   Vaultyx:
