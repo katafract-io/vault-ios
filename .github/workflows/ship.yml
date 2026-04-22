@@ -80,7 +80,7 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            archive 2>&1 | tee /tmp/archive.log | grep -E "error:|warning:|\*\* |Signing Identity" | tail -30
+            CURRENT_PROJECT_VERSION=$BUILD_NUM archive 2>&1 | tee /tmp/archive.log | grep -E "error:|warning:|\*\* |Signing Identity" | tail -30
           if [ ! -f "$ARCHIVE_PATH/Info.plist" ]; then
             echo "::error::archive incomplete"; tail -80 /tmp/archive.log; exit 1
           fi
