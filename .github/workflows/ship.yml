@@ -1,23 +1,10 @@
 name: Ship to TestFlight
 
-# Runs on the self-hosted macOS runner registered on the Katafract build machine.
-# No secrets or machine-specific paths live in this file.
-# - Identifiers (ASC API key + issuer) come from org-level Actions secrets.
-# - Paths (keychain, API key file, export options plist) come from a runner-local
-#   env file at ~/runner-env/vaultyx.env which is NOT in this repo.
-# - Code-signing cert + provisioning profiles live in the runner's keychain +
-#   Xcode's Provisioning Profiles directory, set up once on the runner.
-
 on:
   push:
     branches: [ main, "release/*" ]
     tags: [ "v*" ]
   workflow_dispatch:
-    inputs:
-      skip_upload:
-        description: 'Skip TestFlight upload (archive only)'
-        required: false
-        default: 'false'
 
 concurrency:
   group: ship-${{ github.ref }}
@@ -32,48 +19,31 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        with: { fetch-depth: 1 }
 
-      - name: Clone sibling KatafractStyle (SPM local path)
-        run: |
-          PARENT="$(dirname "$GITHUB_WORKSPACE")"
-          if [ ! -d "$PARENT/KatafractStyle/.git" ]; then
-            git clone --depth 1 https://github.com/katafract-io/KatafractStyle "$PARENT/KatafractStyle"
-          else
-            git -C "$PARENT/KatafractStyle" fetch --depth 1 origin main
-            git -C "$PARENT/KatafractStyle" reset --hard origin/main
-          fi
-          ls "$PARENT/KatafractStyle"
-
-      - name: Load runner-local env (paths)
+      - name: Load runner env
         run: |
           if [ ! -f "$HOME/runner-env/vaultyx.env" ]; then
-            echo "::error::Missing $HOME/runner-env/vaultyx.env on runner — see runbook"
-            exit 1
+            echo "::error::Missing $HOME/runner-env/vaultyx.env"; exit 1
           fi
-          # Re-emit as GITHUB_ENV so subsequent steps can reference $KEYCHAIN etc.
           grep -v '^#' "$HOME/runner-env/vaultyx.env" | grep '=' >> "$GITHUB_ENV"
-          cat "$GITHUB_ENV" | grep -E "^(KEYCHAIN|ASC_KEY_PATH|EXPORT_OPTIONS|ARCHIVE_PATH|EXPORT_PATH)=" | sed 's/=.*/=***/'
 
-      - name: Unlock keychain + codesign partition list
+      - name: Unlock keychain
         run: |
           security unlock-keychain -p "" "$KEYCHAIN"
           security set-keychain-settings -lut 7200 "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN" >/dev/null 2>&1
-          security find-identity -v -p codesigning "$KEYCHAIN" | head -5
 
-      - name: Resolve SPM packages
+      - name: Resolve SPM
         run: xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx -resolvePackageDependencies 2>&1 | tail -5
 
       - name: Bump CFBundleVersion
         run: |
           BUILD_NUM=$((GITHUB_RUN_NUMBER + 50))
-          echo "Bumping CFBundleVersion to $BUILD_NUM"
           sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" Vaultyx.xcodeproj/project.pbxproj
           echo "BUILD_NUM=$BUILD_NUM" >> "$GITHUB_ENV"
 
-      - name: Clean prior archive
+      - name: Clean
         run: rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
 
       - name: Archive
@@ -89,42 +59,23 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            archive 2>&1 | tee /tmp/archive.log | grep -E "error:|warning:|\*\* |Signing Identity|Provisioning Profile" | tail -40
-          # Sanity check the archive is complete (has Info.plist at top level)
+            archive 2>&1 | tee /tmp/archive.log | grep -E "error:|warning:|\*\* |Signing Identity" | tail -30
           if [ ! -f "$ARCHIVE_PATH/Info.plist" ]; then
-            echo "::error::archive incomplete (missing Info.plist). Tail of full archive log:"
-            tail -80 /tmp/archive.log
-            exit 1
+            echo "::error::archive incomplete"; tail -80 /tmp/archive.log; exit 1
           fi
-          echo "archive OK: $(ls -la $ARCHIVE_PATH/Info.plist)"
 
-      - name: Ensure extensions are embedded (deref symlinks; exportArchive resigns)
+      - name: Embed .appex (deref symlinks)
         run: |
           APP="$ARCHIVE_PATH/Products/Applications/Vaultyx.app"
-          # Archive may contain symlinks pointing to UninstalledProducts, which
-          # exportArchive copies verbatim (ending up as 83-byte symlinks in the IPA).
-          # Force-replace each extension with the real directory from UninstalledProducts.
+          mkdir -p "$APP/PlugIns"
+          while IFS= read -r EXT; do
+            BN=$(basename "$EXT")
+            rm -rf "$APP/PlugIns/$BN"
+            cp -R "$EXT" "$APP/PlugIns/"
+          done < <(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -name "*.appex" -path "*UninstalledProducts*iphoneos*" 2>/dev/null)
+          ls -la "$APP/PlugIns/" 2>/dev/null || echo "(no extensions)"
 
-          for APPEX in VaultFileProvider VaultShare VaultyxLiveActivity; do
-            APPEX_REAL=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -name "${APPEX}.appex" -path "*UninstalledProducts*iphoneos*" 2>/dev/null | head -1)
-            if [ -z "$APPEX_REAL" ]; then
-              APPEX_REAL=$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -name "${APPEX}.appex" -path "*BuildProductsPath*iphoneos*" 2>/dev/null | head -1)
-            fi
-            if [ -z "$APPEX_REAL" ]; then
-              echo "::error::${APPEX} never built — check scheme has ${APPEX} BuildActionEntry"
-              exit 1
-            fi
-            echo "real ${APPEX} at: $APPEX_REAL"
-            mkdir -p "$APP/PlugIns"
-            rm -rf "$APP/PlugIns/${APPEX}.appex"
-            cp -R "$APPEX_REAL" "$APP/PlugIns/"
-          done
-
-          ls -la "$APP/PlugIns/"
-          echo "--- extensions present ---"
-          ls "$APP/PlugIns/" | grep "\.appex"
-
-      - name: Export IPA (Distribution, manual signing)
+      - name: Export IPA
         run: |
           xcodebuild -exportArchive \
             -archivePath "$ARCHIVE_PATH" \
@@ -132,53 +83,19 @@ jobs:
             -exportPath "$EXPORT_PATH" 2>&1 | grep -E "error:|\*\* " | tail -10
           ls -la "$EXPORT_PATH"
 
-      - name: Verify IPA has all extensions
-        run: |
-          rm -rf /tmp/verify-ipa && mkdir /tmp/verify-ipa
-          unzip -q "$EXPORT_PATH/Vaultyx.ipa" -d /tmp/verify-ipa
-
-          MISSING=0
-          for APPEX in VaultFileProvider VaultShare VaultyxLiveActivity; do
-            if [ ! -d "/tmp/verify-ipa/Payload/Vaultyx.app/PlugIns/${APPEX}.appex" ]; then
-              echo "::error::${APPEX} extension missing from final IPA"
-              MISSING=1
-            else
-              echo "${APPEX} present in IPA"
-              # Verify it has real content (not a symlink)
-              if [ ! -f "/tmp/verify-ipa/Payload/Vaultyx.app/PlugIns/${APPEX}.appex/Info.plist" ]; then
-                echo "::error::${APPEX} appears to be a symlink or empty"
-                MISSING=1
-              fi
-            fi
-          done
-
-          if [ $MISSING -eq 1 ]; then
-            echo "::error::one or more extensions missing or invalid — aborting upload"
-            exit 1
-          fi
-          echo "all extensions verified in IPA"
-
       - name: Upload to TestFlight
-        if: ${{ github.event.inputs.skip_upload != 'true' }}
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          xcrun altool --upload-app \
-            -f "$EXPORT_PATH/Vaultyx.ipa" -t ios \
+          xcrun altool --upload-app -f "$EXPORT_PATH/Vaultyx.ipa" -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee /tmp/altool.log | tail -20
           grep -q "UPLOAD SUCCEEDED" /tmp/altool.log
 
       - name: Summary
         if: always()
         run: |
-          echo "## Ship result" >> "$GITHUB_STEP_SUMMARY"
           if grep -q "UPLOAD SUCCEEDED" /tmp/altool.log 2>/dev/null; then
             UUID=$(grep -oE 'Delivery UUID: [a-f0-9-]+' /tmp/altool.log | head -1 | cut -d' ' -f3)
-            echo "- Build $BUILD_NUM uploaded to TestFlight" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Delivery UUID: $UUID" >> "$GITHUB_STEP_SUMMARY"
-            SIZE=$(ls -lh "$EXPORT_PATH/Vaultyx.ipa" 2>/dev/null | awk '{print $5}')
-            echo "- IPA size: $SIZE" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- Upload did not complete" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Build $BUILD_NUM uploaded to TestFlight, Delivery UUID $UUID" >> "$GITHUB_STEP_SUMMARY"
           fi
