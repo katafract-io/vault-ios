@@ -80,7 +80,9 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         Task { @MainActor in
             // TODO: queue newAssets for upload via syncEngine.uploadFile,
             // then call markBackedUp on each successful completion.
+            #if DEBUG
             print("PhotoBackup: \(newAssets.count) new assets detected")
+            #endif
         }
     }
 
