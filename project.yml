@@ -131,6 +131,9 @@ schemes:
     build:
       targets:
         Vaultyx: all
+        VaultFileProvider: all
+        VaultShare: all
+        VaultyxLiveActivity: all
     run:
       config: Debug
       executable: Vaultyx
