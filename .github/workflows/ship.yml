@@ -81,16 +81,25 @@ jobs:
             echo "::error::archive incomplete"; tail -80 /tmp/archive.log; exit 1
           fi
 
-      - name: Embed .appex (deref symlinks)
+      - name: Embed .appex (deref symlinks already in app PlugIns)
         run: |
-          APP="$ARCHIVE_PATH/Products/Applications/Vaultyx.app"
-          mkdir -p "$APP/PlugIns"
-          while IFS= read -r EXT; do
-            BN=$(basename "$EXT")
-            rm -rf "$APP/PlugIns/$BN"
-            cp -R "$EXT" "$APP/PlugIns/"
-          done < <(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -name "*.appex" -path "*UninstalledProducts*iphoneos*" 2>/dev/null)
-          ls -la "$APP/PlugIns/" 2>/dev/null || echo "(no extensions)"
+          APP="$ARCHIVE_PATH/Products/Applications"/*.app
+          APP=$(ls -d $APP | head -1)
+          [ -d "$APP/PlugIns" ] || { echo "(no PlugIns)"; exit 0; }
+          for ext in "$APP/PlugIns/"*.appex; do
+            [ -e "$ext" ] || continue
+            if [ -L "$ext" ]; then
+              TARGET=$(readlink -f "$ext" 2>/dev/null || readlink "$ext")
+              # Resolve relative symlink targets against the symlink's directory
+              if [ ! -e "$TARGET" ] && [ -e "$(dirname "$ext")/$TARGET" ]; then
+                TARGET="$(cd "$(dirname "$ext")/$(dirname "$TARGET")" && pwd)/$(basename "$TARGET")"
+              fi
+              echo "deref $(basename "$ext") -> $TARGET"
+              rm "$ext"
+              cp -R "$TARGET" "$APP/PlugIns/"
+            fi
+          done
+          ls -la "$APP/PlugIns/" 2>/dev/null
 
       - name: Export IPA
         run: |
