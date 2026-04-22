@@ -61,7 +61,7 @@ struct FileRowView: View {
             handleSyncTransition(from: oldValue, to: newValue)
         }
         .contextMenu {
-            Button(action: onShare) {
+            Button(action: { onShare() }) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
             Button(action: onPin) {
