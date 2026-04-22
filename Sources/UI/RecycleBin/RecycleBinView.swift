@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import KatafractStyle
 
 struct RecycleBinView: View {
     @EnvironmentObject private var services: VaultServices
@@ -8,13 +9,35 @@ struct RecycleBinView: View {
     var body: some View {
         Group {
             if viewModel.isLoading && viewModel.files.isEmpty && viewModel.folders.isEmpty {
-                ProgressView("Loading…")
+                KataProgressRing()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.files.isEmpty && viewModel.folders.isEmpty {
-                ContentUnavailableView(
-                    "Recycle Bin Empty",
-                    systemImage: "trash",
-                    description: Text("Deleted items appear here for 30 days before being permanently removed."))
+                VStack(spacing: 20) {
+                    ZStack(alignment: .center) {
+                        Image(systemName: "seal")
+                            .font(.system(size: 80, weight: .ultraLight))
+                            .foregroundStyle(Color.kataChampagne.opacity(0.35))
+                        // Crack line — a thin diagonal stroke across the seal
+                        Path { p in
+                            p.move(to: CGPoint(x: 42, y: 24))
+                            p.addLine(to: CGPoint(x: 50, y: 48))
+                            p.addLine(to: CGPoint(x: 58, y: 56))
+                        }
+                        .stroke(Color.kataChampagne.opacity(0.5), style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+                    }
+                    .frame(width: 100, height: 100)
+
+                    Text("Nothing awaiting purge.")
+                        .font(.kataDisplay(22))
+                        .foregroundStyle(Color.kataIce)
+
+                    Text("Deleted items appear here for 30 days before permanent removal.")
+                        .font(.kataBody(14))
+                        .foregroundStyle(Color.kataIce.opacity(0.5))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     if !viewModel.folders.isEmpty {

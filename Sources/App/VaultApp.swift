@@ -1,4 +1,5 @@
 import SwiftUI
+import KatafractStyle
 
 @main
 struct VaultApp: App {
@@ -40,6 +41,7 @@ struct VaultApp: App {
             .environmentObject(services)
             .environmentObject(subscriptionStore)
             .modelContainer(services.modelContainer)
+            .tint(KataAccent.gold)
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
