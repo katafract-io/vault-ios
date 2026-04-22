@@ -7,11 +7,23 @@ struct DocArmorFolderView: View {
     var body: some View {
         List {
             if viewModel.documents.isEmpty {
-                ContentUnavailableView(
-                    "No DocArmor Documents",
-                    systemImage: "doc.badge.ellipsis",
-                    description: Text("Open DocArmor to add documents")
-                )
+                VStack(spacing: 16) {
+                    Image(systemName: "doc.badge.ellipsis")
+                        .font(.system(size: 48))
+                        .foregroundStyle(Color.kataGold.opacity(0.6))
+                    
+                    VStack(spacing: 8) {
+                        Text("No DocArmor Documents")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("Open DocArmor to add documents")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 48)
+
             } else {
                 ForEach(viewModel.documents) { doc in
                     HStack {
