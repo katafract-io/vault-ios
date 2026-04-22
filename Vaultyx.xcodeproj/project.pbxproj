@@ -70,6 +70,7 @@
 		E2C2540C830357D7056CA53E /* VaultChunk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97F57508EAEC5BECE0497A0D /* VaultChunk.swift */; };
 		E481B503E212216C97EF983C /* FileGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F55995F7286672B4B213056 /* FileGridView.swift */; };
 		E66703D0A812B99E037A6F5C /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C82E3F9197932F80C91151 /* LockScreenView.swift */; };
+		E819F4F755796FE2B7FAE42A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */; };
 		F458FECDE0791AE6B7923125 /* RecoveryPhrase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */; };
 		FDD97B0168192EC903D8F70A /* DocArmorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A1424DE4DC3454E083764A /* DocArmorBridge.swift */; };
 /* End PBXBuildFile section */
@@ -136,6 +137,7 @@
 		2FA57DD1324F970B95130AE8 /* VaultFileProviderExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileProviderExtension.swift; sourceTree = "<group>"; };
 		3055AC015F92D31B18995F7D /* RestoreFromPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreFromPhraseView.swift; sourceTree = "<group>"; };
 		324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhrase.swift; sourceTree = "<group>"; };
+		32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		39481199B6CB3F3482004760 /* VaultAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAPIClient.swift; sourceTree = "<group>"; };
 		3D0EFA9CC6E443C612546AFC /* VaultShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VaultShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3E845B566D3BF6AC839915C0 /* StorageQuotaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageQuotaView.swift; sourceTree = "<group>"; };
@@ -295,6 +297,7 @@
 				5D2D0C8F6A636C6333585B7F /* Info.plist */,
 				A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */,
 				56EFC2D4148C3F943FD1145C /* MasterKeyBootstrap.swift */,
+				32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */,
 				901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */,
 				5202E341C8D1959F0077CB3E /* SubscriptionStore.swift */,
 				E99F9D00876693B1D808BA2C /* VaultApp.swift */,
@@ -626,6 +629,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C4C8FD1EE72A7FBE8C5F82DE /* Assets.xcassets in Resources */,
+				E819F4F755796FE2B7FAE42A /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -821,6 +825,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				PRIVACY_MANIFEST_FILE = Sources/App/PrivacyInfo.xcprivacy;
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault;
 				PRODUCT_NAME = Vaultyx;
 				SDKROOT = iphoneos;
@@ -880,7 +885,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 2SGGP65W6C;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -935,6 +940,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				PRIVACY_MANIFEST_FILE = Sources/App/PrivacyInfo.xcprivacy;
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault;
 				PRODUCT_NAME = Vaultyx;
 				SDKROOT = iphoneos;
@@ -1032,7 +1038,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 2SGGP65W6C;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

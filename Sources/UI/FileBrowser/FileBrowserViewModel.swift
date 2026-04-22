@@ -63,7 +63,9 @@ class FileBrowserViewModel: ObservableObject {
             } catch {
                 // Network / auth failure — keep showing the cache and set
                 // a non-fatal hint. Don't clobber the alert; log silently.
+                #if DEBUG
                 print("[TreeSync] failed: \(error)")
+                #endif
             }
         }
     }
@@ -199,7 +201,9 @@ class FileBrowserViewModel: ObservableObject {
                 // Refresh cache to show any files that did complete before cancel.
                 refreshFromCache()
             } catch {
+                #if DEBUG
                 print("[Vaultyx Upload] failed: \(error)")
+                #endif
                 self.error = "Upload failed: \(error.localizedDescription)"
                 activityMgr.failBatch(
                     bytesUploaded: bytesUploaded,
