@@ -191,7 +191,7 @@ struct BackupProgressBanner: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ProgressView(value: progress)
+            KataProgressRing(progress: progress, size: 24)
                 .frame(maxWidth: .infinity)
             Text("\(remaining) remaining")
                 .font(.caption)

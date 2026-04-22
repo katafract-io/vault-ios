@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/katafractured/KatafractStyle.git",
       "state" : {
-        "revision" : "f297433be58a5a1a7f442cedf6f3e0976bef508d",
-        "version" : "0.1.0"
+        "revision" : "bf08623213c5c979b64847e5cee877952ccc05a9",
+        "version" : "0.1.2"
       }
     }
   ],

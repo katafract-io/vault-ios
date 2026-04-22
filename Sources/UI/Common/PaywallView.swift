@@ -98,7 +98,7 @@ struct PaywallView: View {
     @ViewBuilder
     private var pricingTiles: some View {
         if store.isLoading {
-            ProgressView("Loading plans…").frame(height: 120)
+            KataProgressRing(size: 28).frame(height: 120)
         } else if store.products.isEmpty {
             Text("Subscription plans unavailable. Check your connection and try again.")
                 .font(.footnote)
@@ -129,7 +129,7 @@ struct PaywallView: View {
             }
         } label: {
             HStack {
-                if isPurchasing { ProgressView().tint(.white) }
+                if isPurchasing { KataProgressRing(size: 20) }
                 Text(isPurchasing ? "Processing…" : "Subscribe")
                     .font(.headline)
             }
