@@ -5,6 +5,11 @@ on:
     branches: [ main, "release/*" ]
     tags: [ "v*" ]
   workflow_dispatch:
+    inputs:
+      skip_upload:
+        description: 'Skip TestFlight upload (debug)'
+        required: false
+        default: 'false'
 
 concurrency:
   group: ship-${{ github.ref }}
@@ -21,12 +26,30 @@ jobs:
         uses: actions/checkout@v4
         with: { fetch-depth: 1 }
 
+      - name: Notify Matrix - Workflow started
+        if: always()
+        run: |
+          PAYLOAD="{\"text\":\"🏃 \${{ github.repository }} · run #\${{ github.run_number }} · ref \${{ github.ref_name }} · picked up by \${{ runner.name }}\"}"
+          curl -s -X POST https://webhooks.katafract.io/webhook/github \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: \${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d "\$PAYLOAD" || true
+
+      - name: Clone sibling KatafractStyle
+        run: |
+          PARENT="$(dirname "$GITHUB_WORKSPACE")"
+          if [ ! -d "$PARENT/KatafractStyle/.git" ]; then
+            git clone --depth 1 https://github.com/katafract-io/KatafractStyle "$PARENT/KatafractStyle"
+          else
+            git -C "$PARENT/KatafractStyle" fetch --depth 1 origin main && git -C "$PARENT/KatafractStyle" reset --hard origin/main
+          fi
+
       - name: Load runner env
         run: |
-          if [ ! -f "$HOME/runner-env/vaultyx.env" ]; then
-            echo "::error::Missing $HOME/runner-env/vaultyx.env"; exit 1
+          if [ ! -f "$HOME/runner-env/vault.env" ]; then
+            echo "::error::Missing $HOME/runner-env/vault.env"; exit 1
           fi
-          grep -v '^#' "$HOME/runner-env/vaultyx.env" | grep '=' >> "$GITHUB_ENV"
+          grep -v '^#' "$HOME/runner-env/vault.env" | grep '=' >> "$GITHUB_ENV"
 
       - name: Ensure ASC private key on disk (local file or secret fallback)
         env:
@@ -57,11 +80,9 @@ jobs:
       - name: Bump CFBundleVersion
         run: |
           set +e
-          BUILD_NUM=$((GITHUB_RUN_NUMBER + 50))
+          BUILD_NUM=$((GITHUB_RUN_NUMBER + 400))
           echo "Bumping CFBundleVersion to $BUILD_NUM"
-          # sed CURRENT_PROJECT_VERSION everywhere
           find . -name project.pbxproj -not -path "*/.git/*" -exec sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" {} +
-          # PlistBuddy every plist we can find — quietly skip ones without CFBundleVersion key
           find . -name "*.plist" -not -path "*/.git/*" -not -path "*/build/*" -not -path "*/DerivedData/*" -not -path "*/.build/*" -not -path "*/Pods/*" -print0 2>/dev/null | while IFS= read -r -d "" f; do
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$f" 2>/dev/null
           done
@@ -69,7 +90,7 @@ jobs:
           set -e
 
       - name: Clean
-        run: rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
+        run: xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx clean
 
       - name: Archive
         env:
@@ -93,7 +114,6 @@ jobs:
         run: |
           APP=$(ls -d "$ARCHIVE_PATH/Products/Applications/"*.app | head -1)
           mkdir -p "$APP/PlugIns"
-          # Scope to THIS scheme's UninstalledProducts (not other apps)
           SRC="$HOME/Library/Developer/Xcode/DerivedData/Build/Intermediates.noindex/ArchiveIntermediates/Vaultyx/IntermediateBuildFilesPath/UninstalledProducts/iphoneos"
           if [ ! -d "$SRC" ]; then
             echo "(no UninstalledProducts — single-target app)"
@@ -116,14 +136,59 @@ jobs:
             -exportPath "$EXPORT_PATH" 2>&1 | grep -E "error:|\*\* " | tail -10
           ls -la "$EXPORT_PATH"
 
+      - name: Notify Matrix - Archive succeeded
+        if: success()
+        run: |
+          PAYLOAD="{\"text\":\"✅ \${{ github.repository }} #\$BUILD_NUM archived (run #\${{ github.run_number }})\"}"
+          curl -s -X POST https://webhooks.katafract.io/webhook/ci \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: \${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d "\$PAYLOAD" || true
+
+      - name: Notify Matrix - Archive FAILED
+        if: failure()
+        run: |
+          RUN_URL="\${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}"
+          PAYLOAD="{\"text\":\"🔴 \${{ github.repository }} #\$BUILD_NUM archive FAILED — \$RUN_URL\"}"
+          for ROOM in ci alerts; do
+            curl -s -X POST "https://webhooks.katafract.io/webhook/\$ROOM" \
+              -H "Content-Type: application/json" \
+              -H "X-Webhook-Secret: \${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+              -d "\$PAYLOAD" || true
+          done
+
       - name: Upload to TestFlight
+        if: success() && github.event.inputs.skip_upload != 'true'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          xcrun altool --upload-app -f "$EXPORT_PATH/Vaultyx.ipa" -t ios \
+          xcrun altool --upload-app -f "$EXPORT_PATH"/*.ipa -t ios \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee /tmp/altool.log | tail -20
           grep -q "UPLOAD SUCCEEDED" /tmp/altool.log
+
+      - name: Notify Matrix - TestFlight upload succeeded
+        if: success() && github.event.inputs.skip_upload != 'true'
+        run: |
+          UUID=$(grep -oE 'Delivery UUID: [a-f0-9-]+' /tmp/altool.log 2>/dev/null | head -1 | cut -d' ' -f3 || echo "unknown")
+          IPA_SIZE=$(ls -lh "$EXPORT_PATH"/*.ipa 2>/dev/null | awk '{print $5}' || echo "?")
+          PAYLOAD="{\"text\":\"🚀 \${{ github.repository }} #\$BUILD_NUM uploaded to TestFlight (delivery \$UUID) · IPA \$IPA_SIZE\"}"
+          curl -s -X POST https://webhooks.katafract.io/webhook/deploys \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: \${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d "\$PAYLOAD" || true
+
+      - name: Notify Matrix - TestFlight upload FAILED
+        if: failure() && github.event.inputs.skip_upload != 'true'
+        run: |
+          RUN_URL="\${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}"
+          PAYLOAD="{\"text\":\"🔴 \${{ github.repository }} #\$BUILD_NUM TestFlight upload FAILED — \$RUN_URL\"}"
+          for ROOM in deploys alerts; do
+            curl -s -X POST "https://webhooks.katafract.io/webhook/\$ROOM" \
+              -H "Content-Type: application/json" \
+              -H "X-Webhook-Secret: \${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+              -d "\$PAYLOAD" || true
+          done
 
       - name: Summary
         if: always()
