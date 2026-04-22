@@ -58,8 +58,18 @@ jobs:
         run: |
           BUILD_NUM=$((GITHUB_RUN_NUMBER + 50))
           echo "Bumping CFBundleVersion to $BUILD_NUM"
+          # 1. sed CURRENT_PROJECT_VERSION in all pbxproj
           find . -name project.pbxproj -not -path "*/.git/*" -exec sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" {} +
-          find . -name "Info.plist" -not -path "*/.git/*" -not -path "*/build/*" -not -path "*/DerivedData/*" -not -path "*/.build/*" -not -path "*/Pods/*" | while read f; do
+          # 2. PlistBuddy every INFOPLIST_FILE referenced in pbxproj
+          find . -name project.pbxproj -not -path "*/.git/*" -exec grep -h "INFOPLIST_FILE = " {} + | awk -F'= ' '{print $2}' | tr -d '";' | sort -u | while read pf; do
+            [ -z "$pf" ] && continue
+            # Try relative paths from xcodeproj's parent directory
+            for candidate in "$pf" "./$pf" "$(find . -name "$(basename $pf)" -not -path "*/.git/*" -not -path "*/build/*" 2>/dev/null | head -1)"; do
+              [ -f "$candidate" ] && /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$candidate" 2>/dev/null && echo "bumped $candidate" && break
+            done
+          done
+          # 3. Fall back: bump any *.plist with CFBundleVersion key
+          find . -name "*.plist" -not -path "*/.git/*" -not -path "*/build/*" -not -path "*/DerivedData/*" -not -path "*/.build/*" -not -path "*/Pods/*" 2>/dev/null | while read f; do
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$f" 2>/dev/null || true
           done
           echo "BUILD_NUM=$BUILD_NUM" >> "$GITHUB_ENV"
