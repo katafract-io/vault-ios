@@ -56,23 +56,17 @@ jobs:
 
       - name: Bump CFBundleVersion
         run: |
+          set +e
           BUILD_NUM=$((GITHUB_RUN_NUMBER + 50))
           echo "Bumping CFBundleVersion to $BUILD_NUM"
-          # 1. sed CURRENT_PROJECT_VERSION in all pbxproj
+          # sed CURRENT_PROJECT_VERSION everywhere
           find . -name project.pbxproj -not -path "*/.git/*" -exec sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" {} +
-          # 2. PlistBuddy every INFOPLIST_FILE referenced in pbxproj
-          find . -name project.pbxproj -not -path "*/.git/*" -exec grep -h "INFOPLIST_FILE = " {} + | awk -F'= ' '{print $2}' | tr -d '";' | sort -u | while read pf; do
-            [ -z "$pf" ] && continue
-            # Try relative paths from xcodeproj's parent directory
-            for candidate in "$pf" "./$pf" "$(find . -name "$(basename $pf)" -not -path "*/.git/*" -not -path "*/build/*" 2>/dev/null | head -1)"; do
-              [ -f "$candidate" ] && /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$candidate" 2>/dev/null && echo "bumped $candidate" && break
-            done
-          done
-          # 3. Fall back: bump any *.plist with CFBundleVersion key
-          find . -name "*.plist" -not -path "*/.git/*" -not -path "*/build/*" -not -path "*/DerivedData/*" -not -path "*/.build/*" -not -path "*/Pods/*" 2>/dev/null | while read f; do
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$f" 2>/dev/null || true
+          # PlistBuddy every plist we can find — quietly skip ones without CFBundleVersion key
+          find . -name "*.plist" -not -path "*/.git/*" -not -path "*/build/*" -not -path "*/DerivedData/*" -not -path "*/.build/*" -not -path "*/Pods/*" -print0 2>/dev/null | while IFS= read -r -d "" f; do
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$f" 2>/dev/null
           done
           echo "BUILD_NUM=$BUILD_NUM" >> "$GITHUB_ENV"
+          set -e
 
       - name: Clean
         run: rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
