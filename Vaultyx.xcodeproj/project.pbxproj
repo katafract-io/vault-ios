@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0305A5B60CA6C09957087A9C /* VaultyxLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D088B5DC02E6D99790A3EC67 /* VaultyxLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0768763F3FE4FA32EB871EF8 /* FileRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 146D2F29BD1A1DD1665C5BE7 /* FileRowView.swift */; };
+		1C5D9E3B7F2A6C8E /* FileBrowserListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F7E9A2C5B1D8A4F /* FileBrowserListRow.swift */; };
 		08202F7049DAE17F872DED02 /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D995CE496B48FA55FD9DEF6A /* FileBrowserViewModel.swift */; };
 		0ABDF00DE0E41618712B96BB /* VaultCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF96E9D3C1E121B1E96E5F4 /* VaultCrypto.swift */; };
 		0B14464E34124455D8BF8D87 /* PhotosViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E8E9F8455365798092C4DFB /* PhotosViewModel.swift */; };
@@ -128,6 +129,7 @@
 		0C3576C399AF300EC808B34A /* FilePreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewSheet.swift; sourceTree = "<group>"; };
 		0E11BD8069366B6D702F962F /* VaultActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultActivityManager.swift; sourceTree = "<group>"; };
 		146D2F29BD1A1DD1665C5BE7 /* FileRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileRowView.swift; sourceTree = "<group>"; };
+		3F7E9A2C5B1D8A4F /* FileBrowserListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserListRow.swift; sourceTree = "<group>"; };
 		1A1FB77CC808FDDFF55990C1 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		1DF96E9D3C1E121B1E96E5F4 /* VaultCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCrypto.swift; sourceTree = "<group>"; };
 		1F675E6731972CDBFF376FCF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -220,6 +222,7 @@
 				DF0D147A45D3B32DB20CE38C /* FileDownloadProgressBanner.swift */,
 				9F55995F7286672B4B213056 /* FileGridView.swift */,
 				0C3576C399AF300EC808B34A /* FilePreviewSheet.swift */,
+				3F7E9A2C5B1D8A4F /* FileBrowserListRow.swift */,
 				146D2F29BD1A1DD1665C5BE7 /* FileRowView.swift */,
 				896ACA5F82A229E1E822031F /* FileUploadProgressBanner.swift */,
 			);
@@ -681,6 +684,7 @@
 				E481B503E212216C97EF983C /* FileGridView.swift in Sources */,
 				93F96A9CFF784471A6030B61 /* FileIconView.swift in Sources */,
 				85F2286A32BE2A91E14D9651 /* FilePreviewSheet.swift in Sources */,
+				1C5D9E3B7F2A6C8E /* FileBrowserListRow.swift in Sources */,
 				0768763F3FE4FA32EB871EF8 /* FileRowView.swift in Sources */,
 				4AF8427238D557CB0235A132 /* FileUploadProgressBanner.swift in Sources */,
 				AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */,

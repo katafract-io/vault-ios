@@ -15,6 +15,8 @@ struct FileBrowserView: View {
     @State private var selectedFile: VaultFileItem?
     @State private var shareFile: VaultFileItem?
     @State private var shareURL: URL?
+    @State private var selectedIds = Set<String>()
+    @State private var isSelecting = false
     @State private var previewURL: URL?
     @State private var renameTarget: VaultFileItem?
     @State private var renamingName: String = ""
@@ -218,32 +220,14 @@ struct FileBrowserView: View {
     private var listView: some View {
         List {
             ForEach(sortedItems) { item in
-                if item.isFolder {
-                    NavigationLink {
-                        FileBrowserView(folderId: item.id)
-                    } label: {
-                        FileRowView(
-                            item: item,
-                            onRename: { _ in
-                                renameTarget = item
-                                renamingName = item.name
-                            },
-                            onDelete: { softDelete(item) },
-                            onPin: { viewModel.togglePin(item) }
-                        )
-                    }
-                } else {
-                    FileRowView(
-                        item: item,
-                        onRename: { _ in
-                            renameTarget = item
-                            renamingName = item.name
-                        },
-                        onDelete: { softDelete(item) },
-                        onPin: { viewModel.togglePin(item) }
-                    )
-                    .onTapGesture { selectedFile = item }
-                }
+                FileBrowserListRow(
+                    item: item,
+                    onTap: { selectedFile = item },
+                    onRename: { renameTarget = item; renamingName = item.name },
+                    onDelete: { softDelete(item) },
+                    onShare: { shareFile = item },
+                    onPin: { viewModel.togglePin(item) }
+                )
             }
         }
     }
