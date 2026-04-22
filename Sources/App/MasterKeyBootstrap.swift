@@ -29,7 +29,9 @@ enum MasterKeyBootstrap {
             // the next launch will generate yet another key and orphan the
             // previous session's data. Loud print for debug; no user-facing
             // recovery possible until we surface this in UI.
+            #if DEBUG
             print("[MasterKeyBootstrap] Keychain write FAILED: \(error)")
+            #endif
         }
         return fresh
     }
