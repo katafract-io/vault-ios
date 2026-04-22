@@ -1,5 +1,6 @@
 import SwiftUI
 import QuickLook
+import KatafractStyle
 
 /// Sheet that hosts QLPreviewController for a single decrypted, on-disk file.
 ///
@@ -59,8 +60,7 @@ struct FilePreviewLoadingSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                ProgressView()
-                    .scaleEffect(1.4)
+                KataProgressRing(size: 40)
                 Text("Preparing \(displayName)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

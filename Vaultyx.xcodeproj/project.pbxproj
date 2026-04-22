@@ -1129,7 +1129,7 @@
 			repositoryURL = "https://github.com/katafractured/KatafractStyle.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.1.0;
+				minimumVersion = 0.1.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

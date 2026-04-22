@@ -21,10 +21,7 @@ struct FileUploadProgressBanner: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
                 // Spinning progress indicator
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(Color.kataGold)
-                    .scaleEffect(0.75)
+                KataProgressRing(size: 18)
 
                 // File count
                 Text("\(fileIndex) of \(totalFiles)")

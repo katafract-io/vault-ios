@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import KatafractStyle
 
 /// Sum of local `LocalFile.sizeBytes` + `BackedUpAsset.sizeBytes` in SwiftData.
 ///
@@ -42,8 +43,7 @@ struct StorageQuotaView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            ProgressView(value: progress)
-                .tint(progress > 0.9 ? .red : progress > 0.75 ? .orange : .blue)
+            KataProgressRing(progress: progress)
             Text(hasUsage
                  ? "\(formatted(totalBytes - usedBytes)) available"
                  : "Usage not yet calculated")
