@@ -57,7 +57,11 @@ jobs:
       - name: Bump CFBundleVersion
         run: |
           BUILD_NUM=$((GITHUB_RUN_NUMBER + 50))
-          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" Vaultyx.xcodeproj/project.pbxproj
+          echo "Bumping CFBundleVersion to $BUILD_NUM"
+          find . -name project.pbxproj -not -path "*/.git/*" -exec sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" {} +
+          find . -name "Info.plist" -not -path "*/.git/*" -not -path "*/build/*" -not -path "*/DerivedData/*" -not -path "*/.build/*" -not -path "*/Pods/*" | while read f; do
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$f" 2>/dev/null || true
+          done
           echo "BUILD_NUM=$BUILD_NUM" >> "$GITHUB_ENV"
 
       - name: Clean
