@@ -21,6 +21,7 @@ struct FileBrowserView: View {
     @State private var renameTarget: VaultFileItem?
     @State private var renamingName: String = ""
     @State private var showDeleteConfirmation = false
+    @State private var fileLoadingStates: Set<String> = []
 
     let folderId: String?  // nil = root
 
@@ -225,7 +226,12 @@ struct FileBrowserView: View {
         .sheet(isPresented: $showPaywall) {
             PaywallView()
         }
-        .sheet(item: $selectedFile, onDismiss: { previewURL = nil }) { file in
+        .sheet(item: $selectedFile, onDismiss: {
+            previewURL = nil
+            if let file = selectedFile {
+                fileLoadingStates.remove(file.id)
+            }
+        }) { file in
             if let url = previewURL {
                 FilePreviewSheet(fileURL: url, displayName: file.name)
             } else {
@@ -238,6 +244,7 @@ struct FileBrowserView: View {
                             // Dismiss the sheet; the error alert below will
                             // surface the reason via viewModel.error.
                             selectedFile = nil
+                            fileLoadingStates.remove(file.id)
                         }
                     }
             }
