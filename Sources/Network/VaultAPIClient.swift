@@ -151,6 +151,16 @@ public actor VaultAPIClient {
         _ = try await patch("/v1/vault/files/\(fileId)", body: body) as FileRenameResponse
     }
 
+    public func moveFile(fileId: String, newParentFolderId: String?) async throws {
+        let body = MoveBody(parent_folder_id: newParentFolderId)
+        _ = try await patch("/v1/vault/files/\(fileId)/parent", body: body) as MoveResponse
+    }
+
+    public func moveFolder(folderId: String, newParentFolderId: String?) async throws {
+        let body = MoveBody(parent_folder_id: newParentFolderId)
+        _ = try await patch("/v1/vault/folders/\(folderId)/parent", body: body) as MoveResponse
+    }
+
     public func deleteFolder(folderId: String) async throws {
         _ = try await delete("/v1/vault/folders/\(folderId)") as FolderDeleteResponse
     }
@@ -329,6 +339,17 @@ public actor VaultAPIClient {
     private struct FileRenameResponse: Decodable {
         let file_id: String
         let modified_at: Int
+    }
+
+    private struct MoveBody: Encodable {
+        let parent_folder_id: String?
+    }
+
+    private struct MoveResponse: Decodable {
+        let file_id: String?
+        let folder_id: String?
+        let parent_folder_id: String?
+        let modified_at: Int?
     }
 
     private struct FolderDeleteResponse: Decodable {
