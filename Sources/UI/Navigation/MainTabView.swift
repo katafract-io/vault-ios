@@ -55,6 +55,7 @@ struct SettingsView: View {
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
+    @State private var vaultMeta: VaultMetaResponse?
     @State private var usedBytes: Int64 = -1
     @State private var showPhrase = false
     @State private var showRestore = false
@@ -64,7 +65,7 @@ struct SettingsView: View {
 
     var body: some View {
         List {
-            StorageQuotaView(usedBytes: usedBytes, totalBytes: sovereignQuota)
+            StorageQuotaView(usedBytes: vaultMeta?.usage_bytes ?? usedBytes, totalBytes: vaultMeta?.quota_bytes ?? sovereignQuota)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
 
@@ -91,7 +92,7 @@ struct SettingsView: View {
             Section {
                 if subscriptionStore.isSubscribed {
                     settingsRow(icon: "person.crop.circle.fill", title: "Plan", value: "Sovereign")
-                    settingsRow(icon: "externaldrive.fill", title: "Storage", value: "1 TB")
+                    settingsRow(icon: "externaldrive.fill", title: "Storage", value: storageDisplayLabel())
                 } else {
                     settingsRow(icon: "person.crop.circle.fill", title: "Plan", value: "Free")
                 }
@@ -163,6 +164,7 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .task {
             usedBytes = StorageUsageCalculator.compute(from: modelContext)
+                Task { await loadServerQuota() }
         }
         .sheet(isPresented: $showPhrase) {
             RecoveryPhraseView(
@@ -281,6 +283,19 @@ struct SettingsView: View {
             Color.kataSapphire.opacity(0.05)
         }
         .ignoresSafeArea()
+    }
+
+    private func storageDisplayLabel() -> String {
+        guard let m = vaultMeta else { return "1 TB" }
+        let bcf = ByteCountFormatter()
+        bcf.allowedUnits = [.useGB, .useTB]
+        bcf.countStyle = .binary
+        return "\(bcf.string(fromByteCount: m.usage_bytes)) / \(bcf.string(fromByteCount: m.quota_bytes))"
+    }
+
+    private func loadServerQuota() async {
+        do { vaultMeta = try await services.apiClient.vaultMeta() }
+        catch { print("vaultMeta fetch failed: \(error)") }
     }
 }
 
