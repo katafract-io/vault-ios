@@ -170,7 +170,7 @@ public class VaultSyncEngine: ObservableObject {
     public func downloadFile(
         fileId: String,
         folderKey: SymmetricKey,
-        progress: ((Double) -> Void)? = nil
+        progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> Data {
         syncState = .downloading
         activeDownloads += 1
