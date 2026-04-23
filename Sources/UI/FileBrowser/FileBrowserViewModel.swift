@@ -384,6 +384,38 @@ class FileBrowserViewModel: ObservableObject {
         }
     }
 
+    func moveItem(_ item: VaultFileItem, to newParentFolderId: String?) {
+        guard let services else { return }
+        Task { @MainActor in
+            do {
+                if item.isFolder {
+                    try await services.apiClient.moveFolder(folderId: item.id, newParentFolderId: newParentFolderId)
+                } else {
+                    try await services.apiClient.moveFile(fileId: item.id, newParentFolderId: newParentFolderId)
+                }
+                let context = ModelContext(services.modelContainer)
+                if item.isFolder {
+                    if let rows = try? context.fetch(FetchDescriptor<VaultFolder>()) {
+                        for row in rows where row.folderId == item.id {
+                            row.parentFolderId = newParentFolderId
+                        }
+                        try? context.save()
+                    }
+                } else {
+                    if let rows = try? context.fetch(FetchDescriptor<LocalFile>()) {
+                        for row in rows where row.fileId == item.id {
+                            row.parentFolderId = newParentFolderId
+                        }
+                        try? context.save()
+                    }
+                }
+                items.removeAll { $0.id == item.id }
+            } catch {
+                self.error = "Move failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
     /// Download + decrypt a file and return a local tmp URL for QuickLook.
     ///
     /// Drives `downloadInProgress` / `downloadProgress` / `downloadFilename`
