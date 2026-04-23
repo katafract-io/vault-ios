@@ -1,6 +1,17 @@
 import SwiftUI
 import KatafractStyle
 
+extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, @ViewBuilder transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
+}
+
 /// Extracted row helper for FileBrowserView list body.
 /// 
 /// Combines FileRowView + swipeActions + NavigationLink (for folders) in one
@@ -10,7 +21,10 @@ import KatafractStyle
 /// Handlers: onTap (files only), onRename, onDelete, onShare, onPin.
 struct FileBrowserListRow: View {
     let item: VaultFileItem
+    let isEditing: Bool
+    let isSelected: Bool
     let onTap: () -> Void
+    let onLongPress: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
     let onShare: () -> Void
@@ -18,48 +32,58 @@ struct FileBrowserListRow: View {
 
     var body: some View {
         Group {
-            if item.isFolder {
+            if item.isFolder && !isEditing {
                 NavigationLink {
                     FileBrowserView(folderId: item.id)
                 } label: {
-                    FileRowView(
-                        item: item,
-                        onRename: { _ in onRename() },
-                        onDelete: onDelete,
-                        onShare: onShare,
-                        onPin: onPin
-                    )
+                    rowContent
                 }
             } else {
-                FileRowView(
-                    item: item,
-                    onRename: { _ in onRename() },
-                    onDelete: onDelete,
-                    onShare: onShare,
-                    onPin: onPin
-                )
-                .contentShape(Rectangle())
-                .onTapGesture(perform: onTap)
+                rowContent
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onTap)
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete", systemImage: "trash")
-            }
-            Button(action: onShare) {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-            .tint(Color.kataGold)
-            Button(action: onRename) {
-                Label("Rename", systemImage: "pencil")
-            }
-            .tint(Color.kataSapphire)
+        .onLongPressGesture(perform: onLongPress)
+        .if(!isEditing) { view in
+            view
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive, action: onDelete) {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    Button(action: onShare) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .tint(Color.kataGold)
+                    Button(action: onRename) {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    .tint(Color.kataSapphire)
+                }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    Button(action: onPin) {
+                        Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+                    }
+                    .tint(Color.kataSapphire)
+                }
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button(action: onPin) {
-                Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+    }
+
+    @ViewBuilder
+    private var rowContent: some View {
+        HStack {
+            if isEditing {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isSelected ? .kataGold : .gray)
+                    .padding(.trailing, 4)
             }
-            .tint(Color.kataSapphire)
+            FileRowView(
+                item: item,
+                onRename: { _ in onRename() },
+                onDelete: onDelete,
+                onShare: onShare,
+                onPin: onPin
+            )
         }
     }
 }
