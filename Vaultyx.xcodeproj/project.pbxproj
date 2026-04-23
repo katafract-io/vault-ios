@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		0305A5B60CA6C09957087A9C /* VaultyxLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D088B5DC02E6D99790A3EC67 /* VaultyxLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0768763F3FE4FA32EB871EF8 /* FileRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 146D2F29BD1A1DD1665C5BE7 /* FileRowView.swift */; };
-		1C5D9E3B7F2A6C8E /* FileBrowserListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F7E9A2C5B1D8A4F /* FileBrowserListRow.swift */; };
 		08202F7049DAE17F872DED02 /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D995CE496B48FA55FD9DEF6A /* FileBrowserViewModel.swift */; };
 		0ABDF00DE0E41618712B96BB /* VaultCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF96E9D3C1E121B1E96E5F4 /* VaultCrypto.swift */; };
 		0B14464E34124455D8BF8D87 /* PhotosViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E8E9F8455365798092C4DFB /* PhotosViewModel.swift */; };
@@ -24,6 +23,7 @@
 		2472066A79D3D0D2308204DD /* VaultyxUploadAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEAD44FBB38C36294058F6E4 /* VaultyxUploadAttributes.swift */; };
 		2670E40A7A865D8B915F0B09 /* VaultyxUploadAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A503DDD9B693CC7EE70448F5 /* VaultyxUploadAttributes.swift */; };
 		3247EF3D1C2330AAB2220145 /* UndoToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94C764086C160239DF5BEBF5 /* UndoToast.swift */; };
+		39CF40E317CD9EB5E7151A95 /* FileBrowserListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C42BCDD24AE3DCEA9C6E315 /* FileBrowserListRow.swift */; };
 		40A2FC991EF7F5D7369F0552 /* DocArmorFolderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5906A8BF8BC26BD6FFA7E98 /* DocArmorFolderView.swift */; };
 		41A3153ED942A7D314CE4A8F /* VaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E99F9D00876693B1D808BA2C /* VaultApp.swift */; };
 		4AF8427238D557CB0235A132 /* FileUploadProgressBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896ACA5F82A229E1E822031F /* FileUploadProgressBanner.swift */; };
@@ -129,7 +129,6 @@
 		0C3576C399AF300EC808B34A /* FilePreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewSheet.swift; sourceTree = "<group>"; };
 		0E11BD8069366B6D702F962F /* VaultActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultActivityManager.swift; sourceTree = "<group>"; };
 		146D2F29BD1A1DD1665C5BE7 /* FileRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileRowView.swift; sourceTree = "<group>"; };
-		3F7E9A2C5B1D8A4F /* FileBrowserListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserListRow.swift; sourceTree = "<group>"; };
 		1A1FB77CC808FDDFF55990C1 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		1DF96E9D3C1E121B1E96E5F4 /* VaultCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCrypto.swift; sourceTree = "<group>"; };
 		1F675E6731972CDBFF376FCF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -141,6 +140,7 @@
 		324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhrase.swift; sourceTree = "<group>"; };
 		32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		39481199B6CB3F3482004760 /* VaultAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAPIClient.swift; sourceTree = "<group>"; };
+		3C42BCDD24AE3DCEA9C6E315 /* FileBrowserListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserListRow.swift; sourceTree = "<group>"; };
 		3D0EFA9CC6E443C612546AFC /* VaultShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VaultShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3E845B566D3BF6AC839915C0 /* StorageQuotaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageQuotaView.swift; sourceTree = "<group>"; };
 		42209600639B9C22079E9670 /* VaultFileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileItem.swift; sourceTree = "<group>"; };
@@ -217,12 +217,12 @@
 		03684D0367C92D661A483331 /* FileBrowser */ = {
 			isa = PBXGroup;
 			children = (
+				3C42BCDD24AE3DCEA9C6E315 /* FileBrowserListRow.swift */,
 				BA7EC3FB8141B0F4D7CC1960 /* FileBrowserView.swift */,
 				D995CE496B48FA55FD9DEF6A /* FileBrowserViewModel.swift */,
 				DF0D147A45D3B32DB20CE38C /* FileDownloadProgressBanner.swift */,
 				9F55995F7286672B4B213056 /* FileGridView.swift */,
 				0C3576C399AF300EC808B34A /* FilePreviewSheet.swift */,
-				3F7E9A2C5B1D8A4F /* FileBrowserListRow.swift */,
 				146D2F29BD1A1DD1665C5BE7 /* FileRowView.swift */,
 				896ACA5F82A229E1E822031F /* FileUploadProgressBanner.swift */,
 			);
@@ -678,13 +678,13 @@
 				FDD97B0168192EC903D8F70A /* DocArmorBridge.swift in Sources */,
 				40A2FC991EF7F5D7369F0552 /* DocArmorFolderView.swift in Sources */,
 				180C0378CDEADF6688701252 /* FastCDC.swift in Sources */,
+				39CF40E317CD9EB5E7151A95 /* FileBrowserListRow.swift in Sources */,
 				781EDBA16BA48455306F69D9 /* FileBrowserView.swift in Sources */,
 				08202F7049DAE17F872DED02 /* FileBrowserViewModel.swift in Sources */,
 				8C3396243A01EF74A7144B45 /* FileDownloadProgressBanner.swift in Sources */,
 				E481B503E212216C97EF983C /* FileGridView.swift in Sources */,
 				93F96A9CFF784471A6030B61 /* FileIconView.swift in Sources */,
 				85F2286A32BE2A91E14D9651 /* FilePreviewSheet.swift in Sources */,
-				1C5D9E3B7F2A6C8E /* FileBrowserListRow.swift in Sources */,
 				0768763F3FE4FA32EB871EF8 /* FileRowView.swift in Sources */,
 				4AF8427238D557CB0235A132 /* FileUploadProgressBanner.swift in Sources */,
 				AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */,
@@ -889,7 +889,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 2SGGP65W6C;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1042,7 +1042,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 2SGGP65W6C;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

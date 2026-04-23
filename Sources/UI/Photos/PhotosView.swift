@@ -7,6 +7,7 @@ struct PhotosView: View {
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @StateObject private var viewModel = PhotosViewModel()
     @State private var showPaywall = false
+    @State private var showAlbumsSheet = false
 
     var body: some View {
         NavigationStack {
@@ -22,11 +23,25 @@ struct PhotosView: View {
                         BackupCompleteBanner()
                     }
 
-                    // Albums section
-                    AlbumsSection(
-                        albums: viewModel.albums,
-                        onToggle: viewModel.toggleAlbum
-                    )
+                    // Header with Albums button
+                    HStack {
+                        Text("RECENT PHOTOS")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            showAlbumsSheet = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Albums")
+                                Image(systemName: "chevron.down")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.kataGold)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
 
                     Divider().padding(.vertical, 8)
 
@@ -65,10 +80,19 @@ struct PhotosView: View {
             }
             .task {
                 viewModel.configure(services: services)
-                await viewModel.loadAlbums()
+                await viewModel.loadRecentPhotos()
             }
             .sheet(item: $viewModel.selectedPhoto) { photo in
                 PhotoDetailView(photo: photo)
+            }
+            .sheet(isPresented: $showAlbumsSheet) {
+                AlbumDrawerSheet(
+                    isPresented: $showAlbumsSheet,
+                    albums: viewModel.albums,
+                    isLoading: viewModel.isLoadingAlbums,
+                    onToggle: viewModel.toggleAlbum,
+                    onAppear: { await viewModel.loadAlbums() }
+                )
             }
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
@@ -79,6 +103,83 @@ struct PhotosView: View {
     private var showEmptyState: Bool {
         !viewModel.backupInProgress &&
         !viewModel.backedUpPhotos.contains(where: { $0.backupState == .backedUp })
+    }
+}
+
+// MARK: - Album Drawer Sheet
+
+struct AlbumDrawerSheet: View {
+    @Binding var isPresented: Bool
+    let albums: [AlbumItem]
+    let isLoading: Bool
+    var onToggle: (AlbumItem, Bool) -> Void
+    var onAppear: () async -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if isLoading {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Loading albums...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .frame(height: 100)
+                } else if albums.isEmpty {
+                    HStack {
+                        Spacer()
+                        Text("No albums")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .frame(height: 60)
+                } else {
+                    ForEach(albums) { album in
+                        HStack {
+                            // Album thumbnail
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(.systemGray5))
+                                .frame(width: 44, height: 44)
+                                .overlay(
+                                    Image(systemName: "photo.on.rectangle")
+                                        .foregroundStyle(.secondary)
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(album.name).font(.body)
+                                Text("\(album.count) photos").font(.caption).foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: Binding(
+                                get: { album.isEnabled },
+                                set: { onToggle(album, $0) }
+                            ))
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("Albums")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") { isPresented = false }
+                }
+            }
+            .task {
+                await onAppear()
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -213,50 +314,6 @@ struct BackupCompleteBanner: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.systemGreen).opacity(0.1))
-    }
-}
-
-struct AlbumsSection: View {
-    let albums: [AlbumItem]
-    var onToggle: (AlbumItem, Bool) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("ALBUMS")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-
-            ForEach(albums) { album in
-                HStack {
-                    // Album thumbnail
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(.systemGray5))
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Image(systemName: "photo.on.rectangle")
-                                .foregroundStyle(.secondary)
-                        )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(album.name).font(.body)
-                        Text("\(album.count) photos").font(.caption).foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: Binding(
-                        get: { album.isEnabled },
-                        set: { onToggle(album, $0) }
-                    ))
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                Divider().padding(.leading, 72)
-            }
-        }
     }
 }
 
