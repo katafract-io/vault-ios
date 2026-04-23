@@ -29,6 +29,7 @@ struct FileBrowserListRow: View {
     let onDelete: () -> Void
     let onShare: () -> Void
     let onPin: () -> Void
+    let onMove: () -> Void
 
     var body: some View {
         Group {
@@ -59,6 +60,10 @@ struct FileBrowserListRow: View {
                         Label("Rename", systemImage: "pencil")
                     }
                     .tint(Color.kataSapphire)
+                    Button(action: onMove) {
+                        Label("Move", systemImage: "folder")
+                    }
+                    .tint(Color.kataNavy)
                 }
                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                     Button(action: onPin) {
