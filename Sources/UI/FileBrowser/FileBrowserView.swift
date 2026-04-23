@@ -22,6 +22,9 @@ struct FileBrowserView: View {
     @State private var renamingName: String = ""
     @State private var showDeleteConfirmation = false
     @State private var fileLoadingStates: Set<String> = []
+    @State private var moveTarget: VaultFileItem?
+    @State private var showBulkMoveSheet = false
+    @State private var selectedCategory: FileCategory = .all
 
     let folderId: String?  // nil = root
 
@@ -85,16 +88,24 @@ struct FileBrowserView: View {
     }
 
     var sortedItems: [VaultFileItem] {
+        let filtered: [VaultFileItem]
+        if selectedCategory == .all {
+            filtered = viewModel.items
+        } else {
+            filtered = viewModel.items.filter { item in
+                item.isFolder || selectedCategory.matches(filename: item.name)
+            }
+        }
         let sorted: [VaultFileItem]
         switch sortOrder {
         case .name:
-            sorted = viewModel.items.sorted { $0.name.lowercased() < $1.name.lowercased() }
+            sorted = filtered.sorted { $0.name.lowercased() < $1.name.lowercased() }
         case .date:
-            sorted = viewModel.items.sorted { $0.modifiedAt > $1.modifiedAt }
+            sorted = filtered.sorted { $0.modifiedAt > $1.modifiedAt }
         case .size:
-            sorted = viewModel.items.sorted { $0.sizeBytes > $1.sizeBytes }
+            sorted = filtered.sorted { $0.sizeBytes > $1.sizeBytes }
         case .type:
-            sorted = viewModel.items.sorted { $0.isFolder && !$1.isFolder }
+            sorted = filtered.sorted { $0.isFolder && !$1.isFolder }
         }
         return sorted
     }
@@ -142,6 +153,14 @@ struct FileBrowserView: View {
                         Text("Delete")
                     }
                     .foregroundColor(.red)
+
+                    Spacer()
+
+                    Button(action: { showBulkMoveSheet = true }) {
+                        Image(systemName: "folder")
+                        Text("Move")
+                    }
+                    .foregroundColor(.kataSapphire)
 
                     Spacer()
 
@@ -222,6 +241,22 @@ struct FileBrowserView: View {
         }
         .sheet(isPresented: $showUploadPicker) {
             DocumentPickerView(onPick: viewModel.uploadFiles)
+        }
+        .sheet(item: $moveTarget) { target in
+            FolderPickerSheet(excludeFolderId: target.isFolder ? target.id : nil) { newParentId in
+                viewModel.moveItem(target, to: newParentId)
+            }
+        }
+        .sheet(isPresented: $showBulkMoveSheet) {
+            FolderPickerSheet(excludeFolderId: nil) { newParentId in
+                let selectedItems = sortedItems.filter { selectedIds.contains($0.id) }
+                for item in selectedItems {
+                    viewModel.moveItem(item, to: newParentId)
+                }
+                selectedIds.removeAll()
+                isEditing = false
+                showBulkMoveSheet = false
+            }
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
@@ -313,6 +348,7 @@ struct FileBrowserView: View {
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+            CategoryFilterBar(selected: $selectedCategory)
             listView
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
@@ -347,7 +383,8 @@ struct FileBrowserView: View {
                     onRename: { renameTarget = item; renamingName = item.name },
                     onDelete: { softDelete(item) },
                     onShare: { shareFile = item },
-                    onPin: { viewModel.togglePin(item) }
+                    onPin: { viewModel.togglePin(item) },
+                    onMove: { moveTarget = item }
                 )
             }
         }
@@ -374,6 +411,7 @@ struct FileBrowserView: View {
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+            CategoryFilterBar(selected: $selectedCategory)
             gridView
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
