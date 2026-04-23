@@ -16,10 +16,11 @@ struct FileBrowserView: View {
     @State private var shareFile: VaultFileItem?
     @State private var shareURL: URL?
     @State private var selectedIds = Set<String>()
-    @State private var isSelecting = false
+    @State private var isEditing = false
     @State private var previewURL: URL?
     @State private var renameTarget: VaultFileItem?
     @State private var renamingName: String = ""
+    @State private var showDeleteConfirmation = false
 
     let folderId: String?  // nil = root
 
@@ -44,6 +45,42 @@ struct FileBrowserView: View {
         let result = viewModel.deleteItem(item)
         guard !result.message.isEmpty else { return }
         undo.show(message: result.message, onUndo: result.undo)
+    }
+
+    /// Bulk delete selected items and show Undo toast.
+    private func bulkDelete() {
+        let selectedItems = sortedItems.filter { selectedIds.contains($0.id) }
+        guard !selectedItems.isEmpty else { return }
+
+        var results: [FileBrowserViewModel.DeleteResult] = []
+        for item in selectedItems {
+            let result = viewModel.deleteItem(item)
+            if !result.message.isEmpty {
+                results.append(result)
+            }
+        }
+
+        let message = "Deleted \(results.count) item\(results.count == 1 ? "" : "s")"
+        let undoActions = results.map { $0.undo }
+
+        undo.show(message: message) {
+            for action in undoActions {
+                await action()
+            }
+        }
+
+        selectedIds.removeAll()
+        isEditing = false
+    }
+
+    /// Bulk pin/unpin selected items.
+    private func bulkTogglePin() {
+        let selectedItems = sortedItems.filter { selectedIds.contains($0.id) }
+        for item in selectedItems {
+            viewModel.togglePin(item)
+        }
+        selectedIds.removeAll()
+        isEditing = false
     }
 
     var sortedItems: [VaultFileItem] {
@@ -96,30 +133,89 @@ struct FileBrowserView: View {
                 gridViewWithBanner
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if isEditing && !selectedIds.isEmpty {
+                HStack(spacing: 16) {
+                    Button(action: { showDeleteConfirmation = true }) {
+                        Image(systemName: "trash")
+                        Text("Delete")
+                    }
+                    .foregroundColor(.red)
+
+                    Spacer()
+
+                    Button(action: { bulkTogglePin() }) {
+                        Image(systemName: "pin")
+                        Text("Pin")
+                    }
+                    .foregroundColor(.kataGold)
+                }
+                .padding()
+                .background(Color.kataNavy.opacity(0.95))
+                .foregroundColor(.white)
+            }
+        }
         .overlay { UndoToast(model: undo) }
-        .navigationTitle(viewModel.folderName)
+        .navigationTitle(isEditing && !selectedIds.isEmpty ? "\(selectedIds.count) selected" : viewModel.folderName)
+        .confirmationDialog(
+            "Delete \(selectedIds.count) item\(selectedIds.count == 1 ? "" : "s")?",
+            isPresented: $showDeleteConfirmation,
+            actions: {
+                Button("Delete", role: .destructive, action: bulkDelete)
+                Button("Cancel", role: .cancel) {}
+            },
+            message: {
+                Text("This action cannot be undone.")
+            }
+        )
         .toolbar {
+            ToolbarItemGroup(placement: .topBarLeading) {
+                if isEditing {
+                    Menu {
+                        Button(action: {
+                            let visibleIds = Set(sortedItems.map { $0.id })
+                            selectedIds = visibleIds
+                        }) {
+                            Label("Select All", systemImage: "checkmark.circle")
+                        }
+                        Button(action: { selectedIds.removeAll() }) {
+                            Label("Deselect All", systemImage: "circle")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button(action: { gate { showNewFolder = true } }) {
-                    Image(systemName: "folder.badge.plus")
-                }
-                Button(action: { gate { showUploadPicker = true } }) {
-                    Image(systemName: "plus")
-                }
-                Menu {
-                    Picker("View", selection: $viewMode) {
-                        Label("List", systemImage: "list.bullet").tag(ViewMode.list)
-                        Label("Grid", systemImage: "square.grid.2x2").tag(ViewMode.grid)
+                if isEditing {
+                    Button(action: { isEditing = false; selectedIds.removeAll() }) {
+                        Text("Done")
                     }
-                    Divider()
-                    Picker("Sort", selection: $sortOrder) {
-                        Text("Name").tag(SortOrder.name)
-                        Text("Date").tag(SortOrder.date)
-                        Text("Size").tag(SortOrder.size)
-                        Text("Type").tag(SortOrder.type)
+                } else {
+                    Button(action: { gate { showNewFolder = true } }) {
+                        Image(systemName: "folder.badge.plus")
                     }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Button(action: { gate { showUploadPicker = true } }) {
+                        Image(systemName: "plus")
+                    }
+                    Button(action: { isEditing = true }) {
+                        Image(systemName: "checkmark.circle")
+                    }
+                    Menu {
+                        Picker("View", selection: $viewMode) {
+                            Label("List", systemImage: "list.bullet").tag(ViewMode.list)
+                            Label("Grid", systemImage: "square.grid.2x2").tag(ViewMode.grid)
+                        }
+                        Divider()
+                        Picker("Sort", selection: $sortOrder) {
+                            Text("Name").tag(SortOrder.name)
+                            Text("Date").tag(SortOrder.date)
+                            Text("Size").tag(SortOrder.size)
+                            Text("Type").tag(SortOrder.type)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
         }
@@ -222,7 +318,25 @@ struct FileBrowserView: View {
             ForEach(sortedItems) { item in
                 FileBrowserListRow(
                     item: item,
-                    onTap: { selectedFile = item },
+                    isEditing: isEditing,
+                    isSelected: selectedIds.contains(item.id),
+                    onTap: {
+                        if isEditing {
+                            if selectedIds.contains(item.id) {
+                                selectedIds.remove(item.id)
+                            } else {
+                                selectedIds.insert(item.id)
+                            }
+                        } else {
+                            selectedFile = item
+                        }
+                    },
+                    onLongPress: {
+                        if !isEditing {
+                            isEditing = true
+                            selectedIds.insert(item.id)
+                        }
+                    },
                     onRename: { renameTarget = item; renamingName = item.name },
                     onDelete: { softDelete(item) },
                     onShare: { shareFile = item },
@@ -264,16 +378,39 @@ struct FileBrowserView: View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 8)], spacing: 8) {
                 ForEach(sortedItems) { item in
-                    if item.isFolder {
-                        NavigationLink {
-                            FileBrowserView(folderId: item.id)
-                        } label: {
+                    ZStack(alignment: .topTrailing) {
+                        if item.isFolder && !isEditing {
+                            NavigationLink {
+                                FileBrowserView(folderId: item.id)
+                            } label: {
+                                GridItemView(item: item)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
                             GridItemView(item: item)
+                                .onTapGesture {
+                                    if isEditing {
+                                        if selectedIds.contains(item.id) {
+                                            selectedIds.remove(item.id)
+                                        } else {
+                                            selectedIds.insert(item.id)
+                                        }
+                                    } else if !item.isFolder {
+                                        selectedFile = item
+                                    }
+                                }
+                                .onLongPressGesture {
+                                    if !isEditing {
+                                        isEditing = true
+                                        selectedIds.insert(item.id)
+                                    }
+                                }
                         }
-                        .buttonStyle(.plain)
-                    } else {
-                        GridItemView(item: item)
-                            .onTapGesture { selectedFile = item }
+                        if isEditing {
+                            Image(systemName: selectedIds.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(selectedIds.contains(item.id) ? .kataGold : .gray)
+                                .padding(8)
+                        }
                     }
                 }
             }
