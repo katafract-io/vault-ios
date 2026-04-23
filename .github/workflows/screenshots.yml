@@ -1,0 +1,203 @@
+name: Auto-refresh App Store screenshots
+
+# Doctrine: /home/artemis/.claude/projects/-home-artemis/memory/feedback_screenshots_never_manual.md
+# Every UI change auto-regenerates + uploads screenshots via ASC API. No manual web UI work.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Sources/UI/**/*.swift'
+      - 'Sources/Views/**/*.swift'
+      - 'Sources/Features/**/*.swift'
+      - '**/Assets.xcassets/**'
+      - '**/*.entitlements'
+      - 'Sources/App/ScreenshotMode.swift'
+      - 'fastlane/Snapfile'
+      - 'fastlane/Fastfile'
+      - '.github/workflows/screenshots.yml'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force run (ignore path filter)'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    name: Capture + upload screenshots
+    runs-on: [ self-hosted, macOS, ios-build ]
+    timeout-minutes: 60
+
+    env:
+      APP_NAME: vaultyx
+      BUNDLE_ID: com.katafract.vault
+      SCHEME: Vaultyx
+      FASTLANE_LANE: submit_version_screenshots
+      RBENV_RUBY: /Users/christianflores/.rbenv/versions/3.3.11
+      DOCS_INTERNAL_REPO: katafract-io/docs-internal
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Notify Matrix - screenshot run started
+        run: |
+          PAYLOAD="{\"text\":\"📸 ${{ github.repository }} screenshots run #${{ github.run_number }} started (ref ${{ github.ref_name }})\"}"
+          curl -s -X POST https://webhooks.katafract.io/webhook/ci \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d "$PAYLOAD" || true
+
+      - name: Load runner env
+        run: |
+          ENV_FILE="$HOME/runner-env/${APP_NAME}.env"
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "::error::Missing $ENV_FILE"; exit 1
+          fi
+          grep -v '^#' "$ENV_FILE" | grep '=' >> "$GITHUB_ENV"
+
+      - name: Ensure ASC private key on disk
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          if [ ! -f "$ASC_KEY_PATH" ]; then
+            if [ -n "$ASC_PRIVATE_KEY" ]; then
+              mkdir -p "$(dirname "$ASC_KEY_PATH")"
+              printf '%s' "$ASC_PRIVATE_KEY" > "$ASC_KEY_PATH"
+              chmod 600 "$ASC_KEY_PATH"
+            else
+              echo "::error::no ASC_PRIVATE_KEY and no local file at $ASC_KEY_PATH"; exit 1
+            fi
+          fi
+
+      - name: Unlock keychain
+        run: |
+          security unlock-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 7200 "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN" >/dev/null 2>&1 || true
+
+      - name: Regenerate Xcode project (if xcodegen)
+        run: |
+          if [ -f "project.yml" ] && command -v xcodegen >/dev/null 2>&1; then
+            xcodegen generate 2>&1 | tail -20
+          else
+            echo "no xcodegen needed"
+          fi
+
+      - name: Install Ruby deps (Ruby 3.3.11 via rbenv)
+        run: |
+          export PATH="${RBENV_RUBY}/bin:$PATH"
+          which ruby && ruby --version
+          ${RBENV_RUBY}/bin/bundle --version || ${RBENV_RUBY}/bin/gem install bundler
+          ${RBENV_RUBY}/bin/bundle config set --local path 'vendor/bundle'
+          ${RBENV_RUBY}/bin/bundle install --jobs 4 --retry 3 2>&1 | tail -20
+          ${RBENV_RUBY}/bin/bundle exec fastlane --version 2>&1 | head -3
+
+      - name: Resolve SPM
+        run: |
+          xcodebuild -project ${SCHEME}.xcodeproj -scheme ${SCHEME} \
+            -resolvePackageDependencies 2>&1 | tail -5
+
+      - name: Run fastlane screenshot lane
+        id: fastlane
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8_FILEPATH: ${{ env.ASC_KEY_PATH }}
+          FASTLANE_HIDE_CHANGELOG: 1
+          FASTLANE_SKIP_UPDATE_CHECK: 1
+          FASTLANE_DISABLE_COLORS: 1
+        run: |
+          set -o pipefail
+          export PATH="${RBENV_RUBY}/bin:$PATH"
+          rm -rf fastlane/screenshots
+          ${RBENV_RUBY}/bin/bundle exec fastlane ${FASTLANE_LANE} 2>&1 | tee /tmp/fastlane.log | tail -80
+          echo "shot_count=$(find fastlane/screenshots -name '*.png' 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          mkdir -p /tmp/screenshot-artifacts
+          cp -r fastlane/screenshots /tmp/screenshot-artifacts/ 2>/dev/null || true
+          tail -50 /tmp/fastlane.log > /tmp/screenshot-artifacts/fastlane.tail.log 2>/dev/null || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ github.run_number }}
+          path: /tmp/screenshot-artifacts/
+          retention-days: 14
+
+      - name: Commit audit log to docs-internal
+        if: success()
+        env:
+          DOCS_PUSH_TOKEN: ${{ secrets.DOCS_INTERNAL_PUSH_TOKEN }}
+        run: |
+          if [ -z "$DOCS_PUSH_TOKEN" ]; then
+            echo "::warning::DOCS_INTERNAL_PUSH_TOKEN not set, skipping log commit"
+            exit 0
+          fi
+          TS=$(date -u +'%Y-%m-%d_%H%M%S')
+          LOG_DIR="/tmp/docs-internal-clone"
+          rm -rf "$LOG_DIR"
+          git clone --depth 1 "https://x-access-token:${DOCS_PUSH_TOKEN}@github.com/${DOCS_INTERNAL_REPO}.git" "$LOG_DIR"
+          mkdir -p "$LOG_DIR/runbooks/screenshot_runs"
+          LOG_FILE="$LOG_DIR/runbooks/screenshot_runs/${APP_NAME}_${TS}.md"
+          SHOT_COUNT="${{ steps.fastlane.outputs.shot_count }}"
+          TAIL=$(tail -50 /tmp/fastlane.log 2>/dev/null | sed 's/`/\\`/g')
+          cat > "$LOG_FILE" <<EOF
+          # ${APP_NAME} screenshot run — ${TS}
+
+          - Repo: \`${{ github.repository }}\`
+          - Ref: \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`
+          - Run: [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - Triggered by: \`${{ github.event_name }}\` by \`${{ github.actor }}\`
+          - Fastlane lane: \`${FASTLANE_LANE}\`
+          - Shot count: \`${SHOT_COUNT}\`
+          - Bundle: \`${BUNDLE_ID}\`
+
+          ## Fastlane tail (last 50 lines)
+
+          \`\`\`
+          ${TAIL}
+          \`\`\`
+          EOF
+          cd "$LOG_DIR"
+          git config user.name "katafract-ci"
+          git config user.email "ci@katafract.com"
+          git add runbooks/screenshot_runs/
+          git commit -m "screenshots: ${APP_NAME} run ${TS} (#${{ github.run_number }})" || { echo "nothing to commit"; exit 0; }
+          git push origin main
+
+      - name: Notify Matrix - screenshot run SUCCEEDED
+        if: success()
+        run: |
+          SHOTS="${{ steps.fastlane.outputs.shot_count }}"
+          PAYLOAD="{\"text\":\"✅ ${{ github.repository }} screenshots uploaded (${SHOTS} shots, run #${{ github.run_number }})\"}"
+          curl -s -X POST https://webhooks.katafract.io/webhook/ci \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d "$PAYLOAD" || true
+
+      - name: Notify Matrix - screenshot run FAILED
+        if: failure()
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          PAYLOAD="{\"text\":\"🔴 ${{ github.repository }} screenshots FAILED (run #${{ github.run_number }}) — $RUN_URL\"}"
+          for ROOM in ci alerts; do
+            curl -s -X POST "https://webhooks.katafract.io/webhook/$ROOM" \
+              -H "Content-Type: application/json" \
+              -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+              -d "$PAYLOAD" || true
+          done
