@@ -171,6 +171,11 @@ public actor VaultAPIClient {
         return try await get("/v1/vault/tree?offset=\(offset)&limit=\(limit)", authOverride: nil)
     }
 
+    /// List recently accessed files (ordered by last access time).
+    public func listRecentFiles(limit: Int = 20) async throws -> TreeListResponse {
+        return try await get("/v1/vault/recents?limit=\(limit)", authOverride: nil)
+    }
+
     public func fetchManifest(fileId: String) async throws -> Data {
         let response: ManifestResponse = try await get("/v1/vault/manifest/\(fileId)", authOverride: nil)
         guard let data = Data(base64Encoded: response.manifest_data) else {
