@@ -39,6 +39,7 @@ class PhotosViewModel: ObservableObject {
     @Published var remainingCount = 0
     @Published var allBackedUp = false
     @Published var selectedPhoto: BackedUpPhoto?
+    @Published var isLoadingAlbums = false
 
     private weak var services: VaultServices?
 
@@ -53,43 +54,22 @@ class PhotosViewModel: ObservableObject {
         self.services = services
     }
 
-    func loadAlbums() async {
+    /// Load recent photos only (limit 60 from newest first).
+    /// This is called on the root PhotosView .task and is intentionally lightweight.
+    func loadRecentPhotos() async {
         if ScreenshotMode.isActive { return }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return }
 
-        let defaults = UserDefaults.standard
-        let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
-        let persistedEnabled = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
-
-        // Album toggles — smart albums with photo count > 0.
-        let smartAlbums = PHAssetCollection.fetchAssetCollections(
-            with: .smartAlbum, subtype: .any, options: nil)
-        var albumResult: [AlbumItem] = []
-        smartAlbums.enumerateObjects { collection, _, _ in
-            let assets = PHAsset.fetchAssets(in: collection, options: nil)
-            guard assets.count > 0 else { return }
-            let isEnabled: Bool = hasPersisted
-                ? persistedEnabled.contains(collection.localIdentifier)
-                : collection.localizedTitle == "Recents"
-            albumResult.append(AlbumItem(
-                id: collection.localIdentifier,
-                name: collection.localizedTitle ?? "Album",
-                count: assets.count,
-                isEnabled: isEnabled
-            ))
-        }
-        albums = albumResult
-
-        // Grid — all image assets from "Recents"-equivalent, newest first.
+        // Fetch recent image assets only, limited to 60.
         let opts = PHFetchOptions()
         opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
+        opts.fetchLimit = 60
+
         let assets = PHAsset.fetchAssets(with: opts)
 
-        // Per-asset backup state lookup — refreshed each time loadAlbums
-        // runs so an upload that completed in the background is visible on
-        // return to the tab. The manager caches this in memory.
+        // Per-asset backup state lookup — refreshed each time
         services?.photoBackup.refresh()
         let backedUp = services?.photoBackup.backedUpIdentifiers ?? []
 
@@ -107,6 +87,46 @@ class PhotosViewModel: ObservableObject {
         }
         backedUpPhotos = photos
         allBackedUp = !photos.isEmpty && photos.allSatisfy { $0.backupState == .backedUp }
+    }
+
+    /// Load all albums. Deferred until user opens the AlbumDrawerSheet.
+    /// Runs in background to avoid blocking the main thread.
+    func loadAlbums() async {
+        if ScreenshotMode.isActive { return }
+
+        isLoadingAlbums = true
+        defer { isLoadingAlbums = false }
+
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else { return }
+
+        let defaults = UserDefaults.standard
+        let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
+        let persistedEnabled = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
+
+        // Album toggles — smart albums with photo count > 0.
+        // Run in a background task so it doesn't block the main thread.
+        await Task.detached(priority: .userInitiated) {
+            var albumResult: [AlbumItem] = []
+            let smartAlbums = PHAssetCollection.fetchAssetCollections(
+                with: .smartAlbum, subtype: .any, options: nil)
+            smartAlbums.enumerateObjects { collection, _, _ in
+                let assets = PHAsset.fetchAssets(in: collection, options: nil)
+                guard assets.count > 0 else { return }
+                let isEnabled: Bool = hasPersisted
+                    ? persistedEnabled.contains(collection.localIdentifier)
+                    : collection.localizedTitle == "Recents"
+                albumResult.append(AlbumItem(
+                    id: collection.localIdentifier,
+                    name: collection.localizedTitle ?? "Album",
+                    count: assets.count,
+                    isEnabled: isEnabled
+                ))
+            }
+            await MainActor.run {
+                self.albums = albumResult
+            }
+        }.value
     }
 
     func toggleAlbum(_ album: AlbumItem, enabled: Bool) {
