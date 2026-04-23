@@ -15,6 +15,9 @@ import Combine
 ///      `GET /v1/token/info`. Works in simulator too.
 ///
 /// Both paths store the resulting token in Keychain (iCloud-synced) and
+///      `GET /v1/token/info`. Works in simulator too.
+///
+/// Both paths store the resulting token in Keychain (iCloud-synced) and
 /// inject it into `VaultAPIClient` for all subsequent requests.
 @MainActor
 public final class SubscriptionStore: ObservableObject {
