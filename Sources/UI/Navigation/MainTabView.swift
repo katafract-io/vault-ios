@@ -114,6 +114,12 @@ class RecentsViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        // Inject seed data if in ScreenshotMode
+        if ScreenshotMode.seedData != nil {
+            injectSeedRecentFiles()
+            return
+        }
+
         guard let services else {
             items = []
             return
@@ -137,6 +143,38 @@ class RecentsViewModel: ObservableObject {
             self.error = "Failed to load recent files: \(error.localizedDescription)"
             items = []
         }
+    }
+
+    private func injectSeedRecentFiles() {
+        items = [
+            VaultFileItem(
+                id: UUID().uuidString.lowercased(),
+                name: "2024 W-2.pdf",
+                isFolder: false,
+                sizeBytes: 145 * 1024,
+                modifiedAt: Date(timeIntervalSinceNow: -3600),
+                syncState: .synced,
+                isPinned: false
+            ),
+            VaultFileItem(
+                id: UUID().uuidString.lowercased(),
+                name: "Driver License.heic",
+                isFolder: false,
+                sizeBytes: 2_100 * 1024,
+                modifiedAt: Date(timeIntervalSinceNow: -7200),
+                syncState: .synced,
+                isPinned: true
+            ),
+            VaultFileItem(
+                id: UUID().uuidString.lowercased(),
+                name: "Mortgage Notes.docx",
+                isFolder: false,
+                sizeBytes: 87 * 1024,
+                modifiedAt: Date(timeIntervalSinceNow: -10800),
+                syncState: .synced,
+                isPinned: false
+            ),
+        ]
     }
 
     func materializeLocalURL(for item: VaultFileItem) async -> URL? {
@@ -478,6 +516,14 @@ struct SettingsView: View {
     }
 
     private func loadServerQuota() async {
+        // Inject seed data if in ScreenshotMode
+        if ScreenshotMode.seedData != nil {
+            vaultMeta = VaultMetaResponse(
+                usage_bytes: 342 * 1024 * 1024 * 1024,  // 342 GB
+                quota_bytes: 1024 * 1024 * 1024 * 1024  // 1 TB
+            )
+            return
+        }
         do { vaultMeta = try await services.apiClient.vaultMeta() }
         catch { print("vaultMeta fetch failed: \(error)") }
     }

@@ -56,7 +56,12 @@ class PhotosViewModel: ObservableObject {
 
     /// Load recent photos only (limit 60 from newest first).
     /// This is called on the root PhotosView .task and is intentionally lightweight.
+    /// In ScreenshotMode, injects synthetic seed photos instead.
     func loadRecentPhotos() async {
+        if ScreenshotMode.seedData != nil {
+            injectSeedPhotos()
+            return
+        }
         if ScreenshotMode.isActive { return }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return }
@@ -149,5 +154,83 @@ class PhotosViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             backupInProgress = false
         }
+    }
+
+    /// Injects synthetic seed photos for XCUITest screenshot runs.
+    private func injectSeedPhotos() {
+        let seedPhotos = [
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Sunset at Acadia.heic",
+                sizeBytes: 3_200_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 2),
+                backupState: .backedUp
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Coffee Morning.jpeg",
+                sizeBytes: 1_400_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 3),
+                backupState: .backedUp
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Garden Update.heic",
+                sizeBytes: 4_100_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 5),
+                backupState: .backedUp
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Birthday Cake.jpeg",
+                sizeBytes: 2_300_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 7),
+                backupState: .pending
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Mountain Trek.heic",
+                sizeBytes: 5_600_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 9),
+                backupState: .uploading(0.35)
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Beach Day.jpeg",
+                sizeBytes: 3_800_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 12),
+                backupState: .backedUp
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Concert Night.heic",
+                sizeBytes: 6_200_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 15),
+                backupState: .backedUp
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Restaurant Plating.jpeg",
+                sizeBytes: 2_900_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 18),
+                backupState: .failed
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Autumn Leaves.heic",
+                sizeBytes: 4_700_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 21),
+                backupState: .backedUp
+            ),
+            BackedUpPhoto(
+                id: UUID().uuidString,
+                filename: "Hiking Summit.jpeg",
+                sizeBytes: 3_500_000,
+                takenAt: Date(timeIntervalSinceNow: -86400 * 25),
+                backupState: .pending
+            ),
+        ]
+        backedUpPhotos = seedPhotos
+        allBackedUp = seedPhotos.allSatisfy { $0.backupState == .backedUp }
     }
 }
