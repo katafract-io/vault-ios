@@ -38,12 +38,136 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - Placeholder Views
+// MARK: - Recents View
 
 struct RecentsView: View {
+    @EnvironmentObject private var services: VaultServices
+    @StateObject private var viewModel = RecentsViewModel()
+    @State private var selectedFile: VaultFileItem?
+    @State private var previewURL: URL?
+
     var body: some View {
-        Text("Recent Files")
-            .navigationTitle("Recent")
+        Group {
+            if viewModel.items.isEmpty && !viewModel.isLoading {
+                ContentUnavailableView {
+                    Label("No Recent Files", systemImage: "clock")
+                } description: {
+                    Text("Files you open will appear here")
+                }
+            } else if viewModel.isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(viewModel.items) { item in
+                        FileRowView(
+                            item: item,
+                            onRename: {},
+                            onDelete: {},
+                            onPin: { viewModel.togglePin(item) }
+                        )
+                        .onTapGesture { selectedFile = item }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Recent")
+        .sheet(item: $selectedFile, onDismiss: { previewURL = nil }) { file in
+            if let url = previewURL {
+                FilePreviewSheet(fileURL: url, displayName: file.name)
+            } else {
+                FilePreviewLoadingSheet(displayName: file.name)
+                    .task {
+                        let url = await viewModel.materializeLocalURL(for: file)
+                        if let url {
+                            previewURL = url
+                        } else {
+                            selectedFile = nil
+                        }
+                    }
+            }
+        }
+        .task {
+            viewModel.configure(services: services)
+            await viewModel.load()
+        }
+        .refreshable {
+            await viewModel.load()
+        }
+    }
+}
+
+@MainActor
+class RecentsViewModel: ObservableObject {
+    @Published var items: [VaultFileItem] = []
+    @Published var isLoading = false
+    @Published var error: String?
+
+    private weak var services: VaultServices?
+
+    func configure(services: VaultServices) {
+        self.services = services
+    }
+
+    func load() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        guard let services else {
+            items = []
+            return
+        }
+
+        do {
+            let response = try await services.apiClient.listRecentFiles(limit: 20)
+            let fileItems = response.files.map { dict in
+                VaultFileItem(
+                    id: dict["file_id"] as? String ?? "",
+                    name: dict["filename_enc"] as? String ?? "Unknown",
+                    isFolder: false,
+                    sizeBytes: (dict["size_bytes"] as? NSNumber)?.int64Value ?? 0,
+                    modifiedAt: Date(timeIntervalSince1970: TimeInterval(dict["modified_at"] as? Int ?? 0)),
+                    syncState: .synced,
+                    isPinned: false
+                )
+            }
+            items = fileItems
+        } catch {
+            self.error = "Failed to load recent files: \(error.localizedDescription)"
+            items = []
+        }
+    }
+
+    func materializeLocalURL(for item: VaultFileItem) async -> URL? {
+        guard let services else {
+            error = "VaultServices not configured"
+            return nil
+        }
+        do {
+            let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: "root")
+            let plaintext = try await services.syncEngine.downloadFile(
+                fileId: item.id, folderKey: folderKey)
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension((item.name as NSString).pathExtension)
+            try plaintext.write(to: tmp, options: .atomic)
+            return tmp
+        } catch {
+            self.error = "Couldn't open \(item.name): \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    func togglePin(_ item: VaultFileItem) {
+        guard let services else { return }
+        let context = ModelContext(services.modelContainer)
+        let descriptor = FetchDescriptor<LocalFile>()
+        if let rows = try? context.fetch(descriptor) {
+            for row in rows where row.fileId == item.id {
+                row.isPinned.toggle()
+            }
+            try? context.save()
+        }
     }
 }
 
