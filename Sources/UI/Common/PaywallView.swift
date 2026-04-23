@@ -12,6 +12,7 @@ struct PaywallView: View {
     @State private var selectedProductID: String = SubscriptionStore.ProductID.yearly
     @State private var isPurchasing = false
     @State private var showRedemption = false
+    @State private var showFounderRedeem = false
 
     private var selectedProduct: Product? {
         store.products.first { $0.id == selectedProductID }
@@ -27,6 +28,7 @@ struct PaywallView: View {
                     ctaButton
                     restoreButton
                     redeemTokenLink
+                    founderCodeLink
                     legalFooter
                 }
                 .padding()
@@ -167,6 +169,24 @@ struct PaywallView: View {
             if store.isSubscribed { dismiss() }
         }) {
             TokenRedemptionView()
+        }
+    }
+
+    private var founderCodeLink: some View {
+        Button {
+            showFounderRedeem = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "gift.fill").imageScale(.small)
+                Text("Have a founder code? Redeem it →")
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .sheet(isPresented: $showFounderRedeem, onDismiss: {
+            if store.isSubscribed { dismiss() }
+        }) {
+            FounderRedeemSheet()
         }
     }
 
