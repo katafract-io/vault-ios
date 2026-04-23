@@ -37,7 +37,7 @@ struct PhotosView: View {
                                 Image(systemName: "chevron.down")
                             }
                             .font(.caption)
-                            .foregroundStyle(.kataGold)
+                            .foregroundStyle(Color.kataGold)
                         }
                     }
                     .padding(.horizontal)
@@ -264,7 +264,7 @@ struct PhotosEmptyStateView: View {
                 Image(systemName: "shield.fill")
                     .font(.system(size: 72, weight: .regular))
                     .foregroundStyle(LinearGradient(
-                        colors: [.kataSapphire, .kataSapphire.opacity(0.75)],
+                        colors: [Color.kataSapphire, Color.kataSapphire.opacity(0.75)],
                         startPoint: .top,
                         endPoint: .bottom
                     ))
