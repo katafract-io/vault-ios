@@ -78,14 +78,32 @@ jobs:
         run: xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx -resolvePackageDependencies 2>&1 | tail -5
 
       - name: Bump CFBundleVersion
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_ID: ${{ secrets.APP_ID }}
         run: |
           set +e
-          BUILD_NUM=$((GITHUB_RUN_NUMBER + 400))
-          echo "Bumping CFBundleVersion to $BUILD_NUM"
-          find . -name project.pbxproj -not -path "*/.git/*" -exec sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" {} +
-          find . -name "*.plist" -not -path "*/.git/*" -not -path "*/build/*" -not -path "*/DerivedData/*" -not -path "*/.build/*" -not -path "*/Pods/*" -print0 2>/dev/null | while IFS= read -r -d "" f; do
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$f" 2>/dev/null
-          done
+          # Generate ASC JWT
+          JWT=$(python3 ~/runner-env/asc-jwt.py)
+          if [ -z "$JWT" ]; then
+            echo "::warning::ASC JWT generation failed, falling back to run-number-only bump"
+            BUILD_NUM=$((GITHUB_RUN_NUMBER + 400))
+          else
+            ASC_MAX=$(curl -s -m 10 -H "Authorization: Bearer $JWT" \
+              "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&sort=-version&limit=1&fields[builds]=version" \
+              | python3 -c 'import sys,json; d=json.load(sys.stdin).get("data") or [{}]; v=(d[0].get("attributes") or {}).get("version") or "0"; print(int(v) if v.isdigit() else 0)' 2>/dev/null)
+            ASC_MAX=${ASC_MAX:-0}
+            RUN_BUILD=$((GITHUB_RUN_NUMBER + 400))
+            if [ "$ASC_MAX" -ge "$RUN_BUILD" ]; then
+              BUILD_NUM=$((ASC_MAX + 1))
+            else
+              BUILD_NUM=$RUN_BUILD
+            fi
+            echo "asc_max=$ASC_MAX run_based=$RUN_BUILD using=$BUILD_NUM"
+          fi
+          # Bump all plist CFBundleVersion
+          find . -name "*.plist" -not -path "*/build/*" -not -path "*/.build/*" -exec /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" {} \; 2>/dev/null
           echo "BUILD_NUM=$BUILD_NUM" >> "$GITHUB_ENV"
           set -e
 
