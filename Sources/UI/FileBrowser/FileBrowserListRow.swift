@@ -34,6 +34,11 @@ struct FileBrowserListRow: View {
     var body: some View {
         Group {
             if item.isFolder && !isEditing {
+                // Folder row: NavigationLink owns the tap. Do NOT layer an
+                // outer .onLongPressGesture here — it competes with the
+                // NavigationLink's primary tap recognizer and can leave the
+                // row "dead" to taps. Long-press to multiselect is a file-row
+                // affordance only.
                 NavigationLink {
                     FileBrowserView(folderId: item.id)
                 } label: {
@@ -43,9 +48,9 @@ struct FileBrowserListRow: View {
                 rowContent
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onTap)
+                    .onLongPressGesture(perform: onLongPress)
             }
         }
-        .onLongPressGesture(perform: onLongPress)
         .if(!isEditing) { view in
             view
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {

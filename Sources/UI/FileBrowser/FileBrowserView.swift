@@ -263,9 +263,10 @@ struct FileBrowserView: View {
         }
         .sheet(item: $selectedFile, onDismiss: {
             previewURL = nil
-            if let file = selectedFile {
-                fileLoadingStates.remove(file.id)
-            }
+            // selectedFile is already nil here (that's what triggered dismiss).
+            // Clear all loading states — the tap guard below blocks re-entry
+            // during an in-flight materialize, but on dismiss we're done.
+            fileLoadingStates.removeAll()
         }) { file in
             if let url = previewURL {
                 FilePreviewSheet(fileURL: url, displayName: file.name)
@@ -280,6 +281,22 @@ struct FileBrowserView: View {
                             // surface the reason via viewModel.error.
                             selectedFile = nil
                             fileLoadingStates.remove(file.id)
+                        }
+                    }
+            }
+        }
+        .sheet(item: $shareFile, onDismiss: {
+            shareURL = nil
+        }) { file in
+            if let url = shareURL {
+                ActivityViewControllerWrapper(items: [url])
+            } else {
+                FilePreviewLoadingSheet(displayName: file.name)
+                    .task {
+                        if let url = await viewModel.materializeLocalURL(for: file) {
+                            shareURL = url
+                        } else {
+                            shareFile = nil
                         }
                     }
             }
@@ -370,7 +387,12 @@ struct FileBrowserView: View {
                             } else {
                                 selectedIds.insert(item.id)
                             }
-                        } else {
+                        } else if !fileLoadingStates.contains(item.id) {
+                            // Guard: prevent re-entry while materialize is in
+                            // flight. Without this, an impatient user tapping
+                            // multiple times starts parallel downloads of the
+                            // same file and the cell flashes repeatedly.
+                            fileLoadingStates.insert(item.id)
                             selectedFile = item
                         }
                     },
@@ -440,7 +462,9 @@ struct FileBrowserView: View {
                                         } else {
                                             selectedIds.insert(item.id)
                                         }
-                                    } else if !item.isFolder {
+                                    } else if !item.isFolder && !fileLoadingStates.contains(item.id) {
+                                        // Same re-entry guard as list view.
+                                        fileLoadingStates.insert(item.id)
                                         selectedFile = item
                                     }
                                 }
