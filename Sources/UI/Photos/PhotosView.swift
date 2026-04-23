@@ -37,7 +37,7 @@ struct PhotosView: View {
                                 Image(systemName: "chevron.down")
                             }
                             .font(.caption)
-                            .foregroundStyle(.kataGold)
+                            .foregroundStyle(Color.kataGold)
                         }
                     }
                     .padding(.horizontal)
