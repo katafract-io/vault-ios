@@ -1,5 +1,6 @@
 import SwiftUI
 import KatafractStyle
+import SwiftData
 
 struct MainTabView: View {
     @ObservedObject private var lock = BiometricLock.shared
@@ -62,7 +63,7 @@ struct RecentsView: View {
                     ForEach(viewModel.items) { item in
                         FileRowView(
                             item: item,
-                            onRename: {},
+                            onRename: { _ in },
                             onDelete: {},
                             onPin: { viewModel.togglePin(item) }
                         )
@@ -120,13 +121,13 @@ class RecentsViewModel: ObservableObject {
 
         do {
             let response = try await services.apiClient.listRecentFiles(limit: 20)
-            let fileItems = response.files.map { dict in
+            let fileItems = response.files.map { record in
                 VaultFileItem(
-                    id: dict["file_id"] as? String ?? "",
-                    name: dict["filename_enc"] as? String ?? "Unknown",
+                    id: record.file_id,
+                    name: record.filename_enc,
                     isFolder: false,
-                    sizeBytes: (dict["size_bytes"] as? NSNumber)?.int64Value ?? 0,
-                    modifiedAt: Date(timeIntervalSince1970: TimeInterval(dict["modified_at"] as? Int ?? 0)),
+                    sizeBytes: record.size_bytes,
+                    modifiedAt: Date(timeIntervalSince1970: TimeInterval(record.modified_at)),
                     syncState: .synced,
                     isPinned: false
                 )
