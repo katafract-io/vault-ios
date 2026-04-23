@@ -346,25 +346,41 @@ class FileBrowserViewModel: ObservableObject {
 
     func renameItem(_ item: VaultFileItem, newName: String) {
         guard let services else { return }
-        let context = ModelContext(services.modelContainer)
-        let descriptor = FetchDescriptor<LocalFile>()
-        if let rows = try? context.fetch(descriptor) {
-            for row in rows where row.fileId == item.id {
-                row.filename = newName
+        let folderId = currentFolderId ?? "root"
+        Task { @MainActor in
+            do {
+                let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId)
+                guard let nameData = newName.data(using: .utf8) else { return }
+                let encrypted = try VaultCrypto.encrypt(nameData, key: folderKey)
+                let encB64 = encrypted.base64EncodedString()
+                if item.isFolder {
+                    try await services.apiClient.renameFolder(folderId: item.id, nameEnc: encB64)
+                } else {
+                    try await services.apiClient.renameFile(fileId: item.id, filenameEnc: encB64)
+                }
+                let context = ModelContext(services.modelContainer)
+                let descriptor = FetchDescriptor<LocalFile>()
+                if let rows = try? context.fetch(descriptor) {
+                    for row in rows where row.fileId == item.id {
+                        row.filename = newName
+                    }
+                    try? context.save()
+                }
+                if let idx = items.firstIndex(where: { $0.id == item.id }) {
+                    let updated = items[idx]
+                    items[idx] = VaultFileItem(
+                        id: updated.id,
+                        name: newName,
+                        isFolder: updated.isFolder,
+                        sizeBytes: updated.sizeBytes,
+                        modifiedAt: updated.modifiedAt,
+                        syncState: updated.syncState,
+                        isPinned: updated.isPinned,
+                        thumbnailImage: updated.thumbnailImage)
+                }
+            } catch {
+                self.error = "Rename failed: \(error.localizedDescription)"
             }
-            try? context.save()
-        }
-        if let idx = items.firstIndex(where: { $0.id == item.id }) {
-            let updated = items[idx]
-            items[idx] = VaultFileItem(
-                id: updated.id,
-                name: newName,
-                isFolder: updated.isFolder,
-                sizeBytes: updated.sizeBytes,
-                modifiedAt: updated.modifiedAt,
-                syncState: updated.syncState,
-                isPinned: updated.isPinned,
-                thumbnailImage: updated.thumbnailImage)
         }
     }
 
