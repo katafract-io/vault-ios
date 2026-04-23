@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import KatafractStyle
 
 struct FolderPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -16,8 +17,14 @@ struct FolderPickerSheet: View {
                     Label("Root", systemImage: "house.fill")
                         .foregroundStyle(Color.kataGold)
                 }
-                ForEach(rootFolders, id: \.folderId) { f in
-                    folderRow(f, depth: 0)
+                ForEach(flattenedFolders, id: \.folder.folderId) { entry in
+                    Button {
+                        onPick(entry.folder.folderId); dismiss()
+                    } label: {
+                        Label(entry.folder.name, systemImage: "folder.fill")
+                            .foregroundStyle(Color.kataSapphire)
+                            .padding(.leading, CGFloat(entry.depth) * 16)
+                    }
                 }
             }
             .navigationTitle("Move to…")
@@ -30,36 +37,24 @@ struct FolderPickerSheet: View {
         }
     }
 
-    private var rootFolders: [VaultFolder] {
-        folders.filter { \/bin/bash.parentFolderId == nil && \/bin/bash.folderId != excludeFolderId }
-            .sorted { \/bin/bash.name < \.name }
+    private struct FolderEntry {
+        let folder: VaultFolder
+        let depth: Int
     }
 
-    private func childrenOf(_ parentId: String) -> [VaultFolder] {
-        folders.filter { \/bin/bash.parentFolderId == parentId && \/bin/bash.folderId != excludeFolderId }
-            .sorted { \/bin/bash.name < \.name }
-    }
+    private var flattenedFolders: [FolderEntry] {
+        var result: [FolderEntry] = []
+        let allowed = folders.filter { $0.folderId != excludeFolderId }
+        let byParent: [String?: [VaultFolder]] = Dictionary(grouping: allowed) { $0.parentFolderId }
 
-    @ViewBuilder
-    private func folderRow(_ folder: VaultFolder, depth: Int) -> some View {
-        let kids = childrenOf(folder.folderId)
-        if kids.isEmpty {
-            Button { onPick(folder.folderId); dismiss() } label: {
-                Label(folder.name, systemImage: "folder.fill")
-                    .foregroundStyle(Color.kataSapphire)
-                    .padding(.leading, CGFloat(depth) * 16)
+        func walk(parentId: String?, depth: Int) {
+            let children = (byParent[parentId] ?? []).sorted { $0.name < $1.name }
+            for child in children {
+                result.append(FolderEntry(folder: child, depth: depth))
+                walk(parentId: child.folderId, depth: depth + 1)
             }
-        } else {
-            DisclosureGroup {
-                ForEach(kids, id: \.folderId) { c in folderRow(c, depth: depth + 1) }
-            } label: {
-                Button { onPick(folder.folderId); dismiss() } label: {
-                    Label(folder.name, systemImage: "folder.fill")
-                        .foregroundStyle(Color.kataSapphire)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.leading, CGFloat(depth) * 16)
         }
+        walk(parentId: nil, depth: 0)
+        return result
     }
 }

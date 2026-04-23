@@ -15,20 +15,6 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "4C1FEDC6D48618F38825A460"
-               BuildableName = "Vaultyx.app"
-               BlueprintName = "Vaultyx"
-               ReferencedContainer = "container:Vaultyx.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "NO"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
                BlueprintIdentifier = "0EAB2EDFE929AFB661C06B7A"
                BuildableName = "VaultFileProvider.appex"
                BlueprintName = "VaultFileProvider"
@@ -36,11 +22,11 @@
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
-            buildForTesting = "NO"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
             buildForArchiving = "YES"
-            buildForAnalyzing = "NO">
+            buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "87C2025DA51B22B4CC6AE675"
@@ -50,11 +36,25 @@
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
-            buildForTesting = "NO"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
             buildForArchiving = "YES"
-            buildForAnalyzing = "NO">
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "4C1FEDC6D48618F38825A460"
+               BuildableName = "Vaultyx.app"
+               BlueprintName = "Vaultyx"
+               ReferencedContainer = "container:Vaultyx.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "AEC930061EE8CD5509DBD17A"
