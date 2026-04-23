@@ -120,13 +120,27 @@ public actor VaultAPIClient {
 
     /// Soft-delete a file to the trash (moves manifest to trash/ prefix,
     /// sets deleted_at). Recoverable via `restoreFile` for 30 days.
+    /// Tolerant of 404/410 (orphan files already missing manifest).
     public func softDeleteFile(fileId: String) async throws {
-        _ = try await delete("/v1/vault/files/\(fileId)") as FileDeleteResponse
+        do {
+            _ = try await delete("/v1/vault/files/\(fileId)") as FileDeleteResponse
+        } catch let VaultAPIClientError.httpError(status, _) where status == 404 || status == 410 {
+            // Manifest already missing (orphan) — treat as success
+            return
+        }
     }
 
     /// Permanently delete a trashed file right now (skip the 30-day wait).
     public func purgeFile(fileId: String) async throws {
         _ = try await delete("/v1/vault/files/\(fileId)/purge") as FileDeleteResponse
+    }
+
+    /// POST /v1/vault/reconcile — scan vault for orphaned files.
+    /// Returns list of findings with status (ok | orphan_no_manifest | orphan_no_chunks).
+    /// If purge=true, permanently deletes orphans.
+    public func reconcileVault(purge: Bool = false) async throws -> VaultReconcileResponse {
+        let queryParam = purge ? "?purge=true" : "?purge=false"
+        return try await post("/v1/vault/reconcile\(queryParam)", body: EmptyBody(), authOverride: nil)
     }
 
     // MARK: - Folders
@@ -500,6 +514,22 @@ public struct FolderRestoreResponse: Decodable, Sendable {
     public let restored_at: Int
     public let restored_folder_count: Int
     public let restored_file_count: Int
+}
+
+public struct VaultReconcileResponse: Decodable, Sendable {
+    public let findings: [VaultReconcileFinding]
+    public let total_files: Int
+    public let orphan_count: Int
+    public let purged_count: Int
+    public let purge_mode: Bool
+}
+
+public struct VaultReconcileFinding: Decodable, Sendable {
+    public let file_id: String
+    public let filename_enc: String
+    public let size_bytes: Int64
+    public let status: String  // "ok" | "orphan_no_manifest" | "orphan_no_chunks" | "unknown_error"
+    public let purged: Bool
 }
 
 public enum VaultAPIClientError: Error, CustomStringConvertible {
