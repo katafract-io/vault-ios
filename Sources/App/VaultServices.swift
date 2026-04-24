@@ -19,7 +19,8 @@ public final class VaultServices: ObservableObject {
         let container: ModelContainer
         do {
             container = try ModelContainer(
-                for: LocalFile.self, LocalFolder.self, BackedUpAsset.self, VaultFolder.self)
+                for: LocalFile.self, LocalFolder.self, BackedUpAsset.self, VaultFolder.self,
+                    PendingUpload.self, ChunkUploadQueue.self)
         } catch {
             fatalError("Failed to construct VaultServices ModelContainer: \(error)")
         }
