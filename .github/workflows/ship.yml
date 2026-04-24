@@ -22,6 +22,16 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: App Group entitlement gate
+        run: |
+          ENT_FILE="Sources/App/Vaultyx.entitlements"
+          EXPECTED="group.com.katafract.enclave"
+          if ! grep -q "$EXPECTED" "$ENT_FILE"; then
+            echo "::error file=$ENT_FILE::Missing App Group $EXPECTED in main-target entitlements"
+            echo "Cross-app Sovereign unlock depends on this group. Do NOT ship without it."
+            exit 1
+          fi
+          echo "::notice::App Group entitlement present ($EXPECTED)"
       - name: Checkout
         uses: actions/checkout@v4
         with: { fetch-depth: 1 }
