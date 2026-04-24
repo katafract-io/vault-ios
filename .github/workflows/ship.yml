@@ -261,3 +261,39 @@ jobs:
             UUID=$(grep -oE 'Delivery UUID: [a-f0-9-]+' /tmp/altool.log | head -1 | cut -d' ' -f3)
             echo "- Build $BUILD_NUM uploaded, Delivery UUID $UUID" >> "$GITHUB_STEP_SUMMARY"
           fi
+  retry-on-failure:
+    name: Retry on transient failure
+    needs: [archive-and-upload]
+    runs-on: ubuntu-latest
+    if: failure() && github.run_attempt < 2
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Notify ci-autofix endpoint
+        run: |
+          curl -s -X POST https://webhooks.katafract.io/webhook/ci-autofix \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d "{
+              \"repo\": \"${{ github.repository }}\",
+              \"run_id\": ${{ github.run_id }},
+              \"run_number\": ${{ github.run_number }},
+              \"run_attempt\": ${{ github.run_attempt }},
+              \"workflow\": \"${{ github.workflow }}\",
+              \"head_sha\": \"${{ github.sha }}\",
+              \"head_branch\": \"${{ github.ref_name }}\",
+              \"actor\": \"${{ github.actor }}\",
+              \"log_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }" || true
+
+      - name: Wait before retry
+        run: sleep 120
+
+      - name: Re-dispatch workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run ship.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}" || true
