@@ -95,13 +95,22 @@ class FileBrowserViewModel: ObservableObject {
                 isPinned: false)
         }
         let fileItems = files.map { row in
-            VaultFileItem(
+            let syncDisplay: VaultFileItem.SyncStateDisplay
+            switch row.syncState {
+            case "pending_upload": syncDisplay = .pendingUpload
+            case "partial":        syncDisplay = .partial
+            case "uploading":      syncDisplay = .uploading(0)
+            case "downloading":    syncDisplay = .downloading(0)
+            case "conflict":       syncDisplay = .conflict
+            default:               syncDisplay = .synced
+            }
+            return VaultFileItem(
                 id: row.fileId,
                 name: row.filename,
                 isFolder: false,
                 sizeBytes: row.sizeBytes,
                 modifiedAt: row.modifiedAt,
-                syncState: .synced,
+                syncState: syncDisplay,
                 isPinned: row.isPinned)
         }
         items = folderItems + fileItems
@@ -166,7 +175,8 @@ class FileBrowserViewModel: ObservableObject {
                         filesRemaining: filesRemaining
                     )
 
-                    let _ = try await services.syncEngine.uploadFile(
+                    // importFile returns immediately — file is queued for background upload.
+                    let _ = try await services.syncEngine.importFile(
                         localURL: url,
                         parentFolderId: folderId == "root" ? nil : folderId,
                         folderKey: folderKey,
@@ -189,6 +199,17 @@ class FileBrowserViewModel: ObservableObject {
                 uploadInProgress = false
                 uploadTask = nil
                 await load(folderId: currentFolderId)
+            } catch VaultSyncEngineError.uploadQueueFull(let queued, let file) {
+                let qFmt = ByteCountFormatter.string(fromByteCount: queued, countStyle: .file)
+                self.error = "Upload queue is full (\(qFmt) queued). Wait for uploads to complete or connect to Wi-Fi."
+                activityMgr.failBatch(
+                    bytesUploaded: bytesUploaded,
+                    totalBytes: totalBytes,
+                    filesRemaining: filesRemaining
+                )
+                uploadInProgress = false
+                uploadTask = nil
+                _ = file  // suppress unused-var warning
             } catch is CancellationError {
                 // User-initiated cancel — end LiveActivity cleanly, no error alert.
                 activityMgr.failBatch(

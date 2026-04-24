@@ -185,6 +185,9 @@ struct SettingsView: View {
     @State private var showPhrase = false
     @State private var showRestore = false
     @State private var showPaywall = false
+    @State private var pendingCount: Int = 0
+    @State private var pendingBytes: Int64 = 0
+    @State private var isDraining = false
 
     private let sovereignQuota: Int64 = 1_099_511_627_776  // 1 TiB
 
@@ -259,6 +262,50 @@ struct SettingsView: View {
                 sectionHeader("Storage")
             }
 
+            // Pending uploads — only visible when there's something queued
+            if pendingCount > 0 {
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(Color.cyan.opacity(0.85))
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(pendingCount) file\(pendingCount == 1 ? "" : "s") queued")
+                                .font(.kataBody(15))
+                                .foregroundStyle(.primary)
+                            Text(ByteCountFormatter.string(fromByteCount: pendingBytes, countStyle: .file) + " total")
+                                .font(.kataCaption(12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if isDraining {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .scaleEffect(0.8)
+                        }
+                    }
+                    .listRowBackground(Color.cyan.opacity(0.06))
+
+                    Button {
+                        isDraining = true
+                        Task {
+                            await services.syncEngine.syncPending()
+                            isDraining = false
+                            loadPendingStats()
+                        }
+                    } label: {
+                        Label("Upload Now", systemImage: "arrow.up.circle")
+                            .font(.kataBody(15))
+                            .foregroundStyle(Color.cyan)
+                    }
+                    .disabled(isDraining)
+                    .listRowBackground(Color.cyan.opacity(0.04))
+                } header: {
+                    sectionHeader("Pending Uploads")
+                }
+            }
+
             Section {
                 settingsRow(icon: "info.circle.fill", title: "Version", value: "1.0.0")
                 settingsLinkRow(
@@ -289,7 +336,8 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .task {
             usedBytes = StorageUsageCalculator.compute(from: modelContext)
-                Task { await loadServerQuota() }
+            Task { await loadServerQuota() }
+            loadPendingStats()
         }
         .sheet(isPresented: $showPhrase) {
             RecoveryPhraseView(
@@ -421,6 +469,15 @@ struct SettingsView: View {
     private func loadServerQuota() async {
         do { vaultMeta = try await services.apiClient.vaultMeta() }
         catch { print("vaultMeta fetch failed: \(error)") }
+    }
+
+    /// Count + sum pending-upload files from SwiftData.
+    private func loadPendingStats() {
+        let files = (try? modelContext.fetch(FetchDescriptor<LocalFile>(
+            predicate: #Predicate { $0.syncState == "pending_upload" || $0.syncState == "partial" }
+        ))) ?? []
+        pendingCount = files.count
+        pendingBytes = files.reduce(0) { $0 + $1.sizeBytes }
     }
 }
 

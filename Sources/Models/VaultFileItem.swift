@@ -16,6 +16,10 @@ struct VaultFileItem: Identifiable, Hashable {
         case downloading(Double)
         case conflict
         case offline
+        /// Queued for background upload — not yet started.
+        case pendingUpload
+        /// Some chunks confirmed, more still queued (resumed across launch).
+        case partial
     }
 
     var subtitle: String {
