@@ -58,7 +58,13 @@ public class VaultSyncEngine: ObservableObject {
             // and was also removed from the modern SDK — the archive
             // compile failed outright.
             let readChunkSize = 4 * 1024 * 1024
-            let chunkStream = AsyncStream<(hash: String, data: Data)> { continuation in
+            // AsyncThrowingStream so `continuation.finish(throwing:)` below is
+            // legal — the original AsyncStream (non-throwing) has no throwing
+            // variant on its continuation, which is what made the compiler
+            // fall back to the pull-based `init(unfolding:)` initializer and
+            // emit "contextual closure type expects 0 arguments, but 1 was
+            // used in closure body" after PR #13's read/chunk refactor.
+            let chunkStream = AsyncThrowingStream<(hash: String, data: Data), Error> { continuation in
                 do {
                     while try fileHandle.offset() < fileSize {
                         guard let chunkData = try fileHandle.read(upToCount: readChunkSize),
@@ -147,7 +153,7 @@ public class VaultSyncEngine: ObservableObject {
     // MARK: - Streaming upload worker
 
     private func uploadChunksBatch(
-        _ chunkStream: AsyncStream<(hash: String, data: Data)>,
+        _ chunkStream: AsyncThrowingStream<(hash: String, data: Data), Error>,
         fileId: String
     ) async throws {
         let maxWorkers = 4
@@ -155,7 +161,7 @@ public class VaultSyncEngine: ObservableObject {
             for _ in 0..<maxWorkers {
                 group.addTask {
                     var iterator = chunkStream.makeAsyncIterator()
-                    while let chunk = await iterator.next() {
+                    while let chunk = try await iterator.next() {
                         let url = try await self.apiClient.presignPut(fileId: fileId, chunkHash: chunk.hash)
                         var req = URLRequest(url: url)
                         req.httpMethod = "PUT"
