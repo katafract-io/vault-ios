@@ -270,14 +270,18 @@ public class VaultSyncEngine: ObservableObject {
 
         // Upload each file's pending chunks with bounded concurrency (8 workers)
         let sharedRows = rows // capture for task group
-        await withTaskGroup(of: Void.self) { group in
-            let semaphore = AsyncSemaphore(limit: 8)
+        await withTaskGroup(of: (fileId: String, chunkHash: String, success: Bool).self) { group in
+            let semaphore = DispatchSemaphore(value: 8)
             for row in sharedRows {
                 group.addTask {
-                    await semaphore.wait()
+                    semaphore.wait()
                     defer { semaphore.signal() }
-                    await self.drainChunk(row)
+                    return await self.drainChunk(row)
                 }
+            }
+            // Collect results and update rows on main actor
+            for await result in group {
+                await self.updateChunkResult(fileId: result.fileId, chunkHash: result.chunkHash, success: result.success, rows: rows)
             }
         }
 
@@ -289,27 +293,44 @@ public class VaultSyncEngine: ObservableObject {
         await MainActor.run { self.syncState = .idle }
     }
 
+    /// Update a chunk row after drainChunk completes.
+    private func updateChunkResult(fileId: String, chunkHash: String, success: Bool, rows: [ChunkUploadQueue]) async {
+        await MainActor.run {
+            guard let row = rows.first(where: { $0.fileId == fileId && $0.chunkHash == chunkHash }) else { return }
+            if success {
+                row.doneAt = Date()
+            } else {
+                row.attempts += 1
+                let delay = min(pow(2.0, Double(row.attempts)), 3600.0)
+                row.nextRetryAt = Date().addingTimeInterval(delay)
+            }
+            try? modelContext.save()
+        }
+    }
+
     /// Upload one chunk. On failure: increment attempts + backoff nextRetryAt.
-    private func drainChunk(_ row: ChunkUploadQueue) async {
+    /// Returns fileId + chunkHash for row lookup + update on main thread.
+    private func drainChunk(_ row: ChunkUploadQueue) async -> (fileId: String, chunkHash: String, success: Bool) {
+        let fileId = row.fileId
+        let chunkHash = row.chunkHash
+
         // Dedup: HEAD the chunk on the server
         let alreadyUploaded = (try? await apiClient.chunkExists(
-            fileId: row.fileId, chunkHash: row.chunkHash)) ?? false
+            fileId: fileId, chunkHash: chunkHash)) ?? false
 
         if alreadyUploaded {
-            await markChunkDone(row)
-            return
+            return (fileId, chunkHash, true)
         }
 
         // Read from local cache
-        guard let data = ChunkCache.get(hash: row.chunkHash) else {
+        guard let data = ChunkCache.get(hash: chunkHash) else {
             // Cache file gone — mark done and move on (can't retry without data)
-            await markChunkDone(row)
-            return
+            return (fileId, chunkHash, true)
         }
 
         do {
             let putURL = try await apiClient.presignPut(
-                fileId: row.fileId, chunkHash: row.chunkHash)
+                fileId: fileId, chunkHash: chunkHash)
             var req = URLRequest(url: putURL)
             req.httpMethod = "PUT"
             req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
@@ -321,23 +342,11 @@ public class VaultSyncEngine: ObservableObject {
                 throw VaultSyncEngineError.httpError(statusCode: code)
             }
             // ACK received — delete local cache file immediately
-            ChunkCache.delete(hash: row.chunkHash)
-            await markChunkDone(row)
+            ChunkCache.delete(hash: chunkHash)
+            return (fileId, chunkHash, true)
         } catch {
-            // Backoff: 2^attempts seconds, cap at 1 hour
-            await MainActor.run {
-                row.attempts += 1
-                let delay = min(pow(2.0, Double(row.attempts)), 3600.0)
-                row.nextRetryAt = Date().addingTimeInterval(delay)
-                try? modelContext.save()
-            }
-        }
-    }
-
-    private func markChunkDone(_ row: ChunkUploadQueue) async {
-        await MainActor.run {
-            row.doneAt = Date()
-            try? modelContext.save()
+            // Return failure code; MainActor will increment attempts + backoff
+            return (fileId, chunkHash, false)
         }
     }
 
@@ -573,25 +582,6 @@ private struct ManifestSidecar: Codable {
     let chunkHashes: [String]
 }
 
-// MARK: - Async semaphore (bounded concurrency without Dispatch)
-
-/// Simple counting semaphore for Swift concurrency — limits drain worker parallelism.
-private actor AsyncSemaphore {
-    private var count: Int
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    init(limit: Int) { self.count = limit }
-
-    func wait() async {
-        if count > 0 { count -= 1; return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    func signal() {
-        if waiters.isEmpty { count += 1 }
-        else { waiters.removeFirst().resume() }
-    }
-}
 
 // MARK: - Notification names
 
@@ -603,6 +593,83 @@ public extension Notification.Name {
     static let vaultyxDrainRequested = Notification.Name("VaultyxDrainRequested")
     /// Posted when iOS is about to expire the drain BGProcessingTask.
     static let vaultyxDrainExpired = Notification.Name("VaultyxDrainExpired")
+}
+
+// MARK: - Local encrypted-chunk cache
+
+/// Local encrypted-chunk cache.
+///
+/// Files live at:
+///   `<Application Support>/VaultyxChunkCache/<chunkHash>`
+///
+/// Every file written here carries NSFileProtection.complete so iOS encrypts
+/// it at rest using the device passcode key and wipes the decryption key
+/// when the device is locked.  The data stored here is *already* encrypted
+/// with the per-chunk AES-256-GCM key, so this is defence-in-depth.
+///
+/// Thread-safety: all methods are nonisolated and safe to call from any
+/// concurrency context because they use atomic FileManager operations.
+enum ChunkCache {
+
+    /// Base directory for the cache. Created on first use.
+    static var cacheURL: URL = {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = appSupport.appendingPathComponent("VaultyxChunkCache", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    /// Write encrypted chunk data to the local cache.
+    /// Sets NSFileProtection.complete on the written file.
+    /// Overwrites silently if the file already exists (idempotent on retry).
+    static func put(hash: String, data: Data) throws {
+        let url = fileURL(for: hash)
+        try data.write(to: url, options: [.atomic])
+        try (url as NSURL).setResourceValue(
+            URLFileProtection.complete, forKey: .fileProtectionKey)
+    }
+
+    /// Read an encrypted chunk from the local cache. Returns nil if absent.
+    static func get(hash: String) -> Data? {
+        let url = fileURL(for: hash)
+        return try? Data(contentsOf: url)
+    }
+
+    /// Delete a chunk file after the server has confirmed receipt.
+    /// Ignores errors (file may already be gone).
+    static func delete(hash: String) {
+        try? FileManager.default.removeItem(at: fileURL(for: hash))
+    }
+
+    /// Sum of all chunk file sizes currently on disk. Used for the 5 GB
+    /// import ceiling check in `VaultSyncEngine.importFile`.
+    static func totalSize() -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(
+            at: cacheURL,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            total += Int64(size)
+        }
+        return total
+    }
+
+    /// True if a cached file exists for `hash` (fast path: no data read).
+    static func exists(hash: String) -> Bool {
+        FileManager.default.fileExists(atPath: fileURL(for: hash).path)
+    }
+
+    // MARK: - Private
+
+    private static func fileURL(for hash: String) -> URL {
+        cacheURL.appendingPathComponent(hash, isDirectory: false)
+    }
 }
 
 // MARK: - Errors

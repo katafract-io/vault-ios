@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="0.8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="slit-bloom" x="-50%" y="-200%" width="200%" height="500%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="32" height="32" rx="7" fill="#050510"/>
+
+  <!-- Shield body — clearly visible against background -->
+  <polygon points="3,3 29,3 29,16 25,25 20,30 16,32 12,30 7,25 3,16" fill="#20204a"/>
+
+  <!-- Upper left field -->
+  <polygon points="5,5 16,5 16,14 5,14" fill="#30306a"/>
+  <!-- Upper right field -->
+  <polygon points="16,5 27,5 27,14 16,14" fill="#28285e"/>
+
+  <!-- Charge band — dark void -->
+  <polygon points="5,14 27,14 27,19 5,19" fill="#020208"/>
+
+  <!-- Lower field -->
+  <polygon points="5,19 27,19 23,25 19,30 16,32 13,30 9,25" fill="#1a1a40"/>
+
+  <!-- Slit with bloom — the cyan pulse -->
+  <rect x="7" y="15.5" width="18" height="2" rx="0.5" fill="#00F0FF" opacity="0.7" filter="url(#slit-bloom)"/>
+  <rect x="7" y="15.5" width="18" height="2" rx="0.5" fill="#00F0FF" opacity="0.5"/>
+
+  <!-- Gold outline with glow -->
+  <polygon points="3,3 29,3 29,16 25,25 20,30 16,32 12,30 7,25 3,16"
+    fill="none" stroke="#C9973A" stroke-width="1.2" filter="url(#glow)"/>
+  <!-- Bright top edge -->
+  <line x1="3" y1="3" x2="29" y2="3" stroke="#D4A855" stroke-width="1.4" filter="url(#glow)"/>
+  <!-- Center spine -->
+  <line x1="16" y1="3" x2="16" y2="32" stroke="#C9973A" stroke-width="1.1"/>
+  <!-- Band edges -->
+  <line x1="5" y1="14" x2="27" y2="14" stroke="#C9973A" stroke-width="1.0"/>
+  <line x1="5" y1="19" x2="27" y2="19" stroke="#C9973A" stroke-width="1.0"/>
+</svg>
