@@ -34,6 +34,7 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.katafract.vault
+          - group.com.katafract.enclave
         com.apple.developer.fileprovider.testing-mode: true
     settings:
       base:
