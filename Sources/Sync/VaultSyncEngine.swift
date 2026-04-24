@@ -4,7 +4,6 @@ import CryptoKit
 
 /// Core sync engine — manages upload queue, download queue, conflict detection.
 /// Operates on VaultCrypto + FastCDC interfaces.
-@MainActor
 public class VaultSyncEngine: ObservableObject {
 
     private let apiClient: VaultAPIClient
@@ -30,58 +29,65 @@ public class VaultSyncEngine: ObservableObject {
 
     // MARK: - Upload
 
-    /// Encrypt and upload a file. Chunks in parallel (max 8 concurrent).
+    /// Encrypt and upload a file. Streams file IO + FastCDC chunking, encrypts one window
+    /// at a time, uploads with bounded concurrency (4 workers).
     public func uploadFile(
         localURL: URL,
         parentFolderId: String?,
         folderKey: SymmetricKey,
         masterKey: SymmetricKey,
-        filename: String? = nil
+        filename: String? = nil,
+        progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> String {
-        syncState = .uploading
-        activeUploads += 1
-        defer { activeUploads -= 1 }
+        await MainActor.run { self.syncState = .uploading; self.activeUploads += 1 }
+        defer { Task { await MainActor.run { self.activeUploads -= 1 } } }
 
         let fileId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
 
-        // File IO + FastCDC chunking + AES-GCM per-chunk encryption all happen
-        // off the main actor. A single `Data(contentsOf:)` on a 500MB file on
-        // main thread freezes the UI for seconds; encrypting N chunks on main
-        // compounds that. Task.detached does not inherit MainActor, so every-
-        // thing inside this block runs on the cooperative pool.
-        let pipeline = try await Task.detached(priority: .userInitiated) { () -> (Int64, [VaultManifest.ChunkDescriptor], [(hash: String, data: Data)]) in
-            let data = try Data(contentsOf: localURL)
-            let chunks = FastCDC.split(data)
+        let pipeline = try await Task.detached(priority: .userInitiated) { () -> (Int64, [VaultManifest.ChunkDescriptor]) in
+            let fileHandle = try FileHandle(forReadingFrom: localURL)
+            defer { try? fileHandle.close() }
+
+            let fileSize = try fileHandle.seekToEndOfFile()
+            try fileHandle.seek(toOffset: 0)
 
             var chunkDescriptors: [VaultManifest.ChunkDescriptor] = []
-            var encryptedChunks: [(hash: String, data: Data)] = []
-            chunkDescriptors.reserveCapacity(chunks.count)
-            encryptedChunks.reserveCapacity(chunks.count)
+            let chunkStream = AsyncStream<(hash: String, data: Data)> { continuation in
+                do {
+                    while try fileHandle.offset() < fileSize {
+                        let chunkData = try fileHandle.readToEndOfFile()
+                        if chunkData.isEmpty { break }
 
-            for chunk in chunks {
-                let chunkData = data[chunk.offset..<(chunk.offset + chunk.length)]
-                let chunkKey = VaultCrypto.generateChunkKey()
-                let encrypted = try VaultCrypto.encrypt(Data(chunkData), key: chunkKey)
-                let encryptedKeyBlob = try VaultCrypto.encryptChunkKey(chunkKey, with: folderKey)
-                let encryptedKeyB64 = encryptedKeyBlob.base64EncodedString()
+                        let chunks = FastCDC.split(chunkData)
+                        for chunk in chunks {
+                            let plaintext = chunkData[chunk.offset..<(chunk.offset + chunk.length)]
+                            let chunkKey = VaultCrypto.generateChunkKey()
+                            let encrypted = try VaultCrypto.encrypt(Data(plaintext), key: chunkKey)
+                            let encryptedKeyBlob = try VaultCrypto.encryptChunkKey(chunkKey, with: folderKey)
+                            let encryptedKeyB64 = encryptedKeyBlob.base64EncodedString()
 
-                chunkDescriptors.append(VaultManifest.ChunkDescriptor(
-                    hash: chunk.hash,
-                    size: chunk.length,
-                    encryptedKeyB64: encryptedKeyB64,
-                    offsetInFile: chunk.offset
-                ))
-                encryptedChunks.append((hash: chunk.hash, data: encrypted))
+                            chunkDescriptors.append(VaultManifest.ChunkDescriptor(
+                                hash: chunk.hash,
+                                size: chunk.length,
+                                encryptedKeyB64: encryptedKeyB64,
+                                offsetInFile: chunk.offset
+                            ))
+
+                            continuation.yield((hash: chunk.hash, data: encrypted))
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
             }
-            return (Int64(data.count), chunkDescriptors, encryptedChunks)
+
+            try await self.uploadChunksBatch(chunkStream, fileId: fileId)
+            return (Int64(fileSize), chunkDescriptors)
         }.value
 
         let totalSize = pipeline.0
         let chunkDescriptors = pipeline.1
-        let encryptedChunks = pipeline.2
-
-        // 3. Upload chunks in parallel batches of 8
-        try await uploadChunksBatch(encryptedChunks, fileId: fileId)
 
         // 4. Build and encrypt manifest
         let filenameEnc = try encryptFilename(localURL.lastPathComponent, folderKey: folderKey)
@@ -123,36 +129,40 @@ public class VaultSyncEngine: ObservableObject {
             syncState: "synced",
             isPinned: false
         )
-        modelContext.insert(localFile)
-        try modelContext.save()
+        await MainActor.run {
+            self.modelContext.insert(localFile)
+            try self.modelContext.save()
+            self.syncState = .idle
+        }
 
-        syncState = .idle
         return fileId
     }
 
-    private func uploadChunksBatch(_ chunks: [(hash: String, data: Data)], fileId: String) async throws {
+    // MARK: - Streaming upload worker
+
+    private func uploadChunksBatch(
+        _ chunkStream: AsyncStream<(hash: String, data: Data)>,
+        fileId: String
+    ) async throws {
+        let maxWorkers = 4
         try await withThrowingTaskGroup(of: Void.self) { group in
-            let maxConcurrent = 8
-            var running = 0
-            for chunk in chunks {
-                if running >= maxConcurrent {
-                    try await group.next()
-                    running -= 1
-                }
+            for _ in 0..<maxWorkers {
                 group.addTask {
-                    let url = try await self.apiClient.presignPut(fileId: fileId, chunkHash: chunk.hash)
-                    var req = URLRequest(url: url)
-                    req.httpMethod = "PUT"
-                    req.httpBody = chunk.data
-                    req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-                    let (_, response) = try await URLSession.shared.data(for: req)
-                    guard let httpResponse = response as? HTTPURLResponse,
-                          (200...299).contains(httpResponse.statusCode) else {
-                        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                        throw VaultSyncEngineError.httpError(statusCode: code)
+                    var iterator = chunkStream.makeAsyncIterator()
+                    while let chunk = await iterator.next() {
+                        let url = try await self.apiClient.presignPut(fileId: fileId, chunkHash: chunk.hash)
+                        var req = URLRequest(url: url)
+                        req.httpMethod = "PUT"
+                        req.httpBody = chunk.data
+                        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                        let (_, response) = try await URLSession.shared.data(for: req)
+                        guard let httpResponse = response as? HTTPURLResponse,
+                              (200...299).contains(httpResponse.statusCode) else {
+                            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                            throw VaultSyncEngineError.httpError(statusCode: code)
+                        }
                     }
                 }
-                running += 1
             }
             try await group.waitForAll()
         }
@@ -172,9 +182,8 @@ public class VaultSyncEngine: ObservableObject {
         folderKey: SymmetricKey,
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> Data {
-        syncState = .downloading
-        activeDownloads += 1
-        defer { activeDownloads -= 1 }
+        await MainActor.run { self.syncState = .downloading; self.activeDownloads += 1 }
+        defer { Task { await MainActor.run { self.activeDownloads -= 1 } } }
 
         // 1. Fetch and decrypt manifest — manifest decrypt is cheap, but the
         //    per-chunk decrypt loop below is the real CPU sink. Hop off main
@@ -240,7 +249,7 @@ public class VaultSyncEngine: ObservableObject {
             return buffer
         }.value
 
-        syncState = .idle
+        await MainActor.run { self.syncState = .idle }
         return fileData
     }
 
