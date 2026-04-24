@@ -53,7 +53,24 @@ struct FileBrowserListRow: View {
         }
         .if(!isEditing) { view in
             view
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                .contextMenu {
+                    Button(action: onShare) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    Button(action: onRename) {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    Button(action: onMove) {
+                        Label("Move", systemImage: "folder")
+                    }
+                    Button(action: onPin) {
+                        Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+                    }
+                    Button(action: onDelete, role: .destructive) {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive, action: onDelete) {
                         Label("Delete", systemImage: "trash")
                     }
