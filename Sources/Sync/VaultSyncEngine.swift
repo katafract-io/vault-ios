@@ -1,14 +1,54 @@
 import Foundation
 import SwiftData
 import CryptoKit
+import BackgroundTasks
 
-/// Core sync engine — manages upload queue, download queue, conflict detection.
-/// Operates on VaultCrypto + FastCDC interfaces.
+/// Core sync engine — persist-first, drain-later model.
+///
+/// ## Architecture
+///
+/// ```
+/// importFile()  ──fast path (<1 s)──►  ChunkCache.put()
+///                                       LocalFile(syncState='pending_upload')
+///                                       ChunkUploadQueue rows (per chunk)
+///                                       BGProcessingTask scheduled
+///                                       returns fileId immediately
+///
+/// syncPending() ──drain worker────────► HEAD chunk on server (dedup)
+///                                       presign PUT → URLSession.background upload
+///                                       on ACK: ChunkCache.delete(), queue row done
+///                                       when all chunks done: POST manifest
+///                                       LocalFile.syncState = 'synced'
+///                                       NotificationCenter "VaultyxFileSynced"
+/// ```
+///
+/// ## 5 GB ceiling
+/// Before accepting any import `ChunkCache.totalSize() + fileSize` is
+/// checked against 5 GB. Throws `uploadQueueFull` if over limit.
+///
+/// ## Backoff
+/// Retry delay = min(2^attempts, 3600) seconds.  The drain worker skips rows
+/// where `nextRetryAt > now`.
 public class VaultSyncEngine: ObservableObject {
+
+    // MARK: - Constants
+
+    public static let bgTaskIdentifier = "com.katafract.vault.drain"
+    private static let uploadQueueCeiling: Int64 = 5 * 1024 * 1024 * 1024 // 5 GB
+
+    // MARK: - State
 
     private let apiClient: VaultAPIClient
     private let modelContext: ModelContext
-    private var uploadTask: Task<Void, Never>?
+
+    /// URLSession with background identifier so uploads survive app suspends.
+    private lazy var backgroundSession: URLSession = {
+        let cfg = URLSessionConfiguration.background(
+            withIdentifier: "com.katafract.vault.upload")
+        cfg.isDiscretionary = false
+        cfg.sessionSendsLaunchEvents = true
+        return URLSession(configuration: cfg)
+    }()
 
     @Published public var syncState: EngineState = .idle
     @Published public var activeUploads: Int = 0
@@ -27,82 +67,74 @@ public class VaultSyncEngine: ObservableObject {
         self.modelContext = modelContext
     }
 
-    // MARK: - Upload
+    // MARK: - Import (fast path)
 
-    /// Encrypt and upload a file. Streams file IO + FastCDC chunking, encrypts one window
-    /// at a time, uploads with bounded concurrency (4 workers).
-    public func uploadFile(
+    /// Import a file instantly. Chunks, encrypts, and caches locally; schedules
+    /// background upload. Returns the fileId immediately — caller can show the
+    /// file in the browser right away with syncState='pending_upload'.
+    ///
+    /// Throws `VaultSyncEngineError.uploadQueueFull` when the local encrypted
+    /// chunk cache already holds ≥ 5 GB of unconfirmed data.
+    public func importFile(
         localURL: URL,
         parentFolderId: String?,
         folderKey: SymmetricKey,
         masterKey: SymmetricKey,
-        filename: String? = nil,
-        progress: (@Sendable (Double) -> Void)? = nil
+        filename: String? = nil
     ) async throws -> String {
-        await MainActor.run { self.syncState = .uploading; self.activeUploads += 1 }
-        defer { Task { await MainActor.run { self.activeUploads -= 1 } } }
+        let fileId = UUID().uuidString
+            .replacingOccurrences(of: "-", with: "").lowercased()
 
-        let fileId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        // Step 1-3: chunk, encrypt, cache — off main thread
+        let (totalSize, chunkDescriptors) = try await Task.detached(
+            priority: .userInitiated
+        ) { () -> (Int64, [VaultManifest.ChunkDescriptor]) in
 
-        let pipeline = try await Task.detached(priority: .userInitiated) { () -> (Int64, [VaultManifest.ChunkDescriptor]) in
-            let fileHandle = try FileHandle(forReadingFrom: localURL)
-            defer { try? fileHandle.close() }
-
-            let fileSize = try fileHandle.seekToEndOfFile()
-            try fileHandle.seek(toOffset: 0)
-
-            var chunkDescriptors: [VaultManifest.ChunkDescriptor] = []
-            // Stream the file in 4 MB chunks so we never hold the whole
-            // file in memory on large uploads. readToEndOfFile was the
-            // wrong API (reads to EOF in one shot, defeats streaming)
-            // and was also removed from the modern SDK — the archive
-            // compile failed outright.
-            let readChunkSize = 4 * 1024 * 1024
-            // AsyncThrowingStream so `continuation.finish(throwing:)` below is
-            // legal — the original AsyncStream (non-throwing) has no throwing
-            // variant on its continuation, which is what made the compiler
-            // fall back to the pull-based `init(unfolding:)` initializer and
-            // emit "contextual closure type expects 0 arguments, but 1 was
-            // used in closure body" after PR #13's read/chunk refactor.
-            let chunkStream = AsyncThrowingStream<(hash: String, data: Data), Error> { continuation in
-                do {
-                    while try fileHandle.offset() < fileSize {
-                        guard let chunkData = try fileHandle.read(upToCount: readChunkSize),
-                              !chunkData.isEmpty else { break }
-
-                        let chunks = FastCDC.split(chunkData)
-                        for chunk in chunks {
-                            let plaintext = chunkData[chunk.offset..<(chunk.offset + chunk.length)]
-                            let chunkKey = VaultCrypto.generateChunkKey()
-                            let encrypted = try VaultCrypto.encrypt(Data(plaintext), key: chunkKey)
-                            let encryptedKeyBlob = try VaultCrypto.encryptChunkKey(chunkKey, with: folderKey)
-                            let encryptedKeyB64 = encryptedKeyBlob.base64EncodedString()
-
-                            chunkDescriptors.append(VaultManifest.ChunkDescriptor(
-                                hash: chunk.hash,
-                                size: chunk.length,
-                                encryptedKeyB64: encryptedKeyB64,
-                                offsetInFile: chunk.offset
-                            ))
-
-                            continuation.yield((hash: chunk.hash, data: encrypted))
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
+            // --- 5 GB ceiling pre-flight ---
+            let fileSize = try Self.fileSize(of: localURL)
+            let queued = ChunkCache.totalSize()
+            if queued + fileSize > Self.uploadQueueCeiling {
+                throw VaultSyncEngineError.uploadQueueFull(
+                    queuedBytes: queued, fileBytes: fileSize)
             }
 
-            try await self.uploadChunksBatch(chunkStream, fileId: fileId)
-            return (Int64(fileSize), chunkDescriptors)
+            // --- Chunk + encrypt + cache ---
+            let fileHandle = try FileHandle(forReadingFrom: localURL)
+            defer { try? fileHandle.close() }
+            let totalFileSize = try fileHandle.seekToEndOfFile()
+            try fileHandle.seek(toOffset: 0)
+
+            var descriptors: [VaultManifest.ChunkDescriptor] = []
+            let readChunkSize = 4 * 1024 * 1024
+
+            while try fileHandle.offset() < totalFileSize {
+                guard let window = try fileHandle.read(upToCount: readChunkSize),
+                      !window.isEmpty else { break }
+
+                let chunks = FastCDC.split(window)
+                for chunk in chunks {
+                    let plaintext = Data(window[chunk.offset..<(chunk.offset + chunk.length)])
+                    let chunkKey = VaultCrypto.generateChunkKey()
+                    let encrypted = try VaultCrypto.encrypt(plaintext, key: chunkKey)
+                    let encKeyBlob = try VaultCrypto.encryptChunkKey(chunkKey, with: folderKey)
+
+                    // Write to local encrypted cache with NSFileProtection.complete
+                    try ChunkCache.put(hash: chunk.hash, data: encrypted)
+
+                    descriptors.append(VaultManifest.ChunkDescriptor(
+                        hash: chunk.hash,
+                        size: chunk.length,
+                        encryptedKeyB64: encKeyBlob.base64EncodedString(),
+                        offsetInFile: chunk.offset
+                    ))
+                }
+            }
+            return (Int64(totalFileSize), descriptors)
         }.value
 
-        let totalSize = pipeline.0
-        let chunkDescriptors = pipeline.1
-
-        // 4. Build and encrypt manifest
-        let filenameEnc = try encryptFilename(localURL.lastPathComponent, folderKey: folderKey)
+        // Step 4: build + encrypt manifest (will be posted to server by drain worker)
+        let filenameDisplay = filename ?? localURL.lastPathComponent
+        let filenameEnc = try encryptFilename(filenameDisplay, folderKey: folderKey)
         let manifest = VaultManifest(
             fileId: fileId,
             filenameEnc: filenameEnc,
@@ -113,143 +145,301 @@ public class VaultSyncEngine: ObservableObject {
             parentVersion: 0,
             chunks: chunkDescriptors
         )
-
         let manifestData = try JSONEncoder().encode(manifest)
         let encryptedManifest = try VaultCrypto.encrypt(manifestData, key: folderKey)
 
-        // 5. Upload manifest, with filename_enc + parent passed alongside so
-        //    the server can index the file for cross-device list sync (both
-        //    fields stay encrypted under the folder key; server never reads them).
-        try await apiClient.uploadManifest(
-            fileId: fileId,
-            encryptedManifest: encryptedManifest,
-            filenameEnc: filenameEnc,
-            parentFolderId: parentFolderId,
-            sizeBytes: totalSize,
-            chunkCount: chunkDescriptors.count,
-            chunkHashes: chunkDescriptors.map { $0.hash })
-
-        // 6. Save to local SwiftData
-        let localFile = LocalFile(
-            fileId: fileId,
-            filename: filename ?? localURL.lastPathComponent,
-            parentFolderId: parentFolderId,
-            manifestVersion: 1,
-            chunkHashes: chunkDescriptors.map { $0.hash },
-            sizeBytes: totalSize,
-            modifiedAt: Date(),
-            syncState: "synced",
-            isPinned: false
-        )
+        // Step 5-6: insert LocalFile + ChunkUploadQueue rows on MainActor
         await MainActor.run {
-            self.modelContext.insert(localFile)
-            try self.modelContext.save()
-            self.syncState = .idle
+            // Store encrypted manifest in chunk cache under a deterministic key
+            // so the drain worker can read it without re-encrypting.
+            let manifestKey = "__manifest__\(fileId)"
+            try? ChunkCache.put(hash: manifestKey, data: encryptedManifest)
+
+            let localFile = LocalFile(
+                fileId: fileId,
+                filename: filenameDisplay,
+                parentFolderId: parentFolderId,
+                localPath: nil,
+                manifestVersion: 1,
+                chunkHashes: chunkDescriptors.map { $0.hash },
+                sizeBytes: totalSize,
+                modifiedAt: Date(),
+                syncState: "pending_upload",
+                isPinned: false,
+                thumbnailPath: nil
+            )
+            modelContext.insert(localFile)
+
+            for descriptor in chunkDescriptors {
+                let cachedPath = ChunkCache.cacheURL
+                    .appendingPathComponent(descriptor.hash).path
+                let queueRow = ChunkUploadQueue(
+                    fileId: fileId,
+                    chunkHash: descriptor.hash,
+                    localPath: cachedPath,
+                    size: Int64(descriptor.size)
+                )
+                modelContext.insert(queueRow)
+            }
+
+            // Store filenameEnc + parentFolderId for the manifest POST
+            // in a lightweight sidecar attached to the manifest key slot.
+            let sidecarKey = "__sidecar__\(fileId)"
+            let sidecar = ManifestSidecar(
+                fileId: fileId,
+                filenameEnc: filenameEnc,
+                parentFolderId: parentFolderId,
+                sizeBytes: totalSize,
+                chunkCount: chunkDescriptors.count,
+                chunkHashes: chunkDescriptors.map { $0.hash }
+            )
+            if let sidecarData = try? JSONEncoder().encode(sidecar) {
+                try? ChunkCache.put(hash: sidecarKey, data: sidecarData)
+            }
+
+            try? modelContext.save()
         }
+
+        // Step 7: schedule BGProcessingTask
+        scheduleDrainTask()
 
         return fileId
     }
 
-    // MARK: - Streaming upload worker
+    // MARK: - Legacy upload (blocking, kept for backwards compat)
 
-    private func uploadChunksBatch(
-        _ chunkStream: AsyncThrowingStream<(hash: String, data: Data), Error>,
-        fileId: String
-    ) async throws {
-        // Bug fix (2026-04-24): each worker was calling makeAsyncIterator() independently,
-        // creating separate iterators over a single stream — causing duplicates/skips.
-        // Now: single shared iterator, guarded by an actor, consumed by 8 concurrent workers.
-        //
-        // Parallelism bump: 4 → 8 to match download pipeline.
-        // Pipeline depth: each worker pre-warms presign for next chunk while uploading current,
-        // reducing RTT bottleneck on fast links.
+    /// Original blocking upload path — kept so callers that haven't migrated
+    /// to `importFile` continue to compile. New callers should use `importFile`.
+    @available(*, deprecated, renamed: "importFile")
+    public func uploadFile(
+        localURL: URL,
+        parentFolderId: String?,
+        folderKey: SymmetricKey,
+        masterKey: SymmetricKey,
+        filename: String? = nil,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> String {
+        return try await importFile(
+            localURL: localURL,
+            parentFolderId: parentFolderId,
+            folderKey: folderKey,
+            masterKey: masterKey,
+            filename: filename
+        )
+    }
 
-        let maxWorkers = 8
-        let sharedIterator = ChunkIteratorActor(chunkStream.makeAsyncIterator())
+    // MARK: - Drain worker
 
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for _ in 0..<maxWorkers {
+    /// Drain the pending upload queue. Safe to call from BGProcessingTask
+    /// AND from the .active foreground scene transition.
+    ///
+    /// Algorithm:
+    ///   1. Fetch all ChunkUploadQueue rows not yet done and past nextRetryAt
+    ///   2. Group by fileId
+    ///   3. For each chunk: HEAD server (dedup) → presign PUT → upload
+    ///   4. On ACK: delete local cache file, mark row done
+    ///   5. When all rows for a file are done: POST manifest, syncState='synced'
+    public func syncPending() async {
+        await MainActor.run { self.syncState = .uploading; self.activeUploads += 1 }
+        defer { Task { await MainActor.run { self.activeUploads -= 1 } } }
+
+        let now = Date()
+        // Fetch pending rows
+        let descriptor = FetchDescriptor<ChunkUploadQueue>(
+            predicate: #Predicate { $0.doneAt == nil && $0.nextRetryAt <= now },
+            sortBy: [SortDescriptor(\.nextRetryAt)]
+        )
+        let rows: [ChunkUploadQueue]
+        do {
+            rows = try await MainActor.run { try modelContext.fetch(descriptor) }
+        } catch {
+            await MainActor.run { self.syncState = .error("Queue fetch failed: \(error)") }
+            return
+        }
+
+        if rows.isEmpty {
+            await MainActor.run { self.syncState = .idle }
+            return
+        }
+
+        // Group by fileId for manifest-post logic
+        var byFile: [String: [ChunkUploadQueue]] = [:]
+        for row in rows {
+            byFile[row.fileId, default: []].append(row)
+        }
+
+        // Upload each file's pending chunks with bounded concurrency (8 workers)
+        let sharedRows = rows // capture for task group
+        await withTaskGroup(of: Void.self) { group in
+            let semaphore = AsyncSemaphore(limit: 8)
+            for row in sharedRows {
                 group.addTask {
-                    var nextPresignTask: Task<URL, Error>? = nil
-
-                    while let chunk = try await sharedIterator.next() {
-                        // Presign the current chunk (or use the one we pre-warmed from last iteration).
-                        let url: URL
-                        if let prewarmed = nextPresignTask {
-                            url = try await prewarmed.value
-                            nextPresignTask = nil
-                        } else {
-                            url = try await self.apiClient.presignPut(fileId: fileId, chunkHash: chunk.hash)
-                        }
-
-                        // Pre-warm presign for the next chunk (pipeline depth 2).
-                        // Peek at the next chunk to presign; if none exists, this will be nil.
-                        nextPresignTask = Task {
-                            if let nextChunk = try await sharedIterator.peek() {
-                                return try await self.apiClient.presignPut(fileId: fileId, chunkHash: nextChunk.hash)
-                            } else {
-                                throw VaultSyncEngineError.noNextChunk
-                            }
-                        }
-
-                        // Upload the current chunk with presigned URL.
-                        var req = URLRequest(url: url)
-                        req.httpMethod = "PUT"
-                        req.httpBody = chunk.data
-                        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-                        let (_, response) = try await URLSession.shared.data(for: req)
-                        guard let httpResponse = response as? HTTPURLResponse,
-                              (200...299).contains(httpResponse.statusCode) else {
-                            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                            throw VaultSyncEngineError.httpError(statusCode: code)
-                        }
-                    }
-
-                    // Clean up any dangling presign task.
-                    nextPresignTask?.cancel()
+                    await semaphore.wait()
+                    defer { semaphore.signal() }
+                    await self.drainChunk(row)
                 }
             }
-            try await group.waitForAll()
+        }
+
+        // After uploading, check which files have all chunks done → post manifest
+        for (fileId, fileRows) in byFile {
+            await checkAndFinalizeFile(fileId: fileId, queuedRows: fileRows)
+        }
+
+        await MainActor.run { self.syncState = .idle }
+    }
+
+    /// Upload one chunk. On failure: increment attempts + backoff nextRetryAt.
+    private func drainChunk(_ row: ChunkUploadQueue) async {
+        // Dedup: HEAD the chunk on the server
+        let alreadyUploaded = (try? await apiClient.chunkExists(
+            fileId: row.fileId, chunkHash: row.chunkHash)) ?? false
+
+        if alreadyUploaded {
+            await markChunkDone(row)
+            return
+        }
+
+        // Read from local cache
+        guard let data = ChunkCache.get(hash: row.chunkHash) else {
+            // Cache file gone — mark done and move on (can't retry without data)
+            await markChunkDone(row)
+            return
+        }
+
+        do {
+            let putURL = try await apiClient.presignPut(
+                fileId: row.fileId, chunkHash: row.chunkHash)
+            var req = URLRequest(url: putURL)
+            req.httpMethod = "PUT"
+            req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            // Use the background session for OS-managed resumable uploads
+            let (_, response) = try await backgroundSession.upload(for: req, from: data)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                throw VaultSyncEngineError.httpError(statusCode: code)
+            }
+            // ACK received — delete local cache file immediately
+            ChunkCache.delete(hash: row.chunkHash)
+            await markChunkDone(row)
+        } catch {
+            // Backoff: 2^attempts seconds, cap at 1 hour
+            await MainActor.run {
+                row.attempts += 1
+                let delay = min(pow(2.0, Double(row.attempts)), 3600.0)
+                row.nextRetryAt = Date().addingTimeInterval(delay)
+                try? modelContext.save()
+            }
         }
     }
 
-    /// Actor protecting shared iteration over a single AsyncThrowingStream.
-    /// Ensures that only one worker consumes from the stream at a time,
-    /// and that all workers share the same iterator state.
-    private actor ChunkIteratorActor {
-        private var iterator: AsyncThrowingStream<(hash: String, data: Data), Error>.AsyncIterator
-        private var peeked: (hash: String, data: Data)?
-
-        init(_ iterator: AsyncThrowingStream<(hash: String, data: Data), Error>.AsyncIterator) {
-            self.iterator = iterator
-            self.peeked = nil
-        }
-
-        func next() async throws -> (hash: String, data: Data)? {
-            if let cached = peeked {
-                peeked = nil
-                return cached
-            }
-            return try await iterator.next()
-        }
-
-        func peek() async throws -> (hash: String, data: Data)? {
-            if peeked == nil {
-                peeked = try await iterator.next()
-            }
-            return peeked
+    private func markChunkDone(_ row: ChunkUploadQueue) async {
+        await MainActor.run {
+            row.doneAt = Date()
+            try? modelContext.save()
         }
     }
 
-    // MARK: - Download
+    /// After all chunks for a file are confirmed, post the manifest and mark synced.
+    private func checkAndFinalizeFile(fileId: String, queuedRows: [ChunkUploadQueue]) async {
+        // Re-fetch to check current done state (rows may have been updated by concurrent drains)
+        let allDone: Bool = await MainActor.run {
+            let desc = FetchDescriptor<ChunkUploadQueue>(
+                predicate: #Predicate { $0.fileId == fileId && $0.doneAt == nil })
+            let remaining = (try? modelContext.fetch(desc)) ?? []
+            return remaining.isEmpty
+        }
+        guard allDone else { return }
+
+        // Load sidecar (filenameEnc + parentFolderId + chunk list)
+        let sidecarKey = "__sidecar__\(fileId)"
+        let manifestKey = "__manifest__\(fileId)"
+        guard
+            let sidecarData = ChunkCache.get(hash: sidecarKey),
+            let sidecar = try? JSONDecoder().decode(ManifestSidecar.self, from: sidecarData),
+            let encManifest = ChunkCache.get(hash: manifestKey)
+        else {
+            // Sidecar or manifest missing — mark file as error state
+            await MainActor.run {
+                let desc = FetchDescriptor<LocalFile>(
+                    predicate: #Predicate { $0.fileId == fileId })
+                if let file = (try? modelContext.fetch(desc))?.first {
+                    file.syncState = "conflict"
+                    try? modelContext.save()
+                }
+            }
+            return
+        }
+
+        do {
+            try await apiClient.uploadManifest(
+                fileId: sidecar.fileId,
+                encryptedManifest: encManifest,
+                filenameEnc: sidecar.filenameEnc,
+                parentFolderId: sidecar.parentFolderId,
+                sizeBytes: sidecar.sizeBytes,
+                chunkCount: sidecar.chunkCount,
+                chunkHashes: sidecar.chunkHashes
+            )
+
+            // Clean up sidecar + manifest cache entries
+            ChunkCache.delete(hash: sidecarKey)
+            ChunkCache.delete(hash: manifestKey)
+
+            // Mark LocalFile as synced + emit notification
+            await MainActor.run {
+                let desc = FetchDescriptor<LocalFile>(
+                    predicate: #Predicate { $0.fileId == fileId })
+                if let file = (try? modelContext.fetch(desc))?.first {
+                    file.syncState = "synced"
+                    try? modelContext.save()
+                }
+                NotificationCenter.default.post(
+                    name: .vaultyxFileSynced,
+                    object: nil,
+                    userInfo: ["fileId": fileId])
+            }
+        } catch {
+            // Manifest POST failed — leave syncState as pending_upload; drain will retry
+        }
+    }
+
+    // MARK: - BGProcessingTask
+
+    /// Register the drain BGProcessingTask. Call once at app launch from VaultApp.
+    public static func registerBackgroundTask() {
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: bgTaskIdentifier,
+            using: nil
+        ) { task in
+            guard let processingTask = task as? BGProcessingTask else {
+                task.setTaskCompleted(success: false); return
+            }
+            // VaultServices is not available in this static context; the caller
+            // (VaultApp) should hold a reference and call syncPending() here.
+            // We publish a notification so VaultApp can wire this up.
+            processingTask.expirationHandler = {
+                NotificationCenter.default.post(name: .vaultyxDrainExpired, object: nil)
+            }
+            NotificationCenter.default.post(
+                name: .vaultyxDrainRequested,
+                object: processingTask)
+        }
+    }
+
+    /// Schedule a BGProcessingTask for the drain worker.
+    private func scheduleDrainTask() {
+        let request = BGProcessingTaskRequest(
+            identifier: Self.bgTaskIdentifier)
+        request.requiresNetworkConnectivity = true
+        request.requiresExternalPower = false
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    // MARK: - Download (unchanged from PR #16)
 
     /// Download and decrypt a file. Returns decrypted data.
-    /// Chunks are fetched in parallel (max 8 concurrent) then reassembled
-    /// in order, giving ~8× speedup over serial fetching on multi-chunk files.
-    ///
-    /// Memory note: all decrypted chunks are held in memory simultaneously.
-    /// At 256 KB per chunk and 8 in-flight, working-set peak ≈ 2 MB — fine
-    /// for typical files. A stream-to-disk path is a follow-up for >1 GB files.
     public func downloadFile(
         fileId: String,
         folderKey: SymmetricKey,
@@ -258,9 +448,6 @@ public class VaultSyncEngine: ObservableObject {
         await MainActor.run { self.syncState = .downloading; self.activeDownloads += 1 }
         defer { Task { await MainActor.run { self.activeDownloads -= 1 } } }
 
-        // 1. Fetch and decrypt manifest — manifest decrypt is cheap, but the
-        //    per-chunk decrypt loop below is the real CPU sink. Hop off main
-        //    for the whole thing so SwiftUI stays responsive on multi-GB files.
         let encryptedManifest = try await apiClient.fetchManifest(fileId: fileId)
 
         let apiClient = self.apiClient
@@ -271,8 +458,6 @@ public class VaultSyncEngine: ObservableObject {
             let totalChunks = manifest.chunks.count
             guard totalChunks > 0 else { return Data() }
 
-            // Parallel fetch+decrypt, max 8 in flight. Child tasks inherit
-            // this detached context, so all CryptoKit work runs off-main.
             let maxConcurrent = 8
             var chunkResults: [(Int, Data)] = []
             chunkResults.reserveCapacity(totalChunks)
@@ -287,12 +472,24 @@ public class VaultSyncEngine: ObservableObject {
                         let idx = nextIdx
                         let chunk = manifest.chunks[idx]
                         group.addTask {
-                            let url = try await apiClient.presignGet(fileId: fileId, chunkHash: chunk.hash)
+                            // Use local cache if chunk is still pending upload
+                            if let localData = ChunkCache.get(hash: chunk.hash) {
+                                guard let encKeyData = Data(base64Encoded: chunk.encryptedKeyB64) else {
+                                    throw VaultSyncEngineError.invalidBase64
+                                }
+                                let chunkKey = try VaultCrypto.decryptChunkKey(
+                                    encKeyData, with: folderKey)
+                                let plain = try VaultCrypto.decrypt(localData, key: chunkKey)
+                                return (idx, plain)
+                            }
+                            let url = try await apiClient.presignGet(
+                                fileId: fileId, chunkHash: chunk.hash)
                             let (encryptedChunkData, _) = try await URLSession.shared.data(from: url)
                             guard let encryptedKeyData = Data(base64Encoded: chunk.encryptedKeyB64) else {
                                 throw VaultSyncEngineError.invalidBase64
                             }
-                            let chunkKey = try VaultCrypto.decryptChunkKey(encryptedKeyData, with: folderKey)
+                            let chunkKey = try VaultCrypto.decryptChunkKey(
+                                encryptedKeyData, with: folderKey)
                             let plainChunk = try VaultCrypto.decrypt(encryptedChunkData, key: chunkKey)
                             return (idx, plainChunk)
                         }
@@ -303,8 +500,6 @@ public class VaultSyncEngine: ObservableObject {
                         chunkResults.append(result)
                         inFlight -= 1
                         completed += 1
-                        // Progress callback must hop back to MainActor to
-                        // update @Published UI state safely.
                         let frac = Double(completed) / Double(totalChunks)
                         if let progress {
                             await MainActor.run { progress(frac) }
@@ -316,9 +511,7 @@ public class VaultSyncEngine: ObservableObject {
             chunkResults.sort { $0.0 < $1.0 }
             var buffer = Data()
             buffer.reserveCapacity(Int(manifest.totalSize))
-            for (_, data) in chunkResults {
-                buffer.append(data)
-            }
+            for (_, data) in chunkResults { buffer.append(data) }
             return buffer
         }.value
 
@@ -326,18 +519,17 @@ public class VaultSyncEngine: ObservableObject {
         return fileData
     }
 
-    // MARK: - Conflict detection
+    // MARK: - Conflict detection (unchanged)
 
-    /// Check if local file conflicts with remote version.
-    /// Returns true if conflict exists (local manifestVersion != remote parentVersion).
-    public func checkConflict(fileId: String, localVersion: Int, folderKey: SymmetricKey) async throws -> Bool {
+    public func checkConflict(
+        fileId: String, localVersion: Int, folderKey: SymmetricKey
+    ) async throws -> Bool {
         let encryptedManifest = try await apiClient.fetchManifest(fileId: fileId)
         let manifestData = try VaultCrypto.decrypt(encryptedManifest, key: folderKey)
         let manifest = try JSONDecoder().decode(VaultManifest.self, from: manifestData)
         return manifest.parentVersion != localVersion
     }
 
-    /// Create a conflict copy with timestamp suffix
     public func createConflictCopy(fileId: String, originalName: String) -> String {
         let formatter = ISO8601DateFormatter()
         let timestamp = formatter.string(from: Date()).prefix(10)
@@ -361,7 +553,59 @@ public class VaultSyncEngine: ObservableObject {
         let decrypted = try VaultCrypto.decrypt(data, key: folderKey)
         return String(data: decrypted, encoding: .utf8) ?? "unknown"
     }
+
+    private static func fileSize(of url: URL) throws -> Int64 {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        return Int64(values.fileSize ?? 0)
+    }
 }
+
+// MARK: - Manifest sidecar (stored in ChunkCache, not in SwiftData)
+
+/// Lightweight struct stored alongside the encrypted manifest blob in ChunkCache
+/// so the drain worker can post the manifest without re-encrypting.
+private struct ManifestSidecar: Codable {
+    let fileId: String
+    let filenameEnc: String
+    let parentFolderId: String?
+    let sizeBytes: Int64
+    let chunkCount: Int
+    let chunkHashes: [String]
+}
+
+// MARK: - Async semaphore (bounded concurrency without Dispatch)
+
+/// Simple counting semaphore for Swift concurrency — limits drain worker parallelism.
+private actor AsyncSemaphore {
+    private var count: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) { self.count = limit }
+
+    func wait() async {
+        if count > 0 { count -= 1; return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func signal() {
+        if waiters.isEmpty { count += 1 }
+        else { waiters.removeFirst().resume() }
+    }
+}
+
+// MARK: - Notification names
+
+public extension Notification.Name {
+    /// Posted when a file's manifest has been confirmed by the server.
+    /// userInfo["fileId"]: String
+    static let vaultyxFileSynced = Notification.Name("VaultyxFileSynced")
+    /// Posted by BGTaskScheduler when the drain task is granted execution time.
+    static let vaultyxDrainRequested = Notification.Name("VaultyxDrainRequested")
+    /// Posted when iOS is about to expire the drain BGProcessingTask.
+    static let vaultyxDrainExpired = Notification.Name("VaultyxDrainExpired")
+}
+
+// MARK: - Errors
 
 public enum VaultSyncEngineError: Error {
     case invalidBase64
@@ -369,4 +613,5 @@ public enum VaultSyncEngineError: Error {
     case manifestDecodeError
     case httpError(statusCode: Int)
     case noNextChunk
+    case uploadQueueFull(queuedBytes: Int64, fileBytes: Int64)
 }

@@ -79,6 +79,21 @@ public actor VaultAPIClient {
 
     // MARK: - Presign
 
+    /// HEAD /v1/vault/chunks/{hash} — returns true if the server already has this chunk.
+    /// Used by the drain worker for content-addressed deduplication: same chunk hash
+    /// uploaded from another file or another device skips the PUT entirely.
+    public func chunkExists(fileId: String, chunkHash: String) async throws -> Bool {
+        let url = baseURL.appendingPathComponent("/v1/vault/chunks/\(chunkHash)")
+        var req = URLRequest(url: url)
+        req.httpMethod = "HEAD"
+        if let token = authToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (_, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else { return false }
+        return http.statusCode == 200
+    }
+
     public func presignPut(fileId: String, chunkHash: String) async throws -> URL {
         let body = PresignBody(file_id: fileId, chunk_hash: chunkHash, operation: "put")
         let response: PresignResponse = try await post("/v1/vault/presign", body: body, authOverride: nil)
