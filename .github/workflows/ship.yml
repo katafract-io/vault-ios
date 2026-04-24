@@ -77,9 +77,14 @@ jobs:
       - name: Regenerate Xcode project (if xcodegen)
         run: |
           if [ -f "project.yml" ] && command -v xcodegen >/dev/null 2>&1; then
-            xcodegen generate 2>&1 | tail -20
+            echo "Running xcodegen..."
+            which xcodegen
+            xcodegen generate -v 2>&1 | tail -30
+            echo "xcodegen exit code: $?"
           else
-            echo "no xcodegen needed"
+            echo "xcodegen not available or project.yml missing"
+            ls -la project.yml 2>&1 || echo "project.yml not found"
+            command -v xcodegen 2>&1 || echo "xcodegen command not found"
           fi
 
       - name: Resolve SPM
