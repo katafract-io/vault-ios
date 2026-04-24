@@ -60,6 +60,7 @@
 		9A51A23C185C664790A6DB49 /* KatafractStyle in Frameworks */ = {isa = PBXBuildFile; productRef = C731E6EA2BCFCB88CFEA28B3 /* KatafractStyle */; };
 		A32B8BE42C5BC137DF1703EF /* VaultKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57206996A054400EEF17E246 /* VaultKeyManager.swift */; };
 		AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC99130FB3DFEE8DB5125AA1 /* FileVersionsView.swift */; };
+		AC9BC416E472F06FB1FD5475 /* EnclaveAppGroupWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3A0314157A829A931228C0 /* EnclaveAppGroupWriter.swift */; };
 		B09E84ACCB6D75A18920538E /* VaultAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39481199B6CB3F3482004760 /* VaultAPIClient.swift */; };
 		B44A5B4D6B617F83DEB21DF1 /* VaultFileProviderItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6689E73FC23CF8E1C76216D /* VaultFileProviderItem.swift */; };
 		B5FECDA48412C9D8825AA3B6 /* PhotoThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEB895BEA790DBE779D5B7 /* PhotoThumbnailView.swift */; };
@@ -76,6 +77,7 @@
 		E66703D0A812B99E037A6F5C /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C82E3F9197932F80C91151 /* LockScreenView.swift */; };
 		E819F4F755796FE2B7FAE42A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */; };
 		F458FECDE0791AE6B7923125 /* RecoveryPhrase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */; };
+		F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842697680013FF51CC00E52D /* FounderRedeemSheet.swift */; };
 		FDD97B0168192EC903D8F70A /* DocArmorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A1424DE4DC3454E083764A /* DocArmorBridge.swift */; };
 /* End PBXBuildFile section */
 
@@ -137,6 +139,7 @@
 		1DF96E9D3C1E121B1E96E5F4 /* VaultCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultCrypto.swift; sourceTree = "<group>"; };
 		1F675E6731972CDBFF376FCF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		2C228B6C51D78AFA3F2DED89 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		2D3A0314157A829A931228C0 /* EnclaveAppGroupWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnclaveAppGroupWriter.swift; sourceTree = "<group>"; };
 		2EA84B36B69F5E4E05B2F6AD /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		2F3EC444FCA480154B1E7818 /* Vaultyx.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Vaultyx.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2FA57DD1324F970B95130AE8 /* VaultFileProviderExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileProviderExtension.swift; sourceTree = "<group>"; };
@@ -164,6 +167,7 @@
 		7599892F6A4C813BA72A0119 /* FileIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIconView.swift; sourceTree = "<group>"; };
 		7D3A4CDF3CC4CDE16F7B08CA /* VaultyxLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxLiveActivity.swift; sourceTree = "<group>"; };
 		822D4EFE0CEE5C0D5965D1B5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		842697680013FF51CC00E52D /* FounderRedeemSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FounderRedeemSheet.swift; sourceTree = "<group>"; };
 		86771A820BF7FC05675B4272 /* VaultManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultManifest.swift; sourceTree = "<group>"; };
 		87E84DB85BD2068C369A0E40 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		88A2A54A57CEADCA403804E1 /* RecycleBinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecycleBinView.swift; sourceTree = "<group>"; };
@@ -306,6 +310,7 @@
 			isa = PBXGroup;
 			children = (
 				1A1FB77CC808FDDFF55990C1 /* ContentView.swift */,
+				2D3A0314157A829A931228C0 /* EnclaveAppGroupWriter.swift */,
 				5D2D0C8F6A636C6333585B7F /* Info.plist */,
 				A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */,
 				56EFC2D4148C3F943FD1145C /* MasterKeyBootstrap.swift */,
@@ -344,6 +349,14 @@
 				E6224F29A715A5E7D5B92110 /* VaultShare.entitlements */,
 			);
 			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		934B914091D980490FA2715E /* Paywall */ = {
+			isa = PBXGroup;
+			children = (
+				842697680013FF51CC00E52D /* FounderRedeemSheet.swift */,
+			);
+			path = Paywall;
 			sourceTree = "<group>";
 		};
 		953E4AA777F643C1DC0FE09C /* Sources */ = {
@@ -461,6 +474,7 @@
 				DABB602586E7D340A1FE2723 /* Common */,
 				03684D0367C92D661A483331 /* FileBrowser */,
 				63E33E95FFA05CF5BFACE9B6 /* Navigation */,
+				934B914091D980490FA2715E /* Paywall */,
 				340F4495C577EDCE2B345EBD /* Photos */,
 				CF48AA7F6A2D3D9364577FE1 /* RecycleBin */,
 				296B408CAFB54CF5848969AB /* Storage */,
@@ -687,6 +701,7 @@
 				C1220AB949F9D89560372244 /* ContentView.swift in Sources */,
 				FDD97B0168192EC903D8F70A /* DocArmorBridge.swift in Sources */,
 				40A2FC991EF7F5D7369F0552 /* DocArmorFolderView.swift in Sources */,
+				AC9BC416E472F06FB1FD5475 /* EnclaveAppGroupWriter.swift in Sources */,
 				180C0378CDEADF6688701252 /* FastCDC.swift in Sources */,
 				39CF40E317CD9EB5E7151A95 /* FileBrowserListRow.swift in Sources */,
 				781EDBA16BA48455306F69D9 /* FileBrowserView.swift in Sources */,
@@ -700,6 +715,7 @@
 				4AF8427238D557CB0235A132 /* FileUploadProgressBanner.swift in Sources */,
 				AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */,
 				721108FC19B9F0974EF7568B /* FolderPickerSheet.swift in Sources */,
+				F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */,
 				7980FC2D27B6826C7B2E5E96 /* Keychain.swift in Sources */,
 				9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */,
 				E66703D0A812B99E037A6F5C /* LockScreenView.swift in Sources */,
@@ -915,7 +931,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1074,7 +1090,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
