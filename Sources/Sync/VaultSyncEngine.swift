@@ -52,11 +52,17 @@ public class VaultSyncEngine: ObservableObject {
             try fileHandle.seek(toOffset: 0)
 
             var chunkDescriptors: [VaultManifest.ChunkDescriptor] = []
+            // Stream the file in 4 MB chunks so we never hold the whole
+            // file in memory on large uploads. readToEndOfFile was the
+            // wrong API (reads to EOF in one shot, defeats streaming)
+            // and was also removed from the modern SDK — the archive
+            // compile failed outright.
+            let readChunkSize = 4 * 1024 * 1024
             let chunkStream = AsyncStream<(hash: String, data: Data)> { continuation in
                 do {
                     while try fileHandle.offset() < fileSize {
-                        let chunkData = try fileHandle.readToEndOfFile()
-                        if chunkData.isEmpty { break }
+                        guard let chunkData = try fileHandle.read(upToCount: readChunkSize),
+                              !chunkData.isEmpty else { break }
 
                         let chunks = FastCDC.split(chunkData)
                         for chunk in chunks {
@@ -115,7 +121,7 @@ public class VaultSyncEngine: ObservableObject {
             parentFolderId: parentFolderId,
             sizeBytes: totalSize,
             chunkCount: chunkDescriptors.count,
-            chunkHashes: chunkDescriptors.map(\.hash))
+            chunkHashes: chunkDescriptors.map { $0.hash })
 
         // 6. Save to local SwiftData
         let localFile = LocalFile(
@@ -123,7 +129,7 @@ public class VaultSyncEngine: ObservableObject {
             filename: filename ?? localURL.lastPathComponent,
             parentFolderId: parentFolderId,
             manifestVersion: 1,
-            chunkHashes: chunkDescriptors.map(\.hash),
+            chunkHashes: chunkDescriptors.map { $0.hash },
             sizeBytes: totalSize,
             modifiedAt: Date(),
             syncState: "synced",
