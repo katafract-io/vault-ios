@@ -66,7 +66,7 @@ struct FileBrowserListRow: View {
                     Button(action: onPin) {
                         Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
                     }
-                    Button(action: onDelete, role: .destructive) {
+                    Button(role: .destructive, action: onDelete) {
                         Label("Delete", systemImage: "trash")
                     }
                 }

@@ -74,6 +74,7 @@ jobs:
           security set-keychain-settings -lut 7200 "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN" >/dev/null 2>&1
 
+
       - name: Resolve SPM
         run: xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx -resolvePackageDependencies 2>&1 | tail -5
 
