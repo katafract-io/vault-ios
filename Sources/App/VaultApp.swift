@@ -1,5 +1,6 @@
 import SwiftUI
 import KatafractStyle
+import BackgroundTasks
 
 @main
 struct VaultApp: App {
@@ -10,10 +11,33 @@ struct VaultApp: App {
     @State private var splashComplete = ScreenshotMode.isActive  // skip splash in screenshot mode
 
     init() {
+        // Register BGProcessingTask identifier BEFORE the first runloop cycle.
+        VaultSyncEngine.registerBackgroundTask()
+
         let services = VaultServices()
         _services = StateObject(wrappedValue: services)
         _subscriptionStore = StateObject(
             wrappedValue: SubscriptionStore(apiClient: services.apiClient))
+
+        // Wire drain notification → syncPending() on this services instance.
+        // Using NotificationCenter because BGTaskScheduler's handler fires in a
+        // static context that doesn't have access to the VaultServices instance.
+        let engine = services.syncEngine
+        NotificationCenter.default.addObserver(
+            forName: .vaultyxDrainRequested, object: nil, queue: nil
+        ) { notification in
+            guard let task = notification.object as? BGProcessingTask else { return }
+            Task {
+                await engine.syncPending()
+                task.setTaskCompleted(success: true)
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .vaultyxDrainExpired, object: nil, queue: nil
+        ) { _ in
+            // iOS is reclaiming time — nothing to cancel here since we use
+            // URLSession.background which continues uploads OS-side.
+        }
     }
 
     var body: some Scene {
@@ -57,6 +81,9 @@ struct VaultApp: App {
                 if lock.isLocked && lock.isIdleTooLong() {
                     Task { await lock.unlock() }
                 }
+                // Opportunistic foreground drain — runs alongside BGProcessingTask
+                // so uploads progress even when the user has the app open.
+                Task { await services.syncEngine.syncPending() }
             @unknown default: break
             }
         }

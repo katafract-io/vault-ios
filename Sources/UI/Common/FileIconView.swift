@@ -40,11 +40,13 @@ struct FileIconView: View {
 
 /// Compact sync-state badge used in the file row trailing region.
 ///
-///   - `.synced`        → small gold `lock.shield.fill` (the "quietly expensive" flex)
-///   - `.uploading(x)`  → sapphire-tinted capsule with progress percent
+///   - `.synced`         → small gold `lock.shield.fill` (the "quietly expensive" flex)
+///   - `.uploading(x)`   → sapphire-tinted capsule with progress percent
 ///   - `.downloading(x)` → same shape, different glyph
-///   - `.conflict`      → amber warning triangle
-///   - `.offline`       → sapphire pin glyph (not orange — we're not Google Drive)
+///   - `.conflict`       → amber warning triangle
+///   - `.offline`        → sapphire pin glyph (not orange — we're not Google Drive)
+///   - `.pendingUpload`  → cyan "Queued" capsule (waiting for drain worker)
+///   - `.partial`        → cyan "Resuming" capsule (some chunks ACK'd, more pending)
 struct SyncStatusBadge: View {
     let state: VaultFileItem.SyncStateDisplay
 
@@ -69,7 +71,35 @@ struct SyncStatusBadge: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Color.kataSapphire.opacity(0.85))
                 .accessibilityLabel("Kept offline")
+        case .pendingUpload:
+            QueuedPill(label: "Queued")
+        case .partial:
+            QueuedPill(label: "Resuming")
         }
+    }
+}
+
+/// Cyan pill badge for files in the persist-first upload queue.
+/// Distinct from the `UploadingPill` (which tracks live progress) — this
+/// signals "accepted, will upload when connectivity allows."
+struct QueuedPill: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.up.circle")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.cyan.opacity(0.9))
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.cyan.opacity(0.9))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.cyan.opacity(0.12)))
+        .overlay(Capsule().stroke(Color.cyan.opacity(0.35), lineWidth: 0.5))
+        .accessibilityLabel(label == "Queued"
+            ? "Queued for upload" : "Upload resuming")
     }
 }
 
