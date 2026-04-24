@@ -28,7 +28,7 @@ override_status_bar_arguments("--time 9:41 --batteryState charged --batteryLevel
 # For paywall capture, switch to --mock-unsubscribed.
 # For subscribed-state UI, use --mock-subscribed.
 launch_arguments([
-  "--screenshots --mock-unsubscribed --skip-onboarding --mock-prices",
+  "--screenshots --skip-onboarding --mock-subscribed --mock-prices --force-dark-mode --seed-data sovereign-demo",
 ])
 
 # Don't open HTML preview after capture (reduces noise).
