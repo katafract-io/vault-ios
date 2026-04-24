@@ -15,7 +15,7 @@ import Foundation
     var chunkHashes: [String]       // ordered list of chunk hashes
     var sizeBytes: Int64
     var modifiedAt: Date
-    var syncState: String           // synced | uploading | downloading | conflict | deleted | pending
+    var syncState: String           // synced | uploading | downloading | conflict | deleted | pending | pending_upload | partial
     var isPinned: Bool              // pinned for offline access
     var thumbnailPath: String?      // local thumbnail cache path
 
@@ -72,7 +72,8 @@ import Foundation
     }
 }
 
-/// Pending chunk upload tracking
+/// Pending chunk upload tracking (legacy — superseded by ChunkUploadQueue).
+/// Retained to avoid schema migration errors on old installs; unused by new code.
 @Model class PendingUpload {
     var uploadId: String
     var fileId: String
@@ -102,4 +103,47 @@ import Foundation
         self.retryCount = retryCount
         self.createdAt = createdAt
     }
+}
+
+/// Per-chunk upload queue entry for the persist-first drain worker.
+///
+/// Lifecycle:
+///   pending_upload  → chunk not yet confirmed by server
+///   done            → server returned 2xx; local cache file deleted
+///
+/// Retry: `nextRetryAt` is set to `now + 2^attempts` seconds (capped at 1 hr).
+/// The drain worker skips rows where `nextRetryAt > now`.
+@Model class ChunkUploadQueue {
+    var id: UUID
+    var fileId: String
+    var chunkHash: String
+    var localPath: String           // path under ChunkCache dir
+    var size: Int64
+    var attempts: Int
+    var nextRetryAt: Date
+    var doneAt: Date?
+
+    init(
+        id: UUID = UUID(),
+        fileId: String,
+        chunkHash: String,
+        localPath: String,
+        size: Int64,
+        attempts: Int = 0,
+        nextRetryAt: Date = Date(),
+        doneAt: Date? = nil
+    ) {
+        self.id = id
+        self.fileId = fileId
+        self.chunkHash = chunkHash
+        self.localPath = localPath
+        self.size = size
+        self.attempts = attempts
+        self.nextRetryAt = nextRetryAt
+        self.doneAt = doneAt
+    }
+
+    /// True when all retries are exhausted and the drain should skip this row
+    /// until the next drain cycle resets backoff.
+    var isDone: Bool { doneAt != nil }
 }
