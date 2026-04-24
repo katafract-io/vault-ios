@@ -1,6 +1,7 @@
 import Foundation
 import StoreKit
 import UIKit
+import Combine
 
 /// StoreKit 2 subscription store for Vaultyx Sovereign tier.
 ///
@@ -43,6 +44,7 @@ public final class SubscriptionStore: ObservableObject {
 
     private let apiClient: VaultAPIClient
     private var transactionListener: Task<Void, Never>?
+    private var cancellables: Set<AnyCancellable> = []
 
     public var isSubscribed: Bool {
         if ScreenshotMode.mockSubscribed { return true }
@@ -56,11 +58,40 @@ public final class SubscriptionStore: ObservableObject {
     public init(apiClient: VaultAPIClient) {
         self.apiClient = apiClient
         transactionListener = listenForTransactions()
+
+        // Mirror Sovereign entitlement to the shared `group.com.katafract.enclave`
+        // App Group on every state transition, so sibling apps (DocArmor, etc.)
+        // can unlock without their own server round-trip.
+        $subscriptionState
+            .sink { [weak self] state in
+                Task { @MainActor [weak self] in
+                    self?.mirrorToEnclaveAppGroup(state: state)
+                }
+            }
+            .store(in: &cancellables)
+
         Task {
             _ = await restoreAuthToken()
             await loadProducts()
             await refreshEntitlements()
         }
+    }
+
+    private func mirrorToEnclaveAppGroup(state: SubscriptionState) {
+        let plan: String?
+        switch state {
+        case .redeemed(let p, _, _):    plan = p
+        case .subscribed:               plan = "sovereign"
+        case .notSubscribed, .unknown:  plan = nil
+        }
+        let token: String? = {
+            guard let data = Keychain.get(forKey: Self.authTokenKeychainKey),
+                  let str = String(data: data, encoding: .utf8), !str.isEmpty else {
+                return nil
+            }
+            return str
+        }()
+        EnclaveAppGroup.write(plan: plan, token: token)
     }
 
     deinit {
