@@ -41,14 +41,20 @@ struct VaultApp: App {
             .environmentObject(services)
             .environmentObject(subscriptionStore)
             .modelContainer(services.modelContainer)
+            .preferredColorScheme(ScreenshotMode.forceDarkMode ? .dark : nil)
             .tint(KataAccent.gold)
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background, .inactive:
-                lock.lock()
+                // Only lock if biometric is enabled; don't trigger unlock on brief transitions
+                if lock.isEnabled && lock.isIdleTooLong() {
+                    lock.lock()
+                }
             case .active:
-                if lock.isLocked {
+                lock.markActive()
+                // Trigger biometric unlock only if locked AND idle timeout has passed
+                if lock.isLocked && lock.isIdleTooLong() {
                     Task { await lock.unlock() }
                 }
             @unknown default: break
