@@ -8,6 +8,8 @@ public class BiometricLock: ObservableObject {
     @AppStorage("biometric_lock_enabled") public var isEnabled: Bool = false
 
     private let context = LAContext()
+    private var lastActiveAt: Date = Date()
+    private let lockTimeoutSeconds: TimeInterval = 30
 
     public static let shared = BiometricLock()
 
@@ -23,6 +25,16 @@ public class BiometricLock: ObservableObject {
         case .none: return "Passcode"
         @unknown default: return "Passcode"
         }
+    }
+
+    /// Mark app as active (call on scenePhase .active)
+    public func markActive() {
+        lastActiveAt = Date()
+    }
+
+    /// Check if idle timeout has passed
+    public func isIdleTooLong() -> Bool {
+        return Date().timeIntervalSince(lastActiveAt) > lockTimeoutSeconds
     }
 
     /// Lock the app (called on background/resign active)
