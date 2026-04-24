@@ -48,6 +48,21 @@ public actor VaultAPIClient {
         return try await get("/v1/token/info", authOverride: rawToken)
     }
 
+    // MARK: - Founder code redemption
+
+    /// GET /v1/founder/redeem/{code} — preview a founder code before claiming.
+    /// Returns label, claimed status, plan, and founder flag. Does not require auth.
+    public func previewFounderCode(_ code: String) async throws -> FounderCodePreviewResponse {
+        return try await get("/v1/founder/redeem/\(code)", authOverride: nil)
+    }
+
+    /// POST /v1/founder/redeem — claim a founder code and receive a server token.
+    /// Returns the token + plan details. Does not require auth (code is the credential).
+    public func redeemFounderCode(_ code: String, deviceId: String?) async throws -> FounderCodeRedeemResponse {
+        let body = FounderCodeRedeemBody(code: code, device_id: deviceId)
+        return try await post("/v1/founder/redeem", body: body, authOverride: nil)
+    }
+
     // MARK: - Vault provisioning
 
     /// POST /v1/vault/init — idempotent. Creates vault_users row on first
@@ -532,6 +547,25 @@ public struct VaultReconcileFinding: Decodable, Sendable {
     public let purged: Bool
 }
 
+// MARK: - Founder code response types
+
+public struct FounderCodePreviewResponse: Decodable, Sendable {
+    public let label: String
+    public let claimed: Bool
+    public let plan: String
+    public let is_founder: Bool
+}
+
+public struct FounderCodeRedeemResponse: Decodable, Sendable {
+    public let token: String
+    public let plan: String
+    public let is_founder: Bool
+    public let expires_at: Int?
+    public let label: String
+}
+
+// MARK: - Error types
+
 public enum VaultAPIClientError: Error, CustomStringConvertible {
     case invalidURL
     case invalidBase64
@@ -546,4 +580,11 @@ public enum VaultAPIClientError: Error, CustomStringConvertible {
         case .decodingError: return "JSON decoding error"
         }
     }
+}
+
+// MARK: - Private body types
+
+private struct FounderCodeRedeemBody: Encodable {
+    let code: String
+    let device_id: String?
 }

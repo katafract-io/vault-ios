@@ -1,5 +1,6 @@
 import Foundation
 import StoreKit
+import UIKit
 
 /// StoreKit 2 subscription store for Vaultyx Sovereign tier.
 ///
@@ -160,6 +161,63 @@ public final class SubscriptionStore: ObservableObject {
                     return "Token grants plan '\(plan)' which does not include Vaultyx Sovereign."
                 }
                 return "Token does not grant Vaultyx access."
+            }
+        }
+    }
+
+    // MARK: - Founder code redemption
+
+    /// Preview a founder code before claiming. Returns preview details or error.
+    public func previewFounderCode(_ code: String) async throws -> FounderCodePreviewResponse {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw FounderRedeemError.empty
+        }
+        return try await apiClient.previewFounderCode(trimmed)
+    }
+
+    /// Claim a founder code. On success, stores the token and flips to `.redeemed`.
+    /// Returns the response for the caller to display confirmation details.
+    public func redeemFounderCode(_ code: String) async throws -> FounderCodeRedeemResponse {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw FounderRedeemError.empty
+        }
+
+        // Preview first to check if already claimed
+        let preview = try await apiClient.previewFounderCode(trimmed)
+        guard !preview.claimed else {
+            throw FounderRedeemError.alreadyClaimed
+        }
+
+        // Get device ID and claim
+        let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        let response = try await apiClient.redeemFounderCode(trimmed, deviceId: deviceId)
+
+        // Persist token
+        await persistAuthToken(response.token)
+
+        // Update subscription state
+        let expires = response.expires_at.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        subscriptionState = .redeemed(
+            plan: response.plan,
+            isFounder: response.is_founder,
+            expiresAt: expires)
+
+        // Initialize vault
+        await ensureVaultInitialized()
+
+        return response
+    }
+
+    public enum FounderRedeemError: Error, LocalizedError {
+        case empty
+        case alreadyClaimed
+
+        public var errorDescription: String? {
+            switch self {
+            case .empty: return "Code is empty."
+            case .alreadyClaimed: return "This code has already been redeemed."
             }
         }
     }
