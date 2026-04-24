@@ -29,10 +29,19 @@ enum ScreenshotMode {
     static var skipOnboarding: Bool   { isActive && args.contains("--skip-onboarding") }
     static var forceOnboarding: Bool  { isActive && args.contains("--force-onboarding") }
     static var mockPrices: Bool       { isActive && args.contains("--mock-prices") }
+    static var forceDarkMode: Bool    { isActive && args.contains("--force-dark-mode") }
 
     static var seedData: String? {
         guard isActive else { return nil }
         guard let i = args.firstIndex(of: "--seed-data"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+
+    static var autoOpenFile: String? { flagValue("--auto-open-file") }
+    static var autoOpenVersions: String? { flagValue("--auto-open-versions") }
+
+    private static func flagValue(_ name: String) -> String? {
+        guard isActive, let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
         return args[i + 1]
     }
 

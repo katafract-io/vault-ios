@@ -41,6 +41,7 @@ struct VaultApp: App {
             .environmentObject(services)
             .environmentObject(subscriptionStore)
             .modelContainer(services.modelContainer)
+            .preferredColorScheme(ScreenshotMode.forceDarkMode ? .dark : nil)
             .tint(KataAccent.gold)
         }
         .onChange(of: scenePhase) { _, phase in
