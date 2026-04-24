@@ -326,6 +326,17 @@ struct SettingsView: View {
             } header: {
                 sectionHeader("About")
             }
+
+            Section {
+                NavigationLink {
+                    AppGroupDiagnosticsView()
+                } label: {
+                    labeledRow(icon: "checklist", title: "App Group Diagnostics")
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+            } header: {
+                sectionHeader("Diagnostics")
+            }
         }
         .scrollContentBackground(.hidden)
         .background(
