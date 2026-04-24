@@ -74,6 +74,14 @@ jobs:
           security set-keychain-settings -lut 7200 "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN" >/dev/null 2>&1
 
+      - name: Regenerate Xcode project (if xcodegen)
+        run: |
+          if [ -f "project.yml" ] && command -v xcodegen >/dev/null 2>&1; then
+            xcodegen generate 2>&1 | tail -20
+          else
+            echo "no xcodegen needed"
+          fi
+
       - name: Resolve SPM
         run: xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx -resolvePackageDependencies 2>&1 | tail -5
 

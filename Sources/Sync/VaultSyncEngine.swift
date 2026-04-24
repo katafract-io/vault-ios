@@ -270,14 +270,18 @@ public class VaultSyncEngine: ObservableObject {
 
         // Upload each file's pending chunks with bounded concurrency (8 workers)
         let sharedRows = rows // capture for task group
-        await withTaskGroup(of: Void.self) { group in
-            let semaphore = AsyncSemaphore(limit: 8)
+        await withTaskGroup(of: (fileId: String, chunkHash: String, success: Bool).self) { group in
+            let semaphore = DispatchSemaphore(value: 8)
             for row in sharedRows {
                 group.addTask {
-                    await semaphore.wait()
+                    semaphore.wait()
                     defer { semaphore.signal() }
-                    await self.drainChunk(row)
+                    return await self.drainChunk(row)
                 }
+            }
+            // Collect results and update rows on main actor
+            for await result in group {
+                await self.updateChunkResult(fileId: result.fileId, chunkHash: result.chunkHash, success: result.success, rows: rows)
             }
         }
 
@@ -289,27 +293,44 @@ public class VaultSyncEngine: ObservableObject {
         await MainActor.run { self.syncState = .idle }
     }
 
+    /// Update a chunk row after drainChunk completes.
+    private func updateChunkResult(fileId: String, chunkHash: String, success: Bool, rows: [ChunkUploadQueue]) async {
+        await MainActor.run {
+            guard let row = rows.first(where: { $0.fileId == fileId && $0.chunkHash == chunkHash }) else { return }
+            if success {
+                row.doneAt = Date()
+            } else {
+                row.attempts += 1
+                let delay = min(pow(2.0, Double(row.attempts)), 3600.0)
+                row.nextRetryAt = Date().addingTimeInterval(delay)
+            }
+            try? modelContext.save()
+        }
+    }
+
     /// Upload one chunk. On failure: increment attempts + backoff nextRetryAt.
-    private func drainChunk(_ row: ChunkUploadQueue) async {
+    /// Returns fileId + chunkHash for row lookup + update on main thread.
+    private func drainChunk(_ row: ChunkUploadQueue) async -> (fileId: String, chunkHash: String, success: Bool) {
+        let fileId = row.fileId
+        let chunkHash = row.chunkHash
+
         // Dedup: HEAD the chunk on the server
         let alreadyUploaded = (try? await apiClient.chunkExists(
-            fileId: row.fileId, chunkHash: row.chunkHash)) ?? false
+            fileId: fileId, chunkHash: chunkHash)) ?? false
 
         if alreadyUploaded {
-            await markChunkDone(row)
-            return
+            return (fileId, chunkHash, true)
         }
 
         // Read from local cache
-        guard let data = ChunkCache.get(hash: row.chunkHash) else {
+        guard let data = ChunkCache.get(hash: chunkHash) else {
             // Cache file gone — mark done and move on (can't retry without data)
-            await markChunkDone(row)
-            return
+            return (fileId, chunkHash, true)
         }
 
         do {
             let putURL = try await apiClient.presignPut(
-                fileId: row.fileId, chunkHash: row.chunkHash)
+                fileId: fileId, chunkHash: chunkHash)
             var req = URLRequest(url: putURL)
             req.httpMethod = "PUT"
             req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
@@ -321,23 +342,11 @@ public class VaultSyncEngine: ObservableObject {
                 throw VaultSyncEngineError.httpError(statusCode: code)
             }
             // ACK received — delete local cache file immediately
-            ChunkCache.delete(hash: row.chunkHash)
-            await markChunkDone(row)
+            ChunkCache.delete(hash: chunkHash)
+            return (fileId, chunkHash, true)
         } catch {
-            // Backoff: 2^attempts seconds, cap at 1 hour
-            await MainActor.run {
-                row.attempts += 1
-                let delay = min(pow(2.0, Double(row.attempts)), 3600.0)
-                row.nextRetryAt = Date().addingTimeInterval(delay)
-                try? modelContext.save()
-            }
-        }
-    }
-
-    private func markChunkDone(_ row: ChunkUploadQueue) async {
-        await MainActor.run {
-            row.doneAt = Date()
-            try? modelContext.save()
+            // Return failure code; MainActor will increment attempts + backoff
+            return (fileId, chunkHash, false)
         }
     }
 
@@ -573,25 +582,6 @@ private struct ManifestSidecar: Codable {
     let chunkHashes: [String]
 }
 
-// MARK: - Async semaphore (bounded concurrency without Dispatch)
-
-/// Simple counting semaphore for Swift concurrency — limits drain worker parallelism.
-private actor AsyncSemaphore {
-    private var count: Int
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    init(limit: Int) { self.count = limit }
-
-    func wait() async {
-        if count > 0 { count -= 1; return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    func signal() {
-        if waiters.isEmpty { count += 1 }
-        else { waiters.removeFirst().resume() }
-    }
-}
 
 // MARK: - Notification names
 

@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 118" width="100" height="118">
+  <defs>
+    <!-- Panel fills -->
+    <linearGradient id="s-left" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#3c3c72"/>
+      <stop offset="100%" stop-color="#26265a"/>
+    </linearGradient>
+    <linearGradient id="s-right" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#323266"/>
+      <stop offset="100%" stop-color="#1e1e50"/>
+    </linearGradient>
+    <linearGradient id="s-lower" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#24244e"/>
+      <stop offset="100%" stop-color="#10102a"/>
+    </linearGradient>
+    <linearGradient id="s-band" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#02020a"/>
+      <stop offset="100%" stop-color="#010106"/>
+    </linearGradient>
+    <linearGradient id="s-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#48487e"/>
+      <stop offset="100%" stop-color="#202050"/>
+    </linearGradient>
+
+    <!-- Slit glow gradient (softened — no white-hot center) -->
+    <linearGradient id="s-slit" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="rgba(0,240,255,0)"/>
+      <stop offset="20%"  stop-color="rgba(0,240,255,0.55)"/>
+      <stop offset="50%"  stop-color="rgba(0,240,255,0.75)"/>
+      <stop offset="80%"  stop-color="rgba(0,240,255,0.55)"/>
+      <stop offset="100%" stop-color="rgba(0,240,255,0)"/>
+    </linearGradient>
+
+    <!-- Wide ambient halo — absolute coords so Safari doesn't blow up the bounding box -->
+    <filter id="halo" filterUnits="userSpaceOnUse" x="-38" y="-42" width="176" height="204">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+      </feMerge>
+    </filter>
+
+    <!-- Tight edge glow — absolute coords, tight spread -->
+    <filter id="edge-glow" filterUnits="userSpaceOnUse" x="-6" y="-6" width="112" height="132">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Cyan bloom for slit (slit is at x=18 y=51 w=64 h=6) — absolute coords -->
+    <filter id="cyan-bloom" filterUnits="userSpaceOnUse" x="6" y="36" width="88" height="42">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="wide"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="tight"/>
+      <feMerge>
+        <feMergeNode in="wide"/>
+        <feMergeNode in="tight"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- ── LAYER 1: AMBIENT HALO (wide gold behind the whole shield) ── -->
+  <polygon
+    points="4,4 96,4 96,52 82,84 66,108 50,116 34,108 18,84 4,52"
+    fill="#1a2080" opacity="0.35"
+    filter="url(#halo)"/>
+
+  <!-- ── LAYER 2: SHIELD STRUCTURE ── -->
+
+  <!-- Outer rim -->
+  <polygon
+    points="4,4 96,4 96,52 82,84 66,108 50,116 34,108 18,84 4,52"
+    fill="url(#s-rim)"/>
+
+  <!-- Shield body -->
+  <polygon
+    points="9,9 91,9 91,51 78,81 63,104 50,111 37,104 22,81 9,51"
+    fill="#0e0e26"/>
+
+  <!-- Upper fields -->
+  <polygon points="9,9 50,9 50,46 9,46"  fill="url(#s-left)"/>
+  <polygon points="50,9 91,9 91,46 50,46" fill="url(#s-right)"/>
+
+  <!-- Charge band -->
+  <polygon points="9,46 91,46 91,62 9,62" fill="url(#s-band)"/>
+
+  <!-- Lower field -->
+  <polygon points="9,62 91,62 78,81 63,104 50,111 37,104 22,81" fill="url(#s-lower)"/>
+
+  <!-- ── LAYER 3: CYAN SLIT WITH BLOOM ── -->
+  <!-- Bloom pass -->
+  <rect x="18" y="51" width="64" height="6" rx="1" fill="url(#s-slit)" filter="url(#cyan-bloom)"/>
+  <!-- Sharp pass -->
+  <rect x="18" y="51" width="64" height="6" rx="1" fill="url(#s-slit)"/>
+  <!-- Gold frame top edge -->
+  <line x1="18" y1="51" x2="82" y2="51" stroke="#C9973A" stroke-width="0.7" opacity="0.9"/>
+
+  <!-- ── LAYER 4: GOLD STRUCTURAL LINES WITH EDGE GLOW ── -->
+
+  <!-- Outer rim border — glowing gold edge -->
+  <polygon
+    points="4,4 96,4 96,52 82,84 66,108 50,116 34,108 18,84 4,52"
+    fill="none" stroke="#C9973A" stroke-width="1.6" opacity="0.95"
+    filter="url(#edge-glow)"/>
+
+  <!-- Bright top edge — the crown of the shield -->
+  <line x1="4" y1="4" x2="96" y2="4"
+    stroke="#D4A855" stroke-width="1.6" opacity="1"
+    filter="url(#edge-glow)"/>
+
+  <!-- Inner body border -->
+  <polygon
+    points="9,9 91,9 91,51 78,81 63,104 50,111 37,104 22,81 9,51"
+    fill="none" stroke="#C9973A" stroke-width="0.6" opacity="0.55"/>
+
+  <!-- Center spine -->
+  <line x1="50" y1="4" x2="50" y2="116"
+    stroke="#C9973A" stroke-width="1.6" opacity="0.95"
+    filter="url(#edge-glow)"/>
+
+  <!-- Band edges -->
+  <line x1="9"  y1="46" x2="91" y2="46" stroke="#C9973A" stroke-width="1.4" opacity="0.95"/>
+  <line x1="9"  y1="62" x2="91" y2="62" stroke="#C9973A" stroke-width="1.4" opacity="0.95"/>
+
+  <!-- Diagonal facets — upper fields -->
+  <line x1="9"  y1="9"  x2="50" y2="46" stroke="#C9973A" stroke-width="0.9" opacity="0.7"/>
+  <line x1="91" y1="9"  x2="50" y2="46" stroke="#C9973A" stroke-width="0.9" opacity="0.7"/>
+
+  <!-- Chevron — lower field -->
+  <line x1="9"  y1="62" x2="50" y2="90" stroke="#C9973A" stroke-width="0.8" opacity="0.6"/>
+  <line x1="91" y1="62" x2="50" y2="90" stroke="#C9973A" stroke-width="0.8" opacity="0.6"/>
+</svg>
