@@ -156,13 +156,43 @@ public class VaultSyncEngine: ObservableObject {
         _ chunkStream: AsyncThrowingStream<(hash: String, data: Data), Error>,
         fileId: String
     ) async throws {
-        let maxWorkers = 4
+        // Bug fix (2026-04-24): each worker was calling makeAsyncIterator() independently,
+        // creating separate iterators over a single stream — causing duplicates/skips.
+        // Now: single shared iterator, guarded by an actor, consumed by 8 concurrent workers.
+        //
+        // Parallelism bump: 4 → 8 to match download pipeline.
+        // Pipeline depth: each worker pre-warms presign for next chunk while uploading current,
+        // reducing RTT bottleneck on fast links.
+
+        let maxWorkers = 8
+        let sharedIterator = ChunkIteratorActor(chunkStream.makeAsyncIterator())
+
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<maxWorkers {
                 group.addTask {
-                    var iterator = chunkStream.makeAsyncIterator()
-                    while let chunk = try await iterator.next() {
-                        let url = try await self.apiClient.presignPut(fileId: fileId, chunkHash: chunk.hash)
+                    var nextPresignTask: Task<URL, Error>? = nil
+
+                    while let chunk = try await sharedIterator.next() {
+                        // Presign the current chunk (or use the one we pre-warmed from last iteration).
+                        let url: URL
+                        if let prewarmed = nextPresignTask {
+                            url = try await prewarmed.value
+                            nextPresignTask = nil
+                        } else {
+                            url = try await self.apiClient.presignPut(fileId: fileId, chunkHash: chunk.hash)
+                        }
+
+                        // Pre-warm presign for the next chunk (pipeline depth 2).
+                        // Peek at the next chunk to presign; if none exists, this will be nil.
+                        nextPresignTask = Task {
+                            if let nextChunk = try await sharedIterator.peek() {
+                                return try await self.apiClient.presignPut(fileId: fileId, chunkHash: nextChunk.hash)
+                            } else {
+                                throw VaultSyncEngineError.noNextChunk
+                            }
+                        }
+
+                        // Upload the current chunk with presigned URL.
                         var req = URLRequest(url: url)
                         req.httpMethod = "PUT"
                         req.httpBody = chunk.data
@@ -174,9 +204,40 @@ public class VaultSyncEngine: ObservableObject {
                             throw VaultSyncEngineError.httpError(statusCode: code)
                         }
                     }
+
+                    // Clean up any dangling presign task.
+                    nextPresignTask?.cancel()
                 }
             }
             try await group.waitForAll()
+        }
+    }
+
+    /// Actor protecting shared iteration over a single AsyncThrowingStream.
+    /// Ensures that only one worker consumes from the stream at a time,
+    /// and that all workers share the same iterator state.
+    private actor ChunkIteratorActor {
+        private var iterator: AsyncThrowingStream<(hash: String, data: Data), Error>.AsyncIterator
+        private var peeked: (hash: String, data: Data)?
+
+        init(_ iterator: AsyncThrowingStream<(hash: String, data: Data), Error>.AsyncIterator) {
+            self.iterator = iterator
+            self.peeked = nil
+        }
+
+        func next() async throws -> (hash: String, data: Data)? {
+            if let cached = peeked {
+                peeked = nil
+                return cached
+            }
+            return try await iterator.next()
+        }
+
+        func peek() async throws -> (hash: String, data: Data)? {
+            if peeked == nil {
+                peeked = try await iterator.next()
+            }
+            return peeked
         }
     }
 
@@ -307,4 +368,5 @@ public enum VaultSyncEngineError: Error {
     case decryptionFailed
     case manifestDecodeError
     case httpError(statusCode: Int)
+    case noNextChunk
 }
