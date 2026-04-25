@@ -119,7 +119,7 @@ jobs:
           set -e
 
       - name: Clean
-        run: xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx clean
+        run: xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx -destination "generic/platform=iOS" clean
 
       - name: Archive
         env:
