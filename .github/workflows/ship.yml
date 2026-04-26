@@ -280,23 +280,6 @@ jobs:
       actions: write
       contents: read
     steps:
-      - name: Notify ci-autofix endpoint
-        run: |
-          curl -s -X POST https://webhooks.katafract.io/webhook/ci-autofix \
-            -H "Content-Type: application/json" \
-            -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
-            -d "{
-              \"repo\": \"${{ github.repository }}\",
-              \"run_id\": ${{ github.run_id }},
-              \"run_number\": ${{ github.run_number }},
-              \"run_attempt\": ${{ github.run_attempt }},
-              \"workflow\": \"${{ github.workflow }}\",
-              \"head_sha\": \"${{ github.sha }}\",
-              \"head_branch\": \"${{ github.ref_name }}\",
-              \"actor\": \"${{ github.actor }}\",
-              \"log_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-            }" || true
-
       - name: Wait before retry
         run: sleep 120
 
