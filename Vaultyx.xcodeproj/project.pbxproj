@@ -697,6 +697,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A0E1F2B3CC7B4E8A91C3D5F6 /* AppGroupDiagnosticsView.swift in Sources */,
 				5335A8A41F531B95DD25B633 /* BIP39WordList.swift in Sources */,
 				898A5F2A42F458D9140D0EC5 /* BackedUpAsset.swift in Sources */,
 				5C2AB085574802735BEB0B8B /* BiometricLock.swift in Sources */,
