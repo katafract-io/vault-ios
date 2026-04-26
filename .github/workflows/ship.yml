@@ -174,11 +174,46 @@ jobs:
           ls -la "$APP/PlugIns/" 2>/dev/null || echo "(no extensions)"
 
       - name: Export IPA
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
+          set -eo pipefail
+          # Clean stale export dir so a failed export can NOT silently leak a prior run's IPA
+          rm -rf "$EXPORT_PATH"
+          mkdir -p "$EXPORT_PATH"
+
+          # -allowProvisioningUpdates + ASC API keys lets xcodebuild auto-regenerate the
+          # provisioning profile (e.g. when an App Group entitlement was added to the App ID
+          # but the cached profile is stale).
           xcodebuild -exportArchive \
             -archivePath "$ARCHIVE_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS" \
-            -exportPath "$EXPORT_PATH" 2>&1 | grep -E "error:|\*\* " | tail -10
+            -exportPath "$EXPORT_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee /tmp/export.log
+
+          # Fail loudly if no fresh IPA was produced
+          if ! ls "$EXPORT_PATH"/*.ipa >/dev/null 2>&1; then
+            echo "::error::Export produced no .ipa — see /tmp/export.log"
+            tail -50 /tmp/export.log
+            exit 1
+          fi
+
+          # Sanity check: IPA's CFBundleVersion MUST match BUILD_NUM (catches xcarchive/IPA divergence bugs)
+          APP_PLIST=$(unzip -l "$EXPORT_PATH"/*.ipa 2>/dev/null | grep -oE "Payload/[^/]+\.app/Info\.plist" | head -1)
+          if [ -z "$APP_PLIST" ]; then
+            echo "::error::Could not locate Info.plist inside IPA"; exit 1
+          fi
+          IPA_VER=$(unzip -p "$EXPORT_PATH"/*.ipa "$APP_PLIST" 2>/dev/null | plutil -convert xml1 -o - - 2>/dev/null | python3 -c 'import sys,re; m=re.search(r"<key>CFBundleVersion</key>\s*<string>(\d+)</string>", sys.stdin.read()); print(m.group(1) if m else "")')
+          if [ "$IPA_VER" != "$BUILD_NUM" ]; then
+            echo "::error::IPA CFBundleVersion=$IPA_VER does not match BUILD_NUM=$BUILD_NUM (likely stale IPA from earlier run)"
+            exit 1
+          fi
+          echo "IPA cfBundleVersion=$IPA_VER matches BUILD_NUM=$BUILD_NUM"
+
           ls -la "$EXPORT_PATH"
 
       - name: Notify Matrix - Archive succeeded
