@@ -101,8 +101,8 @@ jobs:
             BUILD_NUM=$((GITHUB_RUN_NUMBER + 400))
           else
             ASC_MAX=$(curl -s -m 10 -H "Authorization: Bearer $JWT" \
-              "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&sort=-version&limit=1&fields[builds]=version" \
-              | python3 -c 'import sys,json; d=json.load(sys.stdin).get("data") or [{}]; v=(d[0].get("attributes") or {}).get("version") or "0"; print(int(v) if v.isdigit() else 0)' 2>/dev/null || echo 0)
+              "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&sort=-uploadedDate&limit=50&fields[builds]=version" \
+              | python3 -c 'import sys,json; d=json.load(sys.stdin).get("data") or []; vs=[int((b.get("attributes") or {}).get("version") or "0") for b in d if ((b.get("attributes") or {}).get("version") or "").isdigit()]; print(max(vs) if vs else 0)' 2>/dev/null || echo 0)
             ASC_MAX=${ASC_MAX:-0}
             RUN_BUILD=$((GITHUB_RUN_NUMBER + 400))
             if [ "$ASC_MAX" -ge "$RUN_BUILD" ]; then
@@ -194,6 +194,10 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee /tmp/export.log
+          # Fail loudly if export didn't produce an IPA or the log says EXPORT FAILED
+          if grep -q "EXPORT FAILED" /tmp/export.log; then
+            echo "::error::Export IPA failed — see log above"; exit 1
+          fi
 
           # Fail loudly if no fresh IPA was produced
           if ! ls "$EXPORT_PATH"/*.ipa >/dev/null 2>&1; then
