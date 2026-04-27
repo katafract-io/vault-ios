@@ -59,6 +59,9 @@ targets:
       - path: VaultyxLiveActivity
         excludes:
           - "**/.DS_Store"
+          - Info.plist
+    resources:
+      - path: VaultyxLiveActivity/Info.plist
     entitlements:
       path: VaultyxLiveActivity/VaultyxLiveActivity.entitlements
       properties:
@@ -81,6 +84,9 @@ targets:
       - path: FileProvider
         excludes:
           - "**/.DS_Store"
+          - Info.plist
+    resources:
+      - path: FileProvider/Info.plist
     entitlements:
       path: FileProvider/VaultFileProvider.entitlements
       properties:
@@ -102,6 +108,9 @@ targets:
       - path: ShareExtension
         excludes:
           - "**/.DS_Store"
+          - Info.plist
+    resources:
+      - path: ShareExtension/Info.plist
     entitlements:
       path: ShareExtension/VaultShare.entitlements
       properties:
