@@ -18,6 +18,7 @@ struct FileBrowserView: View {
     @State private var selectedIds = Set<String>()
     @State private var isEditing = false
     @State private var previewURL: URL?
+    @State private var previewIsLoading = false
     @State private var renameTarget: VaultFileItem?
     @State private var renamingName: String = ""
     @State private var showDeleteConfirmation = false
@@ -263,26 +264,41 @@ struct FileBrowserView: View {
         }
         .sheet(item: $selectedFile, onDismiss: {
             previewURL = nil
+            previewIsLoading = false
             // selectedFile is already nil here (that's what triggered dismiss).
             // Clear all loading states — the tap guard below blocks re-entry
             // during an in-flight materialize, but on dismiss we're done.
             fileLoadingStates.removeAll()
         }) { file in
-            if let url = previewURL {
-                FilePreviewSheet(fileURL: url, displayName: file.name)
-            } else {
-                FilePreviewLoadingSheet(displayName: file.name)
-                    .task {
-                        let url = await viewModel.materializeLocalURL(for: file)
-                        if let url {
-                            previewURL = url
-                        } else {
-                            // Dismiss the sheet; the error alert below will
-                            // surface the reason via viewModel.error.
-                            selectedFile = nil
-                            fileLoadingStates.remove(file.id)
-                        }
+            // Kick off the materialize task immediately on sheet present, but show
+            // loading until URL is ready. Using a separate @State flag ensures the
+            // task stays alive even if parent re-renders — the sheet itself owns the
+            // async work and is only dismissed when selectedFile becomes nil.
+            Group {
+                if let url = previewURL {
+                    FilePreviewSheet(fileURL: url, displayName: file.name)
+                } else {
+                    FilePreviewLoadingSheet(displayName: file.name)
+                }
+            }
+            .onAppear {
+                // onAppear fires once when sheet is first presented, even if parent
+                // redraws later. Async task is guaranteed to run until sheet dismisses.
+                guard !previewIsLoading else { return }
+                previewIsLoading = true
+
+                Task {
+                    let url = await viewModel.materializeLocalURL(for: file)
+                    if let url {
+                        previewURL = url
+                    } else {
+                        // Dismiss the sheet; the error alert below will
+                        // surface the reason via viewModel.error.
+                        selectedFile = nil
+                        fileLoadingStates.remove(file.id)
                     }
+                    previewIsLoading = false
+                }
             }
         }
         .sheet(item: $shareFile, onDismiss: {
