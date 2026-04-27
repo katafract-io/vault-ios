@@ -6,6 +6,9 @@
 # - iPhone 6.7": iPhone 16 Pro Max / iPhone 17 Pro Max  → ASC: APP_IPHONE_67 (1320×2868)
 # - iPad Pro 13": iPad Pro 13-inch (M4 / M5)            → ASC: APP_IPAD_PRO_3GEN_129 (2064×2752)
 # Add iPhone 6.5", 5.5", iPad Pro 12.9" only if your minOsVersion supports the older device classes.
+
+project("./Vaultyx.xcodeproj")
+
 devices([
   "iPhone 17 Pro Max",
   "iPad Pro 13-inch (M5)",
