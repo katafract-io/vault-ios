@@ -30,7 +30,7 @@ concurrency:
 jobs:
   regenerate:
     name: Capture + upload screenshots
-    runs-on: [ self-hosted, macOS, ios-build ]
+    runs-on: [ self-hosted, macOS, ios-build, ARM64 ]
     timeout-minutes: 60
 
     env:
