@@ -58,7 +58,7 @@ public actor VaultAPIClient {
 
     /// POST /v1/founder/redeem — claim a founder code and receive a server token.
     /// Returns the token + plan details. Does not require auth (code is the credential).
-    public func redeemFounderCode(_ code: String, deviceId: String?) async throws -> FounderCodeRedeemResponse {
+    public func redeemFounderCode(_ code: String, deviceId: String) async throws -> FounderCodeRedeemResponse {
         let body = FounderCodeRedeemBody(code: code, device_id: deviceId)
         return try await post("/v1/founder/redeem", body: body, authOverride: nil)
     }
@@ -601,5 +601,5 @@ public enum VaultAPIClientError: Error, CustomStringConvertible {
 
 private struct FounderCodeRedeemBody: Encodable {
     let code: String
-    let device_id: String?
+    let device_id: String
 }

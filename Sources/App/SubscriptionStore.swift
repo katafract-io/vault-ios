@@ -15,6 +15,9 @@ import Combine
 ///      `GET /v1/token/info`. Works in simulator too.
 ///
 /// Both paths store the resulting token in Keychain (iCloud-synced) and
+///      `GET /v1/token/info`. Works in simulator too.
+///
+/// Both paths store the resulting token in Keychain (iCloud-synced) and
 /// inject it into `VaultAPIClient` for all subsequent requests.
 @MainActor
 public final class SubscriptionStore: ObservableObject {
@@ -215,15 +218,18 @@ public final class SubscriptionStore: ObservableObject {
             throw FounderRedeemError.empty
         }
 
-        // Preview first to check if already claimed
-        let preview = try await apiClient.previewFounderCode(trimmed)
-        guard !preview.claimed else {
-            throw FounderRedeemError.alreadyClaimed
+        // Get device ID and claim; handle server-side already-claimed response
+        let deviceId = await MainActor.run { UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString }
+        let response: FounderCodeRedeemResponse
+        do {
+            response = try await apiClient.redeemFounderCode(trimmed, deviceId: deviceId)
+        } catch let error as VaultAPIClientError {
+            // Server returns HTTP 409 (or similar conflict) with "already_claimed" body
+            if case .httpError(_, let body) = error, body.contains("already_claimed") {
+                throw FounderRedeemError.alreadyClaimed
+            }
+            throw error
         }
-
-        // Get device ID and claim
-        let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
-        let response = try await apiClient.redeemFounderCode(trimmed, deviceId: deviceId)
 
         // Persist token
         await persistAuthToken(response.token)
