@@ -34,6 +34,8 @@ class FileBrowserViewModel: ObservableObject {
     /// off a background sync to pull any remote changes from other devices.
     /// The on-screen list renders instantly from cache; the sync updates it
     /// asynchronously when new data arrives.
+    ///
+    /// In ScreenshotMode, injects synthetic seed data instead of hitting the API.
     func load(folderId: String?) async {
         self.currentFolderId = folderId
         isLoading = true
@@ -51,6 +53,12 @@ class FileBrowserViewModel: ObservableObject {
             let context = ModelContext(services.modelContainer)
             let folders = (try? context.fetch(FetchDescriptor<VaultFolder>())) ?? []
             folderName = folders.first { $0.folderId == folderId }?.name ?? "Folder"
+        }
+
+        // Inject seed data if in ScreenshotMode
+        if ScreenshotMode.seedData != nil {
+            injectSeedData()
+            return
         }
 
         refreshFromCache()
@@ -504,5 +512,51 @@ class FileBrowserViewModel: ObservableObject {
                 isPinned: !updated.isPinned,
                 thumbnailImage: updated.thumbnailImage)
         }
+    }
+
+    /// Injects synthetic seed data for XCUITest screenshot runs.
+    /// Bypasses all API calls and live sync.
+    private func injectSeedData() {
+        var seededItems: [VaultFileItem] = []
+
+        // Seed folders
+        let folders = [
+            ("Tax Returns", UUID().uuidString.lowercased()),
+            ("Family Photos", UUID().uuidString.lowercased()),
+            ("Passports", UUID().uuidString.lowercased()),
+        ]
+        for (name, id) in folders {
+            seededItems.append(VaultFileItem(
+                id: id,
+                name: name,
+                isFolder: true,
+                sizeBytes: 0,
+                modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...30)),
+                syncState: .synced,
+                isPinned: false
+            ))
+        }
+
+        // Seed files with varied types, sizes, and states
+        let files = [
+            ("2024 W-2.pdf", 145 * 1024, false, SyncState.synced),
+            ("Vacation Album.zip", 48_300 * 1024, false, SyncState.synced),
+            ("Driver License.heic", 2_100 * 1024, true, SyncState.synced),
+            ("Mortgage Notes.docx", 87 * 1024, false, SyncState.pending),
+            ("Garden Shed Receipt.pdf", 612 * 1024, false, SyncState.synced),
+        ]
+        for (name, sizeBytes, isPinned, state) in files {
+            seededItems.append(VaultFileItem(
+                id: UUID().uuidString.lowercased(),
+                name: name,
+                isFolder: false,
+                sizeBytes: Int64(sizeBytes),
+                modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...60)),
+                syncState: state,
+                isPinned: isPinned
+            ))
+        }
+
+        items = seededItems
     }
 }
