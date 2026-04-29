@@ -20,6 +20,7 @@ platform :ios do
     )
     deliver(
       api_key: api_key,
+      app_identifier: ENV["BUNDLE_ID"],
       skip_binary_upload: true,
       skip_metadata: true,
       skip_app_version_update: true,
@@ -38,6 +39,7 @@ platform :ios do
     )
     deliver(
       api_key: api_key,
+      app_identifier: ENV["BUNDLE_ID"],
       skip_binary_upload: true,
       skip_metadata: true,
       skip_app_version_update: true,
