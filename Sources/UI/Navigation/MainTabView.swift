@@ -519,8 +519,10 @@ struct SettingsView: View {
         // Inject seed data if in ScreenshotMode
         if ScreenshotMode.seedData != nil {
             vaultMeta = VaultMetaResponse(
+                user_id: "screenshot-seed",
                 usage_bytes: 342 * 1024 * 1024 * 1024,  // 342 GB
-                quota_bytes: 1024 * 1024 * 1024 * 1024  // 1 TB
+                quota_bytes: 1024 * 1024 * 1024 * 1024, // 1 TB
+                quota_exceeded: false
             )
             return
         }
