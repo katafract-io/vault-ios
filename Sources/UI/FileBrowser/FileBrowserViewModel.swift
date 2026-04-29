@@ -539,11 +539,11 @@ class FileBrowserViewModel: ObservableObject {
 
         // Seed files with varied types, sizes, and states
         let files = [
-            ("2024 W-2.pdf", 145 * 1024, false, SyncState.synced),
-            ("Vacation Album.zip", 48_300 * 1024, false, SyncState.synced),
-            ("Driver License.heic", 2_100 * 1024, true, SyncState.synced),
-            ("Mortgage Notes.docx", 87 * 1024, false, SyncState.pending),
-            ("Garden Shed Receipt.pdf", 612 * 1024, false, SyncState.synced),
+            ("2024 W-2.pdf", 145 * 1024, false, VaultFileItem.SyncStateDisplay.synced),
+            ("Vacation Album.zip", 48_300 * 1024, false, VaultFileItem.SyncStateDisplay.synced),
+            ("Driver License.heic", 2_100 * 1024, true, VaultFileItem.SyncStateDisplay.synced),
+            ("Mortgage Notes.docx", 87 * 1024, false, VaultFileItem.SyncStateDisplay.pendingUpload),
+            ("Garden Shed Receipt.pdf", 612 * 1024, false, VaultFileItem.SyncStateDisplay.synced),
         ]
         for (name, sizeBytes, isPinned, state) in files {
             seededItems.append(VaultFileItem(
