@@ -21,14 +21,19 @@ final class StorageUsageCalculator {
 struct StorageQuotaView: View {
     let usedBytes: Int64
     let totalBytes: Int64
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     /// `nil` for `usedBytes` renders "—" instead of a garbage number while
     /// usage is still being computed (or there's no data yet).
     private var hasUsage: Bool { usedBytes >= 0 }
 
+    private var capacityBytes: Int64 {
+        subscriptionStore.activeCapacity?.bytes ?? totalBytes
+    }
+
     var progress: Double {
-        guard hasUsage, totalBytes > 0 else { return 0 }
-        return min(Double(usedBytes) / Double(totalBytes), 1.0)
+        guard hasUsage, capacityBytes > 0 else { return 0 }
+        return min(Double(usedBytes) / Double(capacityBytes), 1.0)
     }
 
     var body: some View {
@@ -38,14 +43,14 @@ struct StorageQuotaView: View {
                     .font(.headline)
                 Spacer()
                 Text(hasUsage
-                     ? "\(formatted(usedBytes)) of \(formatted(totalBytes))"
-                     : "— of \(formatted(totalBytes))")
+                     ? "\(formatted(usedBytes)) of \(formatted(capacityBytes))"
+                     : "— of \(formatted(capacityBytes))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             KataProgressRing(progress: progress)
             Text(hasUsage
-                 ? "\(formatted(totalBytes - usedBytes)) available"
+                 ? "\(formatted(capacityBytes - usedBytes)) available"
                  : "Usage not yet calculated")
                 .font(.caption)
                 .foregroundStyle(.secondary)

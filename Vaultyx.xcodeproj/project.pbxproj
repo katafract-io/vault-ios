@@ -57,8 +57,8 @@
 		92B2CCF639BD26855C309B5D /* VaultActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E11BD8069366B6D702F962F /* VaultActivityManager.swift */; };
 		93F96A9CFF784471A6030B61 /* FileIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7599892F6A4C813BA72A0119 /* FileIconView.swift */; };
 		9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */; };
-		A0E1F2B3CC7B4E8A91C3D5F6 /* AppGroupDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5E6A7B8C9D0E1F2 /* AppGroupDiagnosticsView.swift */; };
 		9A51A23C185C664790A6DB49 /* KatafractStyle in Frameworks */ = {isa = PBXBuildFile; productRef = C731E6EA2BCFCB88CFEA28B3 /* KatafractStyle */; };
+		A0E1F2B3CC7B4E8A91C3D5F6 /* AppGroupDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5E6A7B8C9D0E1F2 /* AppGroupDiagnosticsView.swift */; };
 		A32B8BE42C5BC137DF1703EF /* VaultKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57206996A054400EEF17E246 /* VaultKeyManager.swift */; };
 		AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC99130FB3DFEE8DB5125AA1 /* FileVersionsView.swift */; };
 		AC9BC416E472F06FB1FD5475 /* EnclaveAppGroupWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3A0314157A829A931228C0 /* EnclaveAppGroupWriter.swift */; };
@@ -77,6 +77,7 @@
 		E481B503E212216C97EF983C /* FileGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F55995F7286672B4B213056 /* FileGridView.swift */; };
 		E66703D0A812B99E037A6F5C /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C82E3F9197932F80C91151 /* LockScreenView.swift */; };
 		E819F4F755796FE2B7FAE42A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */; };
+		F29337BD12474B13C36EF0F1 /* CapacityPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E4CBF6623D63357E5B61B0A /* CapacityPickerView.swift */; };
 		F458FECDE0791AE6B7923125 /* RecoveryPhrase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */; };
 		F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842697680013FF51CC00E52D /* FounderRedeemSheet.swift */; };
 		FDD97B0168192EC903D8F70A /* DocArmorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A1424DE4DC3454E083764A /* DocArmorBridge.swift */; };
@@ -167,13 +168,13 @@
 		707B03DB138F4BCB577609CF /* VaultyxUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VaultyxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7599892F6A4C813BA72A0119 /* FileIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIconView.swift; sourceTree = "<group>"; };
 		7D3A4CDF3CC4CDE16F7B08CA /* VaultyxLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxLiveActivity.swift; sourceTree = "<group>"; };
-		B1C2D3E4F5E6A7B8C9D0E1F2 /* AppGroupDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupDiagnosticsView.swift; sourceTree = "<group>"; };
 		822D4EFE0CEE5C0D5965D1B5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		842697680013FF51CC00E52D /* FounderRedeemSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FounderRedeemSheet.swift; sourceTree = "<group>"; };
 		86771A820BF7FC05675B4272 /* VaultManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultManifest.swift; sourceTree = "<group>"; };
 		87E84DB85BD2068C369A0E40 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		88A2A54A57CEADCA403804E1 /* RecycleBinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecycleBinView.swift; sourceTree = "<group>"; };
 		896ACA5F82A229E1E822031F /* FileUploadProgressBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUploadProgressBanner.swift; sourceTree = "<group>"; };
+		8E4CBF6623D63357E5B61B0A /* CapacityPickerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CapacityPickerView.swift; sourceTree = "<group>"; };
 		901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotMode.swift; sourceTree = "<group>"; };
 		934B71E7AE2335EB96BE6F9E /* Vaultyx.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Vaultyx.entitlements; sourceTree = "<group>"; };
 		94C764086C160239DF5BEBF5 /* UndoToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoToast.swift; sourceTree = "<group>"; };
@@ -190,6 +191,7 @@
 		A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSplashView.swift; sourceTree = "<group>"; };
 		AF366EE5FA273857E1DB4409 /* VaultServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultServices.swift; sourceTree = "<group>"; };
 		B0C82E3F9197932F80C91151 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5E6A7B8C9D0E1F2 /* AppGroupDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupDiagnosticsView.swift; sourceTree = "<group>"; };
 		B734F330E1459EE76E1B8FF0 /* VaultFileProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VaultFileProvider.entitlements; sourceTree = "<group>"; };
 		BA7EC3FB8141B0F4D7CC1960 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserView.swift; sourceTree = "<group>"; };
 		BAE93C79B5A93F77289A14A2 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
@@ -441,6 +443,7 @@
 				3055AC015F92D31B18995F7D /* RestoreFromPhraseView.swift */,
 				DDEE00DCCBEBF9B2575EEBFE /* TokenRedemptionView.swift */,
 				94C764086C160239DF5BEBF5 /* UndoToast.swift */,
+				8E4CBF6623D63357E5B61B0A /* CapacityPickerView.swift */,
 			);
 			path = Common;
 			sourceTree = "<group>";
@@ -513,8 +516,6 @@
 				CAFBCDEF8F153D855A2A3876 /* PBXTargetDependency */,
 			);
 			name = VaultyxUITests;
-			packageProductDependencies = (
-			);
 			productName = VaultyxUITests;
 			productReference = 707B03DB138F4BCB577609CF /* VaultyxUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -530,8 +531,6 @@
 			dependencies = (
 			);
 			name = VaultFileProvider;
-			packageProductDependencies = (
-			);
 			productName = VaultFileProvider;
 			productReference = A4CCFA1ADAABA739E8476F41 /* VaultFileProvider.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -571,8 +570,6 @@
 			dependencies = (
 			);
 			name = VaultShare;
-			packageProductDependencies = (
-			);
 			productName = VaultShare;
 			productReference = 3D0EFA9CC6E443C612546AFC /* VaultShare.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -588,8 +585,6 @@
 			dependencies = (
 			);
 			name = VaultyxLiveActivity;
-			packageProductDependencies = (
-			);
 			productName = VaultyxLiveActivity;
 			productReference = D088B5DC02E6D99790A3EC67 /* VaultyxLiveActivity.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -755,6 +750,7 @@
 				B726502AEAF163541D69BD5E /* VaultSyncEngine.swift in Sources */,
 				8751ACD78548AE1FD6453A3D /* VaultTreeSync.swift in Sources */,
 				2670E40A7A865D8B915F0B09 /* VaultyxUploadAttributes.swift in Sources */,
+				F29337BD12474B13C36EF0F1 /* CapacityPickerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
