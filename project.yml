@@ -34,7 +34,6 @@ targets:
         com.apple.security.application-groups:
           - group.com.katafract.vault
           - group.com.katafract.enclave
-        com.apple.developer.fileprovider.testing-mode: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault
@@ -85,7 +84,6 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.katafract.vault
-        com.apple.developer.fileprovider.testing-mode: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault.fileprovider

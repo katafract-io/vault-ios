@@ -6,7 +6,5 @@
 	<array>
 		<string>group.com.katafract.vault</string>
 	</array>
-	<key>com.apple.developer.fileprovider.testing-mode</key>
-	<true/>
 </dict>
 </plist>
