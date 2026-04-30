@@ -99,6 +99,7 @@ final class VaultyxScreenshotTests: XCTestCase {
         let app = launch(flags: [
             "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
             "--mock-prices", "--force-dark-mode",
+            "--seed-data", "sovereign-demo",
             "--mock-tier", "com.katafract.vault.100gb.monthly",
         ])
         sleep(3)
@@ -125,6 +126,7 @@ final class VaultyxScreenshotTests: XCTestCase {
         let app = launch(flags: [
             "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
             "--mock-prices", "--force-dark-mode",
+            "--seed-data", "sovereign-demo",
             "--mock-tier", "com.katafract.vault.100gb.yearly",
         ])
         sleep(3)
@@ -151,6 +153,7 @@ final class VaultyxScreenshotTests: XCTestCase {
         let app = launch(flags: [
             "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
             "--mock-prices", "--force-dark-mode",
+            "--seed-data", "sovereign-demo",
             "--mock-tier", "com.katafract.vault.1tb.monthly",
         ])
         sleep(3)
@@ -177,6 +180,7 @@ final class VaultyxScreenshotTests: XCTestCase {
         let app = launch(flags: [
             "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
             "--mock-prices", "--force-dark-mode",
+            "--seed-data", "sovereign-demo",
             "--mock-tier", "com.katafract.vault.1tb.yearly",
         ])
         sleep(3)
@@ -203,6 +207,7 @@ final class VaultyxScreenshotTests: XCTestCase {
         let app = launch(flags: [
             "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
             "--mock-prices", "--force-dark-mode",
+            "--seed-data", "sovereign-demo",
             "--mock-tier", "com.katafract.vault.5tb.monthly",
         ])
         sleep(3)
@@ -229,6 +234,7 @@ final class VaultyxScreenshotTests: XCTestCase {
         let app = launch(flags: [
             "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
             "--mock-prices", "--force-dark-mode",
+            "--seed-data", "sovereign-demo",
             "--mock-tier", "com.katafract.vault.5tb.yearly",
         ])
         sleep(3)
