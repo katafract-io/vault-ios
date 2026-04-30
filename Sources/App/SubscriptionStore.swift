@@ -32,9 +32,72 @@ public final class SubscriptionStore: ObservableObject {
     }
 
     public enum ProductID {
-        public static let monthly = "com.katafract.vault.sovereign.monthly"
-        public static let yearly  = "com.katafract.vault.sovereign.yearly"
-        public static let all: [String] = [monthly, yearly]
+        // Legacy v1 Sovereign (1 TB grandfathered).
+        public static let sovereignMonthly = "com.katafract.vault.sovereign.monthly"
+        public static let sovereignYearly  = "com.katafract.vault.sovereign.yearly"
+
+        // v2 Capacity tiers.
+        public static let gb100Monthly  = "com.katafract.vault.100gb.monthly"
+        public static let gb100Yearly   = "com.katafract.vault.100gb.yearly"
+        public static let tb1Monthly    = "com.katafract.vault.1tb.monthly"
+        public static let tb1Yearly     = "com.katafract.vault.1tb.yearly"
+        public static let tb5Monthly    = "com.katafract.vault.5tb.monthly"
+        public static let tb5Yearly     = "com.katafract.vault.5tb.yearly"
+
+        public static let all: [String] = [
+            sovereignMonthly, sovereignYearly,
+            gb100Monthly, gb100Yearly,
+            tb1Monthly, tb1Yearly,
+            tb5Monthly, tb5Yearly
+        ]
+    }
+
+    public enum Capacity: Equatable {
+        case gb100
+        case tb1
+        case tb5
+
+        var bytes: UInt64 {
+            switch self {
+            case .gb100: return 107_374_182_400   // 100 GB
+            case .tb1:   return 1_099_511_627_776  // 1 TB
+            case .tb5:   return 5_497_558_138_880  // 5 TB
+            }
+        }
+
+        var displayName: String {
+            switch self {
+            case .gb100: return "100 GB"
+            case .tb1:   return "1 TB"
+            case .tb5:   return "5 TB"
+            }
+        }
+    }
+
+    public enum Cadence {
+        case monthly
+        case yearly
+
+        var displayName: String {
+            switch self {
+            case .monthly: return "Monthly"
+            case .yearly: return "Yearly"
+            }
+        }
+    }
+
+    public static func cadence(from productId: String) -> Cadence? {
+        if productId.hasSuffix(".monthly") { return .monthly }
+        if productId.hasSuffix(".yearly") { return .yearly }
+        return nil
+    }
+
+    public static func capacity(from productId: String) -> Capacity? {
+        if productId.contains(".100gb.") { return .gb100 }
+        if productId.contains(".1tb.") { return .tb1 }
+        if productId.contains(".5tb.") { return .tb5 }
+        if productId == ProductID.sovereignMonthly || productId == ProductID.sovereignYearly { return .tb1 }
+        return nil
     }
 
     static let bundleID = "com.katafract.vault"
@@ -55,6 +118,22 @@ public final class SubscriptionStore: ObservableObject {
         switch subscriptionState {
         case .subscribed, .redeemed: return true
         case .unknown, .notSubscribed: return false
+        }
+    }
+
+    public var activeCapacity: Capacity? {
+        if let mockTier = ScreenshotMode.mockTier,
+           let capacity = Self.capacity(from: mockTier) {
+            return capacity
+        }
+        if ScreenshotMode.mockFounder { return .tb5 }
+        switch subscriptionState {
+        case .subscribed(let productId, _):
+            return Self.capacity(from: productId)
+        case .redeemed(_, let isFounder, _):
+            return isFounder ? .tb5 : nil
+        case .notSubscribed, .unknown:
+            return nil
         }
     }
 

@@ -39,6 +39,7 @@ enum ScreenshotMode {
 
     static var autoOpenFile: String? { flagValue("--auto-open-file") }
     static var autoOpenVersions: String? { flagValue("--auto-open-versions") }
+    static var mockTier: String? { flagValue("--mock-tier") }
 
     private static func flagValue(_ name: String) -> String? {
         guard isActive, let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
@@ -66,6 +67,12 @@ extension ScreenshotMode {
     static let mockedDisplayPrices: [String: String] = [
         "com.katafract.vault.sovereign.monthly": "$18.00",
         "com.katafract.vault.sovereign.yearly":  "$144.00",
+        "com.katafract.vault.100gb.monthly": "$1.99",
+        "com.katafract.vault.100gb.yearly": "$19.99",
+        "com.katafract.vault.1tb.monthly": "$9.99",
+        "com.katafract.vault.1tb.yearly": "$99.99",
+        "com.katafract.vault.5tb.monthly": "$39.99",
+        "com.katafract.vault.5tb.yearly": "$399.99",
     ]
 }
 #endif

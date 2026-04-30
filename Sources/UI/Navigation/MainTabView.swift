@@ -397,7 +397,7 @@ struct SettingsView: View {
             RestoreFromPhraseView()
         }
         .sheet(isPresented: $showPaywall) {
-            PaywallView()
+            CapacityPickerView()
         }
     }
 
