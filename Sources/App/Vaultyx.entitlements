@@ -7,7 +7,5 @@
 		<string>group.com.katafract.vault</string>
 		<string>group.com.katafract.enclave</string>
 	</array>
-	<key>com.apple.developer.fileprovider.testing-mode</key>
-	<true/>
 </dict>
 </plist>
