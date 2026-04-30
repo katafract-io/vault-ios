@@ -2,20 +2,43 @@ import SwiftUI
 import StoreKit
 import KatafractStyle
 
-/// Paywall shown when a non-subscriber attempts a gated action (upload,
-/// create folder, enable backup). Two pricing tiles + benefits list +
-/// CTA + restore link.
-struct PaywallView: View {
+/// Capacity tier picker for new Vaultyx Sovereign purchases.
+/// Replaces the old single-tier paywall with 3 capacity options × 2 cadences.
+/// Preserves token redemption and founder code flows.
+struct CapacityPickerView: View {
     @EnvironmentObject private var store: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedProductID: String = SubscriptionStore.ProductID.sovereignYearly
+    @State private var selectedCadence: SubscriptionStore.Cadence = .yearly
+    @State private var selectedCapacity: SubscriptionStore.Capacity = .tb1
     @State private var isPurchasing = false
     @State private var showRedemption = false
     @State private var showFounderRedeem = false
 
     private var selectedProduct: Product? {
-        store.products.first { $0.id == selectedProductID }
+        let productId = productID(for: selectedCapacity, selectedCadence)
+        return store.products.first { $0.id == productId }
+    }
+
+    private func productID(for capacity: SubscriptionStore.Capacity,
+                           _ cadence: SubscriptionStore.Cadence) -> String {
+        switch (capacity, cadence) {
+        case (.gb100, .monthly): return SubscriptionStore.ProductID.gb100Monthly
+        case (.gb100, .yearly):  return SubscriptionStore.ProductID.gb100Yearly
+        case (.tb1, .monthly):   return SubscriptionStore.ProductID.tb1Monthly
+        case (.tb1, .yearly):    return SubscriptionStore.ProductID.tb1Yearly
+        case (.tb5, .monthly):   return SubscriptionStore.ProductID.tb5Monthly
+        case (.tb5, .yearly):    return SubscriptionStore.ProductID.tb5Yearly
+        }
+    }
+
+    private func price(for capacity: SubscriptionStore.Capacity,
+                       _ cadence: SubscriptionStore.Cadence) -> String {
+        let productId = productID(for: capacity, cadence)
+        if let product = store.products.first(where: { $0.id == productId }) {
+            return product.displayPrice
+        }
+        return ScreenshotMode.mockedDisplayPrices[productId] ?? "—"
     }
 
     var body: some View {
@@ -23,8 +46,10 @@ struct PaywallView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     header
-                    benefits
-                    pricingTiles
+                    if !store.isLoading {
+                        cadenceToggle
+                    }
+                    capacityCards
                     ctaButton
                     restoreButton
                     redeemTokenLink
@@ -58,64 +83,57 @@ struct PaywallView: View {
                 .font(.system(size: 56, weight: .semibold))
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(Color.kataChampagne, Color.kataSapphire)
-            Text("Vaultyx Sovereign")
+            Text("Choose Your Storage")
                 .font(.kataDisplay(32))
                 .foregroundStyle(Color.primary)
-            Text("Own your digital perimeter. Zero-knowledge storage across Katafract's global node network.")
+            Text("Zero-knowledge encrypted storage across a private network.")
                 .font(.kataBody(15))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
     }
 
-    private var benefits: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            benefit("1 TB encrypted storage", icon: "internaldrive")
-            benefit("Unlimited photo backup", icon: "photo.on.rectangle.angled")
-            benefit("End-to-end zero-knowledge encryption", icon: "lock.fill")
-            benefit("Multi-device sync + offline pinning", icon: "arrow.triangle.2.circlepath")
-            benefit("Recycle bin + file versioning", icon: "clock.arrow.circlepath")
-            benefit("Priority support", icon: "envelope.badge.shield.half.filled")
-            benefit("DocArmor cloud backup included", icon: "lock.shield.fill")
+    private var cadenceToggle: some View {
+        Picker("Billing", selection: $selectedCadence) {
+            Text("Monthly").tag(SubscriptionStore.Cadence.monthly)
+            Text("Yearly").tag(SubscriptionStore.Cadence.yearly)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color.kataSapphire.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.kataGold.opacity(0.25), lineWidth: 1)
-        )
-    }
-
-    private func benefit(_ text: String, icon: String) -> some View {
-        Label {
-            Text(text).font(.kataBody(15))
-        } icon: {
-            Image(systemName: icon)
-                .foregroundStyle(Color.kataGold)
-                .frame(width: 24)
-        }
+        .pickerStyle(.segmented)
     }
 
     @ViewBuilder
-    private var pricingTiles: some View {
+    private var capacityCards: some View {
         if store.isLoading {
-            KataProgressRing(size: 28).frame(height: 120)
+            KataProgressRing(size: 28).frame(height: 150)
         } else if store.products.isEmpty {
-            Text("Subscription plans unavailable. Check your connection and try again.")
+            Text("Storage plans unavailable. Check your connection and try again.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding()
         } else {
-            HStack(spacing: 12) {
-                ForEach(store.products) { product in
-                    PricingTile(
-                        product: product,
-                        isSelected: product.id == selectedProductID,
-                        onTap: { selectedProductID = product.id }
-                    )
-                }
+            VStack(spacing: 12) {
+                CapacityCard(
+                    capacity: .gb100,
+                    price: price(for: .gb100, selectedCadence),
+                    isSelected: selectedCapacity == .gb100,
+                    isPopular: false,
+                    onTap: { selectedCapacity = .gb100 }
+                )
+                CapacityCard(
+                    capacity: .tb1,
+                    price: price(for: .tb1, selectedCadence),
+                    isSelected: selectedCapacity == .tb1,
+                    isPopular: true,
+                    onTap: { selectedCapacity = .tb1 }
+                )
+                CapacityCard(
+                    capacity: .tb5,
+                    price: price(for: .tb5, selectedCadence),
+                    isSelected: selectedCapacity == .tb5,
+                    isPopular: false,
+                    onTap: { selectedCapacity = .tb5 }
+                )
             }
         }
     }
@@ -132,7 +150,7 @@ struct PaywallView: View {
         } label: {
             HStack {
                 if isPurchasing { KataProgressRing(size: 20) }
-                Text(isPurchasing ? "Processing…" : "Subscribe")
+                Text(isPurchasing ? "Processing…" : "Choose Plan")
                     .font(.headline)
             }
             .frame(maxWidth: .infinity)
@@ -206,36 +224,46 @@ struct PaywallView: View {
     }
 }
 
-private struct PricingTile: View {
-    let product: Product
+private struct CapacityCard: View {
+    let capacity: SubscriptionStore.Capacity
+    let price: String
     let isSelected: Bool
+    let isPopular: Bool
     let onTap: () -> Void
-
-    private var isYearly: Bool {
-        product.id == SubscriptionStore.ProductID.sovereignYearly
-    }
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 6) {
-                if isYearly {
-                    Text("SAVE 33%")
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(Color.green.opacity(0.2))
-                        .foregroundStyle(.green)
-                        .clipShape(Capsule())
+            VStack(spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(capacity.displayName)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text(price)
+                            .font(.title3.bold())
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    Spacer()
+                    if isPopular {
+                        Text("Most popular")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.kataGold.opacity(0.2))
+                            .foregroundStyle(Color.kataGold)
+                            .clipShape(Capsule())
+                    }
                 }
-                Text(isYearly ? "Yearly" : "Monthly")
-                    .font(.headline)
-                Text(product.displayPrice)
-                    .font(.title2.bold())
-                Text(isYearly ? "per year" : "per month")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    benefit(text: "Zero-knowledge encryption", icon: "lock.fill")
+                    benefit(text: "Multi-device sync", icon: "arrow.triangle.2.circlepath")
+                    benefit(text: "Version history", icon: "clock.arrow.circlepath")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
+            .padding(.horizontal, 12)
             .background(Color(.secondarySystemBackground))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
@@ -245,4 +273,19 @@ private struct PricingTile: View {
         }
         .buttonStyle(.plain)
     }
+
+    private func benefit(text: String, icon: String) -> some View {
+        Label {
+            Text(text).font(.kataBody(13))
+        } icon: {
+            Image(systemName: icon)
+                .foregroundStyle(Color.kataGold)
+                .frame(width: 20)
+        }
+    }
+}
+
+#Preview {
+    CapacityPickerView()
+        .environmentObject(SubscriptionStore(apiClient: VaultAPIClient()))
 }
