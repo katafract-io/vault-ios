@@ -93,6 +93,162 @@ final class VaultyxScreenshotTests: XCTestCase {
         snapshot("07-paywall-monthly")
     }
 
+    // MARK: - Frame 08: Capacity 100GB Monthly (IAP review SKU)
+
+    func testCaptureCapacity100gbMonthly() {
+        let app = launch(flags: [
+            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
+            "--mock-prices", "--force-dark-mode",
+            "--mock-tier", "com.katafract.vault.100gb.monthly",
+        ])
+        sleep(3)
+        triggerPaywall(app: app)
+        sleep(2)
+        // Ensure yearly → monthly
+        let monthlyText = app.staticTexts["Monthly"].firstMatch
+        if monthlyText.waitForExistence(timeout: 3) {
+            monthlyText.tap()
+            sleep(1)
+        }
+        // Tap the 100 GB card to highlight it
+        let gb100Text = app.staticTexts["100 GB"].firstMatch
+        if gb100Text.waitForExistence(timeout: 3) {
+            gb100Text.tap()
+            sleep(1)
+        }
+        snapshot("08-capacity-100gb-monthly")
+    }
+
+    // MARK: - Frame 09: Capacity 100GB Yearly (IAP review SKU)
+
+    func testCaptureCapacity100gbYearly() {
+        let app = launch(flags: [
+            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
+            "--mock-prices", "--force-dark-mode",
+            "--mock-tier", "com.katafract.vault.100gb.yearly",
+        ])
+        sleep(3)
+        triggerPaywall(app: app)
+        sleep(2)
+        // Ensure yearly cadence is selected
+        let yearlyText = app.staticTexts["Yearly"].firstMatch
+        if yearlyText.waitForExistence(timeout: 3) {
+            yearlyText.tap()
+            sleep(1)
+        }
+        // Tap the 100 GB card to highlight it
+        let gb100Text = app.staticTexts["100 GB"].firstMatch
+        if gb100Text.waitForExistence(timeout: 3) {
+            gb100Text.tap()
+            sleep(1)
+        }
+        snapshot("09-capacity-100gb-yearly")
+    }
+
+    // MARK: - Frame 10: Capacity 1TB Monthly (IAP review SKU)
+
+    func testCaptureCapacity1tbMonthly() {
+        let app = launch(flags: [
+            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
+            "--mock-prices", "--force-dark-mode",
+            "--mock-tier", "com.katafract.vault.1tb.monthly",
+        ])
+        sleep(3)
+        triggerPaywall(app: app)
+        sleep(2)
+        // Ensure monthly cadence
+        let monthlyText = app.staticTexts["Monthly"].firstMatch
+        if monthlyText.waitForExistence(timeout: 3) {
+            monthlyText.tap()
+            sleep(1)
+        }
+        // Tap the 1 TB card to highlight it
+        let tb1Text = app.staticTexts["1 TB"].firstMatch
+        if tb1Text.waitForExistence(timeout: 3) {
+            tb1Text.tap()
+            sleep(1)
+        }
+        snapshot("10-capacity-1tb-monthly")
+    }
+
+    // MARK: - Frame 11: Capacity 1TB Yearly (IAP review SKU)
+
+    func testCaptureCapacity1tbYearly() {
+        let app = launch(flags: [
+            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
+            "--mock-prices", "--force-dark-mode",
+            "--mock-tier", "com.katafract.vault.1tb.yearly",
+        ])
+        sleep(3)
+        triggerPaywall(app: app)
+        sleep(2)
+        // Ensure yearly cadence
+        let yearlyText = app.staticTexts["Yearly"].firstMatch
+        if yearlyText.waitForExistence(timeout: 3) {
+            yearlyText.tap()
+            sleep(1)
+        }
+        // Tap the 1 TB card to highlight it
+        let tb1Text = app.staticTexts["1 TB"].firstMatch
+        if tb1Text.waitForExistence(timeout: 3) {
+            tb1Text.tap()
+            sleep(1)
+        }
+        snapshot("11-capacity-1tb-yearly")
+    }
+
+    // MARK: - Frame 12: Capacity 5TB Monthly (IAP review SKU)
+
+    func testCaptureCapacity5tbMonthly() {
+        let app = launch(flags: [
+            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
+            "--mock-prices", "--force-dark-mode",
+            "--mock-tier", "com.katafract.vault.5tb.monthly",
+        ])
+        sleep(3)
+        triggerPaywall(app: app)
+        sleep(2)
+        // Ensure monthly cadence
+        let monthlyText = app.staticTexts["Monthly"].firstMatch
+        if monthlyText.waitForExistence(timeout: 3) {
+            monthlyText.tap()
+            sleep(1)
+        }
+        // Tap the 5 TB card to highlight it
+        let tb5Text = app.staticTexts["5 TB"].firstMatch
+        if tb5Text.waitForExistence(timeout: 3) {
+            tb5Text.tap()
+            sleep(1)
+        }
+        snapshot("12-capacity-5tb-monthly")
+    }
+
+    // MARK: - Frame 13: Capacity 5TB Yearly (IAP review SKU)
+
+    func testCaptureCapacity5tbYearly() {
+        let app = launch(flags: [
+            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
+            "--mock-prices", "--force-dark-mode",
+            "--mock-tier", "com.katafract.vault.5tb.yearly",
+        ])
+        sleep(3)
+        triggerPaywall(app: app)
+        sleep(2)
+        // Ensure yearly cadence
+        let yearlyText = app.staticTexts["Yearly"].firstMatch
+        if yearlyText.waitForExistence(timeout: 3) {
+            yearlyText.tap()
+            sleep(1)
+        }
+        // Tap the 5 TB card to highlight it
+        let tb5Text = app.staticTexts["5 TB"].firstMatch
+        if tb5Text.waitForExistence(timeout: 3) {
+            tb5Text.tap()
+            sleep(1)
+        }
+        snapshot("13-capacity-5tb-yearly")
+    }
+
     // MARK: - Helpers
 
     private var defaultFlags: [String] {
