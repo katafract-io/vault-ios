@@ -9,7 +9,7 @@ struct PaywallView: View {
     @EnvironmentObject private var store: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedProductID: String = SubscriptionStore.ProductID.yearly
+    @State private var selectedProductID: String = SubscriptionStore.ProductID.sovereignYearly
     @State private var isPurchasing = false
     @State private var showRedemption = false
     @State private var showFounderRedeem = false
@@ -212,7 +212,7 @@ private struct PricingTile: View {
     let onTap: () -> Void
 
     private var isYearly: Bool {
-        product.id == SubscriptionStore.ProductID.yearly
+        product.id == SubscriptionStore.ProductID.sovereignYearly
     }
 
     var body: some View {

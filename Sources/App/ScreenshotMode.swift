@@ -58,12 +58,7 @@ enum ScreenshotMode {
 // IMPORTANT: keep these in sync with katafract-web/pricing.html.
 // Update mechanism: bump the version, audit pricing.html, propagate.
 
-#if DEBUG  // Mock prices only ship in DEBUG builds; production reads StoreKit.
 extension ScreenshotMode {
-    /// Per-product mocked display prices. Key = StoreKit productID.
-    /// These are a fallback for views that need a price string when
-    /// `Product.products(for:)` returns empty (rare — .storekit config
-    /// is the primary source of truth in the Sim).
     static let mockedDisplayPrices: [String: String] = [
         "com.katafract.vault.sovereign.monthly": "$18.00",
         "com.katafract.vault.sovereign.yearly":  "$144.00",
@@ -75,4 +70,3 @@ extension ScreenshotMode {
         "com.katafract.vault.5tb.yearly": "$399.99",
     ]
 }
-#endif

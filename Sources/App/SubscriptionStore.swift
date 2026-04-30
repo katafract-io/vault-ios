@@ -57,11 +57,11 @@ public final class SubscriptionStore: ObservableObject {
         case tb1
         case tb5
 
-        var bytes: UInt64 {
+        var bytes: Int64 {
             switch self {
-            case .gb100: return 107_374_182_400   // 100 GB
-            case .tb1:   return 1_099_511_627_776  // 1 TB
-            case .tb5:   return 5_497_558_138_880  // 5 TB
+            case .gb100: return 107_374_182_400
+            case .tb1:   return 1_099_511_627_776
+            case .tb5:   return 5_497_558_138_880
             }
         }
 
@@ -345,9 +345,7 @@ public final class SubscriptionStore: ObservableObject {
         defer { isLoading = false }
         do {
             let storeProducts = try await Product.products(for: ProductID.all)
-            products = storeProducts.sorted {
-                ($0.id == ProductID.monthly) && ($1.id == ProductID.yearly)
-            }
+            products = storeProducts.sorted { $0.price < $1.price }
         } catch {
             purchaseError = "Couldn't load subscription options: \(error.localizedDescription)"
         }
