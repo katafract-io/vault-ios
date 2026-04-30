@@ -1,0 +1,55 @@
+{
+  "default": {
+    "title": {
+      "color": "#FF006E",
+      "fonts": [
+        {
+          "font_name": "HKNova-SemiBold",
+          "font_size": 44
+        }
+      ]
+    },
+    "background": "#0B0C12",
+    "padding": 40,
+    "title_min_height": 100,
+    "interline_spacing": 8,
+    "show_complete_frame": true,
+    "frame_name": "complete"
+  },
+  "devices": {
+    "iPhone_16_Pro_Max_silver": {
+      "offset": "+45+100"
+    },
+    "iPad_Pro_M5_13in_silver": {
+      "offset": "+45+100"
+    }
+  },
+  "texts": {
+    "title": {
+      "positions": [
+        {
+          "anchor_horizontal": "center",
+          "anchor_vertical": "top",
+          "offset": "+0+35"
+        }
+      ],
+      "color": "#FF006E",
+      "font_size": 40,
+      "font_name": "HKNova-SemiBold",
+      "alignment": "center"
+    },
+    "bottom": {
+      "positions": [
+        {
+          "anchor_horizontal": "center",
+          "anchor_vertical": "bottom",
+          "offset": "+0-35"
+        }
+      ],
+      "color": "#FFFFFF",
+      "font_size": 22,
+      "font_name": "HKNova-Regular",
+      "alignment": "center"
+    }
+  }
+}
