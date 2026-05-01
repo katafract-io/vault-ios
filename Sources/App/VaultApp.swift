@@ -9,6 +9,7 @@ struct VaultApp: App {
     @StateObject private var subscriptionStore: SubscriptionStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var splashComplete = ScreenshotMode.isActive  // skip splash in screenshot mode
+    @State private var drainTicker: Task<Void, Never>?
 
     init() {
         // Register BGProcessingTask identifier BEFORE the first runloop cycle.
@@ -75,15 +76,28 @@ struct VaultApp: App {
                 if lock.isEnabled && lock.isIdleTooLong() {
                     lock.lock()
                 }
+                drainTicker?.cancel()
+                drainTicker = nil
             case .active:
                 lock.markActive()
                 // Trigger biometric unlock only if locked AND idle timeout has passed
                 if lock.isLocked && lock.isIdleTooLong() {
                     Task { await lock.unlock() }
                 }
-                // Opportunistic foreground drain — runs alongside BGProcessingTask
-                // so uploads progress even when the user has the app open.
-                Task { await services.syncEngine.syncPending() }
+                // Foreground drain ticker — runs every 30 seconds while the
+                // app is open. Without this, drain only fires on scene-active
+                // transitions, so a chunk that hits a transient retry sits in
+                // backoff until the user backgrounds + foregrounds the app.
+                // syncPending() is a no-op when the queue is empty, so the
+                // tick cost is a single SwiftData fetch every 30s.
+                let engine = services.syncEngine
+                drainTicker?.cancel()
+                drainTicker = Task {
+                    while !Task.isCancelled {
+                        await engine.syncPending()
+                        try? await Task.sleep(for: .seconds(30))
+                    }
+                }
             @unknown default: break
             }
         }
