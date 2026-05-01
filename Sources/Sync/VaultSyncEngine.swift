@@ -42,11 +42,35 @@ public class VaultSyncEngine: ObservableObject {
     private let modelContext: ModelContext
 
     /// URLSession with background identifier so uploads survive app suspends.
+    ///
+    /// NOTE: Background sessions on iOS do NOT support `upload(for:from:)`
+    /// (in-memory `Data` body) — Apple raises an Objective-C exception inside
+    /// `-[__NSURLBackgroundSession _uploadTaskWithTaskForClass:]` which
+    /// propagates through `__cxa_throw` → `abort()` (SIGABRT). Background
+    /// sessions only accept `uploadTask(with:fromFile:)`. Reserved here for
+    /// future file-based / OS-managed resumable uploads. See `foregroundSession`
+    /// for the path actually exercised by `drainChunk`.
     private lazy var backgroundSession: URLSession = {
         let cfg = URLSessionConfiguration.background(
             withIdentifier: "com.katafract.vault.upload")
         cfg.isDiscretionary = false
         cfg.sessionSendsLaunchEvents = true
+        return URLSession(configuration: cfg)
+    }()
+
+    /// Foreground URLSession used for in-memory `Data` chunk uploads.
+    ///
+    /// We deliberately do NOT use `backgroundSession` here: the OS background
+    /// session crashes with SIGABRT when called via `upload(for:from:)` with an
+    /// in-memory `Data` body (observed Vaultyx 1.0.2 build 482 on iPhone17,2 /
+    /// iOS 26.5 beta). A foreground session is correct for the single-chunk
+    /// PUT path; chunks are bounded (<= a few MB each) and the drain worker
+    /// already handles retries / backoff if the app is suspended mid-upload.
+    private lazy var foregroundSession: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.waitsForConnectivity = true
+        cfg.timeoutIntervalForRequest = 60
+        cfg.timeoutIntervalForResource = 600
         return URLSession(configuration: cfg)
     }()
 
@@ -334,8 +358,12 @@ public class VaultSyncEngine: ObservableObject {
             var req = URLRequest(url: putURL)
             req.httpMethod = "PUT"
             req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-            // Use the background session for OS-managed resumable uploads
-            let (_, response) = try await backgroundSession.upload(for: req, from: data)
+            // Use a foreground session: background sessions cannot accept an
+            // in-memory `Data` body (`upload(for:from:)` raises an
+            // Objective-C exception inside
+            // `-[__NSURLBackgroundSession _uploadTaskWithTaskForClass:]`,
+            // which crashes the app via `__cxa_throw` → `abort()`).
+            let (_, response) = try await foregroundSession.upload(for: req, from: data)
             guard let http = response as? HTTPURLResponse,
                   (200...299).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
