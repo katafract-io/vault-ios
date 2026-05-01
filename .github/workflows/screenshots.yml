@@ -4,18 +4,6 @@ name: Auto-refresh App Store screenshots
 # Every UI change auto-regenerates + uploads screenshots via ASC API. No manual web UI work.
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'Sources/UI/**/*.swift'
-      - 'Sources/Views/**/*.swift'
-      - 'Sources/Features/**/*.swift'
-      - '**/Assets.xcassets/**'
-      - '**/*.entitlements'
-      - 'Sources/App/ScreenshotMode.swift'
-      - 'fastlane/Snapfile'
-      - 'fastlane/Fastfile'
-      - '.github/workflows/screenshots.yml'
   workflow_dispatch:
     inputs:
       force:
