@@ -52,24 +52,41 @@ private struct QuickLookPreview: UIViewControllerRepresentable {
     }
 }
 
-/// Sheet shown while the local URL is still being materialized (download + decrypt).
+/// Sheet shown while the local URL is still being materialized (download +
+/// decrypt). When `errorMessage` is set, swaps to an error layout instead of
+/// dismissing — keeps the failure visible until the user taps Dismiss, which
+/// avoids the sheet-dismiss-races-the-alert race we hit on iOS.
 struct FilePreviewLoadingSheet: View {
     let displayName: String
+    var errorMessage: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                KataProgressRing(size: 40)
-                Text("Preparing \(displayName)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                if let errorMessage {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 36, weight: .regular))
+                        .foregroundStyle(.tertiary)
+                    Text("Couldn't open \(displayName)")
+                        .font(.headline)
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                } else {
+                    KataProgressRing(size: 40)
+                    Text("Preparing \(displayName)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button(errorMessage == nil ? "Cancel" : "Dismiss") { dismiss() }
                 }
             }
         }
