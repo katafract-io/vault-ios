@@ -19,6 +19,7 @@ struct FileBrowserView: View {
     @State private var isEditing = false
     @State private var previewURL: URL?
     @State private var previewIsLoading = false
+    @State private var previewError: String?
     @State private var renameTarget: VaultFileItem?
     @State private var renamingName: String = ""
     @State private var showDeleteConfirmation = false
@@ -265,6 +266,7 @@ struct FileBrowserView: View {
         .sheet(item: $selectedFile, onDismiss: {
             previewURL = nil
             previewIsLoading = false
+            previewError = nil
             // selectedFile is already nil here (that's what triggered dismiss).
             // Clear all loading states — the tap guard below blocks re-entry
             // during an in-flight materialize, but on dismiss we're done.
@@ -278,7 +280,7 @@ struct FileBrowserView: View {
                 if let url = previewURL {
                     FilePreviewSheet(fileURL: url, displayName: file.name)
                 } else {
-                    FilePreviewLoadingSheet(displayName: file.name)
+                    FilePreviewLoadingSheet(displayName: file.name, errorMessage: previewError)
                 }
             }
             .onAppear {
@@ -286,15 +288,19 @@ struct FileBrowserView: View {
                 // redraws later. Async task is guaranteed to run until sheet dismisses.
                 guard !previewIsLoading else { return }
                 previewIsLoading = true
+                previewError = nil
 
                 Task {
                     let url = await viewModel.materializeLocalURL(for: file)
                     if let url {
                         previewURL = url
                     } else {
-                        // Dismiss the sheet; the error alert below will
-                        // surface the reason via viewModel.error.
-                        selectedFile = nil
+                        // Surface the error inside the loading sheet itself
+                        // instead of dismissing — the dismiss-then-alert
+                        // transition can swallow the alert on iOS.
+                        previewError = viewModel.error
+                            ?? "The file isn't available right now."
+                        viewModel.error = nil
                         fileLoadingStates.remove(file.id)
                     }
                     previewIsLoading = false

@@ -46,6 +46,7 @@ struct RecentsView: View {
     @StateObject private var viewModel = RecentsViewModel()
     @State private var selectedFile: VaultFileItem?
     @State private var previewURL: URL?
+    @State private var previewError: String?
 
     var body: some View {
         Group {
@@ -73,17 +74,22 @@ struct RecentsView: View {
             }
         }
         .navigationTitle("Recent")
-        .sheet(item: $selectedFile, onDismiss: { previewURL = nil }) { file in
+        .sheet(item: $selectedFile, onDismiss: {
+            previewURL = nil
+            previewError = nil
+        }) { file in
             if let url = previewURL {
                 FilePreviewSheet(fileURL: url, displayName: file.name)
             } else {
-                FilePreviewLoadingSheet(displayName: file.name)
+                FilePreviewLoadingSheet(displayName: file.name, errorMessage: previewError)
                     .task {
                         let url = await viewModel.materializeLocalURL(for: file)
                         if let url {
                             previewURL = url
                         } else {
-                            selectedFile = nil
+                            previewError = viewModel.error
+                                ?? "The file isn't available right now."
+                            viewModel.error = nil
                         }
                     }
             }
