@@ -1,6 +1,9 @@
 import Foundation
+import OSLog
 import SwiftData
 import CryptoKit
+
+private let inboxLog = Logger(subsystem: "com.katafract.vault", category: "share-import")
 
 /// App-wide services container. One instance lives on the main actor, owned
 /// by `VaultApp` and injected via the environment.
@@ -170,10 +173,14 @@ public final class VaultServices: ObservableObject {
                     masterKey: masterKey,
                     filename: sidecar.originalName)
                 ImportInbox.consume(fileURL: fileURL)
+                imported += 1
             } catch {
                 dlog("share-inbox import failed for \(fileURL.lastPathComponent): \(error.localizedDescription)", category: "sync", level: .error)
             }
         }
+
+        inboxLog.info("drain done: imported=\(imported), failed=\(failures.count)")
+        dlog("share-import drain done: imported=\(imported), failed=\(failures.count)", category: "share-import", level: failures.isEmpty ? .info : .warn)
     }
 
     /// Read-only summary of the local upload queue + LocalFile state, written
