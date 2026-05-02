@@ -19,6 +19,11 @@ Build/
 .env
 .env.local
 
+# Local agent/coder notes
+MEMORY.md
+docs/
+*.ai.md
+
 # OS
 .AppleDouble
 .LSOverride
