@@ -1,0 +1,21 @@
+# Per-repo build metadata for the verification framework.
+# See .doctrine/verification-framework.md for the full pattern.
+#
+# Consumed by: .github/workflows/pr-check.yml
+# When this becomes shared across iOS repos, consumed by:
+#   katafract-io/.github/.github/workflows/ios-pr-check.yml (reusable workflow)
+
+platform: ios
+
+# Xcode scheme to compile-check on every PR.
+# Must be a "Shared" scheme (in *.xcodeproj/xcshareddata/xcschemes/).
+scheme: Vaultyx
+
+# Path to the .xcodeproj or .xcworkspace, relative to repo root.
+project: Vaultyx.xcodeproj
+
+# Bundle identifier (informational; used by future stages).
+bundle_id: com.katafract.vault
+
+# App-Store-facing app name (informational).
+app_name: Vaultyx
