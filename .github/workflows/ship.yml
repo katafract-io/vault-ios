@@ -137,6 +137,36 @@ jobs:
       - name: Clean
         run: xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx -destination "generic/platform=iOS" clean
 
+      - name: Pre-archive compile (Release, no signing) — surfaces Swift errors xcodebuild-archive eats
+        run: |
+          set +e
+          xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx \
+            -configuration Release -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > /tmp/precompile.log 2>&1
+          XCB_RC=$?
+          echo "::group::precompile.log summary"
+          grep -E "error:|warning:|\*\* " /tmp/precompile.log | head -80 || true
+          echo "::endgroup::"
+          if [ $XCB_RC -ne 0 ]; then
+            echo "::error::Pre-archive compile failed (rc=$XCB_RC) — Swift error before Archive can swallow it"
+            echo "::group::precompile.log error lines with context"
+            grep -B 2 -A 6 ": error:" /tmp/precompile.log | head -200
+            echo "::endgroup::"
+            echo "::group::precompile.log last 100 lines"
+            tail -100 /tmp/precompile.log
+            echo "::endgroup::"
+            exit 1
+          fi
+
+      - name: Upload precompile log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: precompile-log-${{ github.run_id }}
+          path: /tmp/precompile.log
+          retention-days: 7
+
       - name: Archive
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
