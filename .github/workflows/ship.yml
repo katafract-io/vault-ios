@@ -92,25 +92,55 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
           APP_ID: ${{ secrets.APP_ID }}
         run: |
           set -eo pipefail
-          JWT=$(python3 ~/runner-env/asc-jwt.py 2>&1 || true)
-          if [ -z "$JWT" ] || ! echo "$JWT" | grep -q '^ey'; then
-            echo "::warning::ASC JWT generation failed, falling back to run-number-only bump"
-            BUILD_NUM=$((GITHUB_RUN_NUMBER + 400))
+
+          # Single source of truth for build-number selection across XCC + all
+          # self-hosted Mac runners (cmfmbp / chronos-macbuilder / mjolnir).
+          # Helper queries ASC for max(CFBundleVersion) on the current
+          # marketing version (preReleaseVersion train) and emits max+1, so
+          # build numbers stay strictly monotonic per-train regardless of
+          # which runner ships first.
+          #
+          # Helper requires: ASC_KEY_ID, ASC_ISSUER_ID, and either
+          # ASC_KEY_CONTENT (GH Actions secret, preferred — runner-agnostic)
+          # or ASC_KEY_PATH (per-runner file, legacy).
+          #
+          # Preferred: set ASC_KEY_CONTENT secret at the org level so any
+          # runner (existing or future) just works. Until that secret is
+          # configured, fall back to the per-runner .p8 at
+          # ~/runner-env/AuthKey_<KEY_ID>.p8.
+          if [ -z "${ASC_KEY_CONTENT:-}" ]; then
+            ASC_KEY_PATH=$(ls $HOME/runner-env/AuthKey_*.p8 2>/dev/null | head -1 || echo "")
+            export ASC_KEY_PATH
+            echo "using per-runner key: ${ASC_KEY_PATH:-<none>}"
           else
-            ASC_MAX=$(curl -s -m 10 -H "Authorization: Bearer $JWT" \
-              "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&sort=-uploadedDate&limit=50&fields[builds]=version" \
-              | python3 -c 'import sys,json; d=json.load(sys.stdin).get("data") or []; vs=[int((b.get("attributes") or {}).get("version") or "0") for b in d if ((b.get("attributes") or {}).get("version") or "").isdigit()]; print(max(vs) if vs else 0)' 2>/dev/null || echo 0)
-            ASC_MAX=${ASC_MAX:-0}
-            RUN_BUILD=$((GITHUB_RUN_NUMBER + 400))
-            if [ "$ASC_MAX" -ge "$RUN_BUILD" ]; then
-              BUILD_NUM=$((ASC_MAX + 1))
+            echo "using ASC_KEY_CONTENT GH Actions secret"
+          fi
+
+          # Extract the marketing-version train from pbxproj (all targets
+          # share MARKETING_VERSION; first match is canonical).
+          TRAIN=$(grep -m1 "MARKETING_VERSION = " Vaultyx.xcodeproj/project.pbxproj \
+                  | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/')
+          echo "marketing train: $TRAIN"
+
+          BUILD_NUM=""
+          if { [ -n "${ASC_KEY_CONTENT:-}" ] || [ -n "${ASC_KEY_PATH:-}" ]; } && [ -n "$TRAIN" ]; then
+            if BUILD_NUM=$(python3 ci_scripts/lib/next-build-number.py \
+                            --app-id "$APP_ID" --train "$TRAIN" --floor 1 2>&1); then
+              echo "asc-resolved next build for $TRAIN: $BUILD_NUM"
             else
-              BUILD_NUM=$RUN_BUILD
+              echo "::warning::next-build-number.py failed: $BUILD_NUM"
+              BUILD_NUM=""
             fi
-            echo "asc_max=$ASC_MAX run_based=$RUN_BUILD using=$BUILD_NUM"
+          else
+            echo "::warning::ASC_KEY (content+path both missing) or TRAIN missing; helper skipped"
+          fi
+          if [ -z "$BUILD_NUM" ]; then
+            BUILD_NUM=$((GITHUB_RUN_NUMBER + 400))
+            echo "::warning::falling back to GITHUB_RUN_NUMBER+400 = $BUILD_NUM"
           fi
 
           find . -name project.pbxproj -not -path "*/.git/*" -exec sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" {} +
