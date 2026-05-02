@@ -162,7 +162,9 @@ struct FileBrowserView: View {
                             progress: viewModel.downloadProgress,
                             onCancel: cancelPreviewDownload
                         )
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transaction { transaction in
+                            transaction.animation = nil
+                        }
                     }
                     EmptyFolderView(
                         onUpload: { gate { showUploadPicker = true } },
@@ -170,7 +172,8 @@ struct FileBrowserView: View {
                     )
                 }
                 .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
-                .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
+                .animation(nil, value: viewModel.downloadProgress)
+                .animation(nil, value: viewModel.downloadInProgress)
             } else if viewMode == .list {
                 listViewWithBanner
             } else {
@@ -381,13 +384,16 @@ struct FileBrowserView: View {
                     progress: viewModel.downloadProgress,
                     onCancel: cancelPreviewDownload
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
             }
             CategoryFilterBar(selected: $selectedCategory)
             listView
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
-        .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
+        .animation(nil, value: viewModel.downloadProgress)
+        .animation(nil, value: viewModel.downloadInProgress)
     }
 
     @ViewBuilder
@@ -444,13 +450,16 @@ struct FileBrowserView: View {
                     progress: viewModel.downloadProgress,
                     onCancel: cancelPreviewDownload
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
             }
             CategoryFilterBar(selected: $selectedCategory)
             gridView
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
-        .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
+        .animation(nil, value: viewModel.downloadProgress)
+        .animation(nil, value: viewModel.downloadInProgress)
     }
 
     @ViewBuilder

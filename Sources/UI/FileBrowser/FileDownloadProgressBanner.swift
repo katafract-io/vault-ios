@@ -66,7 +66,6 @@ struct FileDownloadProgressBanner: View {
                     RoundedRectangle(cornerRadius: 1)
                         .fill(Color.kataChampagne)
                         .frame(width: geo.size.width * fraction, height: 2)
-                        .animation(.linear(duration: 0.3), value: fraction)
                 }
             }
             .frame(height: 2)
