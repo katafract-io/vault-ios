@@ -14,6 +14,10 @@ struct VaultApp: App {
         // Register BGProcessingTask identifier BEFORE the first runloop cycle.
         VaultSyncEngine.registerBackgroundTask()
 
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        dlog("app launched, version \(appVersion) (build \(buildNumber))", category: "app")
+
         let services = VaultServices()
         _services = StateObject(wrappedValue: services)
         _subscriptionStore = StateObject(
