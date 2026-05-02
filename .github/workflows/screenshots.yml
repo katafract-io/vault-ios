@@ -19,7 +19,23 @@ jobs:
   regenerate:
     name: Capture + upload screenshots
     runs-on: [ self-hosted, macOS, ios-build, ARM64 ]
-    timeout-minutes: 60
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        device:
+          - name: iPhone16Pro
+            destination: "generic/platform=iOS Simulator,name=iPhone 16 Pro"
+            width: 1290
+            height: 2796
+          - name: iPhone16
+            destination: "generic/platform=iOS Simulator,name=iPhone 16"
+            width: 1170
+            height: 2532
+          - name: iPadProM4
+            destination: "generic/platform=iOS Simulator,name=iPad Pro (13-inch) (M4)"
+            width: 1640
+            height: 2360
+      max-parallel: 1
 
     env:
       APP_NAME: vaultyx
@@ -28,6 +44,8 @@ jobs:
       FASTLANE_LANE: submit_version_screenshots
       RBENV_RUBY: /Users/christianflores/.rbenv/versions/3.3.11
       DOCS_INTERNAL_REPO: katafract-io/docs-internal
+      DEVICE_NAME: ${{ matrix.device.name }}
+      SIMULATOR_DESTINATION: ${{ matrix.device.destination }}
 
     steps:
       - name: Checkout
@@ -108,23 +126,53 @@ jobs:
         run: |
           set -o pipefail
           export PATH="${RBENV_RUBY}/bin:$PATH"
-          rm -rf fastlane/screenshots
+          SCREENSHOTS_DIR="fastlane/screenshots/${DEVICE_NAME}"
+          rm -rf "$SCREENSHOTS_DIR"
+          mkdir -p "$SCREENSHOTS_DIR"
           ${RBENV_RUBY}/bin/bundle exec fastlane ${FASTLANE_LANE} 2>&1 | tee /tmp/fastlane.log | tail -80
-          echo "shot_count=$(find fastlane/screenshots -name '*.png' 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "shot_count=$(find "$SCREENSHOTS_DIR" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
-      - name: Collect artifacts
+      - name: Collect IAP review screenshots (iPhone 16 Pro only)
+        if: matrix.device.name == 'iPhone16Pro'
+        run: |
+          mkdir -p /tmp/iap-review-shots
+          cd "fastlane/screenshots/iPhone16Pro"
+          for frame in 08 09 10 11 12 13; do
+            case "$frame" in
+              08) MAP="100gb.monthly" ;;
+              09) MAP="100gb.yearly" ;;
+              10) MAP="1tb.monthly" ;;
+              11) MAP="1tb.yearly" ;;
+              12) MAP="5tb.monthly" ;;
+              13) MAP="5tb.yearly" ;;
+            esac
+            if [ -f "${frame}-capacity-${MAP}.png" ]; then
+              cp "${frame}-capacity-${MAP}.png" "/tmp/iap-review-shots/${MAP}.png"
+            fi
+          done
+          ls -la /tmp/iap-review-shots/ || true
+
+      - name: Collect artifacts (per-device)
         if: always()
         run: |
-          mkdir -p /tmp/screenshot-artifacts
-          cp -r fastlane/screenshots /tmp/screenshot-artifacts/ 2>/dev/null || true
-          tail -50 /tmp/fastlane.log > /tmp/screenshot-artifacts/fastlane.tail.log 2>/dev/null || true
+          mkdir -p "/tmp/screenshot-artifacts/${DEVICE_NAME}"
+          cp -r "fastlane/screenshots/${DEVICE_NAME}" "/tmp/screenshot-artifacts/" 2>/dev/null || true
+          tail -50 /tmp/fastlane.log > "/tmp/screenshot-artifacts/${DEVICE_NAME}/fastlane.tail.log" 2>/dev/null || true
 
-      - name: Upload artifacts
+      - name: Upload device screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-${{ github.run_number }}
-          path: /tmp/screenshot-artifacts/
+          name: screenshots-${{ matrix.device.name }}-${{ github.run_number }}
+          path: /tmp/screenshot-artifacts/${{ matrix.device.name }}/
+          retention-days: 14
+
+      - name: Upload IAP review shots
+        if: always() && matrix.device.name == 'iPhone16Pro'
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap-review-shots-${{ github.run_number }}
+          path: /tmp/iap-review-shots/
           retention-days: 14
 
       - name: Commit audit log to docs-internal
