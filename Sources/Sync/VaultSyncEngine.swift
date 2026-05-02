@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import CryptoKit
 import BackgroundTasks
+import OSLog
 
 /// Core sync engine — persist-first, drain-later model.
 ///
@@ -40,6 +41,7 @@ public class VaultSyncEngine: ObservableObject {
 
     private let apiClient: VaultAPIClient
     private let modelContext: ModelContext
+    private let logger = Logger(subsystem: "com.katafract.vault", category: "sync")
 
     /// URLSession with background identifier so uploads survive app suspends.
     ///
@@ -218,10 +220,20 @@ public class VaultSyncEngine: ObservableObject {
                 chunkHashes: chunkDescriptors.map { $0.hash }
             )
             if let sidecarData = try? JSONEncoder().encode(sidecar) {
-                try? ChunkCache.put(hash: sidecarKey, data: sidecarData)
+                do {
+                    try ChunkCache.put(hash: sidecarKey, data: sidecarData)
+                } catch {
+                    self.logger.error("failed to cache sidecar for \(fileId): \(error)")
+                }
+            } else {
+                self.logger.error("failed to encode sidecar for \(fileId)")
             }
 
-            try? modelContext.save()
+            do {
+                try modelContext.save()
+            } catch {
+                self.logger.error("failed to save LocalFile and ChunkUploadQueue for \(fileId): \(error)")
+            }
         }
 
         // Step 7: schedule BGProcessingTask
@@ -429,12 +441,17 @@ public class VaultSyncEngine: ObservableObject {
             let encManifest = ChunkCache.get(hash: manifestKey)
         else {
             // Sidecar or manifest missing — mark file as error state
+            self.logger.error("sidecar or manifest missing for \(fileId)")
             await MainActor.run {
                 let desc = FetchDescriptor<LocalFile>(
                     predicate: #Predicate { $0.fileId == fileId })
                 if let file = (try? modelContext.fetch(desc))?.first {
                     file.syncState = "conflict"
-                    try? modelContext.save()
+                    do {
+                        try modelContext.save()
+                    } catch {
+                        self.logger.error("failed to mark \(fileId) as conflict: \(error)")
+                    }
                 }
             }
             return
@@ -461,7 +478,11 @@ public class VaultSyncEngine: ObservableObject {
                     predicate: #Predicate { $0.fileId == fileId })
                 if let file = (try? modelContext.fetch(desc))?.first {
                     file.syncState = "synced"
-                    try? modelContext.save()
+                    do {
+                        try modelContext.save()
+                    } catch {
+                        self.logger.error("failed to mark \(fileId) as synced: \(error)")
+                    }
                 }
                 NotificationCenter.default.post(
                     name: .vaultyxFileSynced,
@@ -470,6 +491,7 @@ public class VaultSyncEngine: ObservableObject {
             }
         } catch {
             // Manifest POST failed — leave syncState as pending_upload; drain will retry
+            self.logger.error("manifest POST failed for \(fileId): \(error)")
         }
     }
 

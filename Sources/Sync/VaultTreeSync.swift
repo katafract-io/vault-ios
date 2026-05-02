@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import CryptoKit
+import OSLog
 
 /// Pulls the remote folder + file list and reconciles it into local SwiftData.
 ///
@@ -19,6 +20,7 @@ import CryptoKit
 @MainActor
 public final class VaultTreeSync {
     private let services: VaultServices
+    private let logger = Logger(subsystem: "com.katafract.vault", category: "sync")
 
     public init(services: VaultServices) {
         self.services = services
@@ -65,9 +67,22 @@ public final class VaultTreeSync {
         // falsely delete local rows that the server still has.
         if processed >= total {
             let localFiles = (try? context.fetch(FetchDescriptor<LocalFile>())) ?? []
+            var deletedCount = 0
+            var skippedCount = 0
             for file in localFiles where !remoteFileIds.contains(file.fileId) {
-                context.delete(file)
+                // Skip files that haven't reached the server yet; they will either
+                // be re-synced by the drain worker or appear in the next remote scan.
+                // States: pending_upload (fast import, chunks queued), uploading (mid-drain),
+                // partial (partial manifest), or any future in-flight state.
+                let pendingStates = ["pending_upload", "uploading", "partial", "pending"]
+                if pendingStates.contains(file.syncState) {
+                    skippedCount += 1
+                } else {
+                    context.delete(file)
+                    deletedCount += 1
+                }
             }
+            self.logger.debug("tree-sync reconcile: deleted=\(deletedCount) skipped=\(skippedCount)")
         }
 
         try? context.save()

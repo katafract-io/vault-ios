@@ -367,6 +367,27 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
+                    DebugLogView()
+                } label: {
+                    labeledRow(icon: "doc.text", title: "Debug Log")
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+
+                NavigationLink {
+                    DebugLogView()
+                } label: {
+                    labeledRow(icon: "doc.text", title: "Debug Log")
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+
+                NavigationLink {
+                    DebugLogView()
+                } label: {
+                    labeledRow(icon: "doc.text", title: "Debug Log")
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+
+                NavigationLink {
                     AppGroupDiagnosticsView()
                 } label: {
                     labeledRow(icon: "checklist", title: "App Group Diagnostics")
@@ -384,6 +405,7 @@ struct SettingsView: View {
         )
         .navigationTitle("Settings")
         .task {
+            dlog("settings view opened", category: "ui")
             usedBytes = StorageUsageCalculator.compute(from: modelContext)
             Task { await loadServerQuota() }
             loadPendingStats()

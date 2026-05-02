@@ -67,6 +67,7 @@
 		B5FECDA48412C9D8825AA3B6 /* PhotoThumbnailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEB895BEA790DBE779D5B7 /* PhotoThumbnailView.swift */; };
 		B726502AEAF163541D69BD5E /* VaultSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02D65CE83DFEE043122E73ED /* VaultSyncEngine.swift */; };
 		BE4225CBFB6D9882888695FD /* ScreenshotMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */; };
+		C0D1E2F3A4B5C6D7E8F9A0B1 /* DebugLog+UI.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E8F9A0B1C2 /* DebugLog+UI.swift */; };
 		C1220AB949F9D89560372244 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1FB77CC808FDDFF55990C1 /* ContentView.swift */; };
 		C4C8FD1EE72A7FBE8C5F82DE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 87E84DB85BD2068C369A0E40 /* Assets.xcassets */; };
 		D3CED8B7A7D1A54F51BB39A9 /* VaultEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F830083E2B12A292C784C99C /* VaultEnumerator.swift */; };
@@ -176,6 +177,7 @@
 		896ACA5F82A229E1E822031F /* FileUploadProgressBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUploadProgressBanner.swift; sourceTree = "<group>"; };
 		8E4CBF6623D63357E5B61B0A /* CapacityPickerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CapacityPickerView.swift; sourceTree = "<group>"; };
 		901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotMode.swift; sourceTree = "<group>"; };
+		D1E2F3A4B5C6D7E8F9A0B1C2 /* DebugLog+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DebugLog+UI.swift"; sourceTree = "<group>"; };
 		934B71E7AE2335EB96BE6F9E /* Vaultyx.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Vaultyx.entitlements; sourceTree = "<group>"; };
 		94C764086C160239DF5BEBF5 /* UndoToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoToast.swift; sourceTree = "<group>"; };
 		9666910505BD37658AE382BF /* RecoveryPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseView.swift; sourceTree = "<group>"; };
@@ -322,6 +324,8 @@
 				901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */,
 				5202E341C8D1959F0077CB3E /* SubscriptionStore.swift */,
 				E99F9D00876693B1D808BA2C /* VaultApp.swift */,
+				
+				D1E2F3A4B5C6D7E8F9A0B1C2 /* DebugLog+UI.swift */,
 				AF366EE5FA273857E1DB4409 /* VaultServices.swift */,
 				934B71E7AE2335EB96BE6F9E /* Vaultyx.entitlements */,
 			);
@@ -731,6 +735,7 @@
 				168FABFD234FAE229D465E39 /* RecycleBinView.swift in Sources */,
 				0ED0E21705C12269486A78EC /* RestoreFromPhraseView.swift in Sources */,
 				BE4225CBFB6D9882888695FD /* ScreenshotMode.swift in Sources */,
+				C0D1E2F3A4B5C6D7E8F9A0B1 /* DebugLog+UI.swift in Sources */,
 				5C26E2A9C0580A7ED6A04EAB /* StorageQuotaView.swift in Sources */,
 				871CB667B019E09C79141701 /* SubscriptionStore.swift in Sources */,
 				4EE3E11259C8DEE40B2A1409 /* SyncState.swift in Sources */,
@@ -930,7 +935,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.0.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1088,7 +1093,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.0.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
