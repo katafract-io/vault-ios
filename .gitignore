@@ -30,3 +30,9 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/
 fastlane/test_output/
+
+# Local agent / coder notes — never commit; share via codex/<topic>-review-docs branch
+# Doctrine: s3://workshop/doctrine/private-agent-review-docs.md
+MEMORY.md
+docs/
+*.ai.md
