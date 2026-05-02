@@ -85,6 +85,15 @@ struct RecentsView: View {
             viewModel.configure(services: services)
             await viewModel.load()
         }
+        .onAppear {
+            Task {
+                viewModel.configure(services: services)
+                await viewModel.load()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaultRecentsDidChange)) { _ in
+            Task { await viewModel.load() }
+        }
         .refreshable {
             await viewModel.load()
         }
@@ -193,6 +202,7 @@ class RecentsViewModel: ObservableObject {
                 row?.lastOpenedAt = Date()
             }
             try? context.save()
+            NotificationCenter.default.post(name: .vaultRecentsDidChange, object: nil)
             await load()
             return URL(fileURLWithPath: cachedPath)
         }
@@ -210,6 +220,7 @@ class RecentsViewModel: ObservableObject {
                     row.lastOpenedAt = Date()
                 }
                 try? context.save()
+                NotificationCenter.default.post(name: .vaultRecentsDidChange, object: nil)
             }
             await load()
             return cached

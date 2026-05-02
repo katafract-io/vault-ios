@@ -209,6 +209,7 @@ class FileBrowserViewModel: ObservableObject {
                 uploadInProgress = false
                 uploadTask = nil
                 await load(folderId: currentFolderId)
+                NotificationCenter.default.post(name: .vaultRecentsDidChange, object: nil)
             } catch VaultSyncEngineError.uploadQueueFull(let queued, let file) {
                 let qFmt = ByteCountFormatter.string(fromByteCount: queued, countStyle: .file)
                 self.error = "Upload queue is full (\(qFmt) queued). Wait for uploads to complete or connect to Wi-Fi."
@@ -476,6 +477,7 @@ class FileBrowserViewModel: ObservableObject {
                 row?.lastOpenedAt = Date()
             }
             try? context.save()
+            NotificationCenter.default.post(name: .vaultRecentsDidChange, object: nil)
             return URL(fileURLWithPath: cachedPath)
         }
 
@@ -507,6 +509,7 @@ class FileBrowserViewModel: ObservableObject {
                     row.lastOpenedAt = Date()
                 }
                 try? context.save()
+                NotificationCenter.default.post(name: .vaultRecentsDidChange, object: nil)
             }
             return cached
         } catch is CancellationError {

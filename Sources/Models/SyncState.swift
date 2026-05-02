@@ -1,6 +1,10 @@
 import SwiftData
 import Foundation
 
+extension Notification.Name {
+    static let vaultRecentsDidChange = Notification.Name("vaultRecentsDidChange")
+}
+
 /// Local file state and metadata for sync tracking.
 ///
 /// `filename` is the plaintext display name, kept client-only. The

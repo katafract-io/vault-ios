@@ -197,6 +197,7 @@ public class VaultSyncEngine: ObservableObject {
                 chunkHashes: chunkDescriptors.map { $0.hash },
                 sizeBytes: totalSize,
                 modifiedAt: Date(),
+                lastOpenedAt: Date(),
                 syncState: "pending_upload",
                 isPinned: false,
                 thumbnailPath: nil
@@ -238,6 +239,7 @@ public class VaultSyncEngine: ObservableObject {
 
             do {
                 try modelContext.save()
+                NotificationCenter.default.post(name: .vaultRecentsDidChange, object: nil)
             } catch {
                 self.logger.error("failed to save LocalFile and ChunkUploadQueue for \(fileId): \(error)")
             }
