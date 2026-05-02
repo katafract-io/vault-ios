@@ -120,4 +120,35 @@ public final class VaultServices: ObservableObject {
             print("Warning: failed to seed screenshot data: \(error)")
         }
     }
+
+    /// Drain the App-Group import inbox: each (file, sidecar) pair is run
+    /// through `syncEngine.importFile` which encrypts + queues for upload,
+    /// then both source files in the inbox are removed.
+    ///
+    /// Called from VaultApp on every `.active` scenePhase. The share
+    /// extension is deliberately stupid — it just dumps files here — so the
+    /// real import work happens on the main app where we have the master
+    /// key, the SwiftData context, and a real upload queue.
+    public func drainShareExtensionInbox() async {
+        let pending = ImportInbox.pending()
+        guard !pending.isEmpty else { return }
+        for (fileURL, sidecar) in pending {
+            do {
+                let folderKey = try await keyManager.getOrCreateFolderKey(
+                    folderId: sidecar.parentFolderId ?? "root")
+                _ = try await syncEngine.importFile(
+                    localURL: fileURL,
+                    parentFolderId: sidecar.parentFolderId,
+                    folderKey: folderKey,
+                    masterKey: masterKey,
+                    filename: sidecar.originalName)
+                ImportInbox.consume(fileURL: fileURL)
+            } catch {
+                // Leave the entry in place so a future drain can retry.
+                #if DEBUG
+                print("[InboxDrain] importFile failed for \(fileURL.lastPathComponent): \(error)")
+                #endif
+            }
+        }
+    }
 }

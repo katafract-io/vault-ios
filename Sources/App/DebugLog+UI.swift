@@ -253,6 +253,11 @@ private struct FilterChip: View {
                 .background(isSelected ? Color.blue : Color.gray.opacity(0.15))
                 .cornerRadius(16)
         }
+        // Without .borderless, SwiftUI Lists collapse the whole HStack of
+        // chips into a single row tap target — every chip selects the same
+        // (last) one, the rest visibly do nothing. .borderless tells the
+        // List to treat each chip as an independent button.
+        .buttonStyle(.borderless)
     }
 }
 
