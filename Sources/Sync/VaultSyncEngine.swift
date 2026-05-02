@@ -110,6 +110,14 @@ public class VaultSyncEngine: ObservableObject {
     ) async throws -> String {
         let fileId = UUID().uuidString
             .replacingOccurrences(of: "-", with: "").lowercased()
+        let displayName = filename ?? localURL.lastPathComponent
+
+        // Step 0: adopt the picked file into the local plaintext cache so
+        // preview/open/share work the moment the user sees the row, even
+        // before the encrypted chunks have reached the server. Off main thread.
+        let localCacheURL: URL? = try? await Task.detached(priority: .userInitiated) {
+            try LocalCache.adopt(fileId: fileId, originalName: displayName, from: localURL)
+        }.value
 
         // Step 1-3: chunk, encrypt, cache — off main thread
         let (totalSize, chunkDescriptors) = try await Task.detached(
@@ -159,8 +167,7 @@ public class VaultSyncEngine: ObservableObject {
         }.value
 
         // Step 4: build + encrypt manifest (will be posted to server by drain worker)
-        let filenameDisplay = filename ?? localURL.lastPathComponent
-        let filenameEnc = try encryptFilename(filenameDisplay, folderKey: folderKey)
+        let filenameEnc = try encryptFilename(displayName, folderKey: folderKey)
         let manifest = VaultManifest(
             fileId: fileId,
             filenameEnc: filenameEnc,
@@ -183,9 +190,9 @@ public class VaultSyncEngine: ObservableObject {
 
             let localFile = LocalFile(
                 fileId: fileId,
-                filename: filenameDisplay,
+                filename: displayName,
                 parentFolderId: parentFolderId,
-                localPath: nil,
+                localPath: localCacheURL?.path,
                 manifestVersion: 1,
                 chunkHashes: chunkDescriptors.map { $0.hash },
                 sizeBytes: totalSize,
@@ -236,8 +243,16 @@ public class VaultSyncEngine: ObservableObject {
             }
         }
 
-        // Step 7: schedule BGProcessingTask
+        // Step 7: schedule BGProcessingTask AND kick the drain right now so
+        // the encrypted chunks start moving to S3 immediately — without this,
+        // the file sits in the local queue until iOS happens to grant a
+        // BGProcessingTask window (minutes to hours later). Detached so we
+        // don't block the importFile return; the kicker awaits the actual
+        // network roundtrip.
         scheduleDrainTask()
+        Task.detached { [weak self] in
+            await self?.syncPending()
+        }
 
         return fileId
     }
@@ -677,6 +692,187 @@ public extension Notification.Name {
 }
 
 // MARK: - Local encrypted-chunk cache
+
+/// Per-user local cache for plaintext originals brought into the app.
+///
+/// Architecture (Dropbox-style):
+///   1. User picks a file (document picker) OR shares a file (share extension)
+///   2. File is copied here, plaintext, NSFileProtection.complete
+///   3. importFile() chunks+encrypts and queues for upload to S3
+///   4. Drain worker pushes encrypted chunks to S3 — server NEVER sees plaintext
+///   5. Preview/Open/Share read directly from this cache (no network round-trip)
+///   6. On a fresh device, decrypted files materialize back into this cache
+///
+/// Zero-knowledge guarantee preserved: the operator (Katafract) can never
+/// read these files. The local cache is plaintext-on-device, but iOS file
+/// protection encrypts it at rest using the device passcode key. The S3
+/// backup is per-chunk AES-256-GCM encrypted with keys only the user holds.
+///
+/// Lives in `<Application Support>/VaultyxLocalCache/<fileId>.<ext>` —
+/// Application Support, not Caches, because iOS may purge Caches under
+/// pressure and these are effectively the source of truth for files the
+/// user has put into the app. We only delete entries on user-initiated
+/// remove or explicit eviction.
+enum LocalCache {
+
+    /// Base directory. Created on first use.
+    static var cacheURL: URL = {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = appSupport.appendingPathComponent("VaultyxLocalCache", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    /// Persist `sourceURL` as the local plaintext for `fileId`, preserving
+    /// the original extension so QuickLook resolves the right type-handler.
+    /// Uses copyItem for streaming — won't OOM on large files.
+    @discardableResult
+    static func adopt(fileId: String, originalName: String, from sourceURL: URL) throws -> URL {
+        let ext = (originalName as NSString).pathExtension
+        let name = ext.isEmpty ? fileId : "\(fileId).\(ext)"
+        let dst = cacheURL.appendingPathComponent(name, isDirectory: false)
+        if FileManager.default.fileExists(atPath: dst.path) {
+            try? FileManager.default.removeItem(at: dst)
+        }
+        try FileManager.default.copyItem(at: sourceURL, to: dst)
+        try? (dst as NSURL).setResourceValue(
+            URLFileProtection.complete, forKey: .fileProtectionKey)
+        return dst
+    }
+
+    /// Persist `data` directly (used when share extension already loaded
+    /// the bytes via NSItemProvider as Data instead of a URL).
+    @discardableResult
+    static func adoptData(fileId: String, originalName: String, data: Data) throws -> URL {
+        let ext = (originalName as NSString).pathExtension
+        let name = ext.isEmpty ? fileId : "\(fileId).\(ext)"
+        let dst = cacheURL.appendingPathComponent(name, isDirectory: false)
+        try data.write(to: dst, options: [.atomic])
+        try? (dst as NSURL).setResourceValue(
+            URLFileProtection.complete, forKey: .fileProtectionKey)
+        return dst
+    }
+
+    static func exists(at path: String) -> Bool {
+        FileManager.default.fileExists(atPath: path)
+    }
+
+    static func remove(at path: String) {
+        try? FileManager.default.removeItem(atPath: path)
+    }
+}
+
+/// App-Group-shared import inbox. Share Extension writes here; main app
+/// drains on `.active` scenePhase by calling importFile() for each entry.
+///
+/// Why a separate inbox (not LocalCache directly)? Share extension runs in
+/// a different process, has its own sandbox, and crucially has only a few
+/// seconds of execution before iOS terminates it — too short to do the
+/// chunking / encryption / upload-queue insertion ourselves. Pattern:
+/// extension copies the file into the App Group container with a sidecar
+/// JSON (original name + intended parent folder), marks the request done,
+/// and the main app picks it up the next time the user opens Vaultyx.
+///
+/// App Group: `group.com.katafract.vault` (matches both
+/// Sources/App/Vaultyx.entitlements and ShareExtension/VaultShare.entitlements).
+enum ImportInbox {
+    static let appGroupID = "group.com.katafract.vault"
+
+    static var inboxURL: URL? {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupID
+        ) else { return nil }
+        let dir = container.appendingPathComponent("ImportInbox", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// Sidecar attached to each file in the inbox, naming the original
+    /// filename and the intended destination folder (or nil for vault root).
+    struct Sidecar: Codable {
+        let originalName: String
+        let parentFolderId: String?
+    }
+
+    /// Drop a file into the inbox. Returns (file URL, sidecar URL) so the
+    /// caller can confirm both writes succeeded.
+    @discardableResult
+    static func drop(originalName: String, parentFolderId: String?, from sourceURL: URL) throws -> (URL, URL) {
+        guard let inbox = inboxURL else {
+            throw NSError(domain: "ImportInbox", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "App Group container unavailable"])
+        }
+        let stem = UUID().uuidString
+        let ext = (originalName as NSString).pathExtension
+        let fileURL = inbox.appendingPathComponent(ext.isEmpty ? stem : "\(stem).\(ext)")
+        try FileManager.default.copyItem(at: sourceURL, to: fileURL)
+        try? (fileURL as NSURL).setResourceValue(
+            URLFileProtection.complete, forKey: .fileProtectionKey)
+
+        let sidecar = Sidecar(originalName: originalName, parentFolderId: parentFolderId)
+        let sidecarURL = inbox.appendingPathComponent("\(stem).json")
+        try JSONEncoder().encode(sidecar).write(to: sidecarURL, options: [.atomic])
+        try? (sidecarURL as NSURL).setResourceValue(
+            URLFileProtection.complete, forKey: .fileProtectionKey)
+        return (fileURL, sidecarURL)
+    }
+
+    /// Same as drop but takes raw bytes (NSItemProvider-as-Data path).
+    @discardableResult
+    static func dropData(originalName: String, parentFolderId: String?, data: Data) throws -> (URL, URL) {
+        guard let inbox = inboxURL else {
+            throw NSError(domain: "ImportInbox", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "App Group container unavailable"])
+        }
+        let stem = UUID().uuidString
+        let ext = (originalName as NSString).pathExtension
+        let fileURL = inbox.appendingPathComponent(ext.isEmpty ? stem : "\(stem).\(ext)")
+        try data.write(to: fileURL, options: [.atomic])
+        try? (fileURL as NSURL).setResourceValue(
+            URLFileProtection.complete, forKey: .fileProtectionKey)
+
+        let sidecar = Sidecar(originalName: originalName, parentFolderId: parentFolderId)
+        let sidecarURL = inbox.appendingPathComponent("\(stem).json")
+        try JSONEncoder().encode(sidecar).write(to: sidecarURL, options: [.atomic])
+        try? (sidecarURL as NSURL).setResourceValue(
+            URLFileProtection.complete, forKey: .fileProtectionKey)
+        return (fileURL, sidecarURL)
+    }
+
+    /// List pending file/sidecar pairs in the inbox. Returns tuples of
+    /// (file URL, decoded sidecar). Stem entries without sidecars are
+    /// skipped (they're either being written, or the partner write failed).
+    static func pending() -> [(URL, Sidecar)] {
+        guard let inbox = inboxURL,
+              let entries = try? FileManager.default.contentsOfDirectory(
+                  at: inbox,
+                  includingPropertiesForKeys: nil,
+                  options: [.skipsHiddenFiles])
+        else { return [] }
+        var result: [(URL, Sidecar)] = []
+        for url in entries where url.pathExtension != "json" {
+            let stem = url.deletingPathExtension().lastPathComponent
+            let sidecarURL = inbox.appendingPathComponent("\(stem).json")
+            guard let bytes = try? Data(contentsOf: sidecarURL),
+                  let sidecar = try? JSONDecoder().decode(Sidecar.self, from: bytes)
+            else { continue }
+            result.append((url, sidecar))
+        }
+        return result
+    }
+
+    /// Remove a processed entry: deletes both the file and its sidecar.
+    static func consume(fileURL: URL) {
+        let stem = fileURL.deletingPathExtension().lastPathComponent
+        try? FileManager.default.removeItem(at: fileURL)
+        if let inbox = inboxURL {
+            try? FileManager.default.removeItem(
+                at: inbox.appendingPathComponent("\(stem).json"))
+        }
+    }
+}
 
 /// Local encrypted-chunk cache.
 ///

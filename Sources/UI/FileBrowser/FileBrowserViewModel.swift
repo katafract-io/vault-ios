@@ -445,7 +445,15 @@ class FileBrowserViewModel: ObservableObject {
         }
     }
 
-    /// Download + decrypt a file and return a local tmp URL for QuickLook.
+    /// Materialize a local-disk URL for QuickLook / share / open-in.
+    ///
+    /// Order of preference:
+    ///   1. LocalFile.localPath — set by importFile when the user just
+    ///      brought the file into the app (Dropbox-style local copy). Hits
+    ///      this branch instantly with no network and no decrypt; the file
+    ///      is already plaintext on disk under NSFileProtection.complete.
+    ///   2. Download from the server, decrypt with the user's folder key,
+    ///      and write into LocalCache so subsequent opens hit branch (1).
     ///
     /// Drives `downloadInProgress` / `downloadProgress` / `downloadFilename`
     /// for FileDownloadProgressBanner. Cancel-safe: `CancellationError` is
@@ -455,9 +463,18 @@ class FileBrowserViewModel: ObservableObject {
             error = "VaultServices not configured"
             return nil
         }
-        let folderId = currentFolderId ?? "root"
 
-        // Expose progress state for the download banner
+        // Branch 1: local cache hit. Fast path — no network, no decrypt.
+        let context = ModelContext(services.modelContainer)
+        let row = (try? context.fetch(FetchDescriptor<LocalFile>()))?
+            .first { $0.fileId == item.id }
+        if let cachedPath = row?.localPath, LocalCache.exists(at: cachedPath) {
+            return URL(fileURLWithPath: cachedPath)
+        }
+
+        // Branch 2: pull from server, decrypt, write into LocalCache so the
+        // next open hits the fast path.
+        let folderId = currentFolderId ?? "root"
         downloadFilename = item.name
         downloadProgress = 0
         downloadInProgress = true
@@ -469,20 +486,20 @@ class FileBrowserViewModel: ObservableObject {
                 fileId: item.id,
                 folderKey: folderKey,
                 progress: { [weak self] fraction in
-                    // progress callback arrives on whatever executor the engine
-                    // uses; hop to MainActor to update @Published safely.
                     Task { @MainActor [weak self] in
                         self?.downloadProgress = fraction
                     }
                 }
             )
-            let tmp = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension((item.name as NSString).pathExtension)
-            try plaintext.write(to: tmp, options: .atomic)
-            return tmp
+            let cached = try LocalCache.adoptData(
+                fileId: item.id, originalName: item.name, data: plaintext)
+            // Persist the path so future opens skip the download.
+            if let row {
+                row.localPath = cached.path
+                try? context.save()
+            }
+            return cached
         } catch is CancellationError {
-            // User-initiated cancel from sheet dismiss or Cancel button — silent.
             return nil
         } catch {
             self.error = "Couldn't open \(item.name): \(error.localizedDescription)"
