@@ -1,0 +1,38 @@
+"01-recovery-phrase.png-keyword" = "Your keys. Your device. Forever.";
+"01-recovery-phrase.png" = "Recovery phrases never leave your phone. Lost device means lost access.";
+
+"02-files-browser.png-keyword" = "Files you actually need.";
+"02-files-browser.png" = "Encrypted storage. Folders you create. Always in your control.";
+
+"03-file-preview.png-keyword" = "Decrypted only here.";
+"03-file-preview.png" = "Files remain encrypted in transit and at rest. Your device is the only place they become readable.";
+
+"04-recycle-bin.png-keyword" = "Recovery is possible.";
+"04-recycle-bin.png" = "Deleted files stay recoverable for 30 days. Permanent erasure is your choice.";
+
+"05-versions.png-keyword" = "Every upload, kept.";
+"05-versions.png" = "Re-upload a file and the prior version is sealed. Roll back any time.";
+
+"06-paywall-yearly.png-keyword" = "1 TB encrypted. Yearly.";
+"06-paywall-yearly.png" = "Yearly plan. 1 TB included. Redundantly replicated across our datacenter cluster.";
+
+"07-paywall-monthly.png-keyword" = "1 TB encrypted. Month to month.";
+"07-paywall-monthly.png" = "Monthly option. Same encryption, same storage, same zero-knowledge architecture.";
+
+"08-capacity-100gb-monthly.png-keyword" = "Start small. Encrypted the same.";
+"08-capacity-100gb-monthly.png" = "100 GB monthly. Same AES-256-GCM encryption as larger tiers.";
+
+"09-capacity-100gb-yearly.png-keyword" = "100 GB. Locked in.";
+"09-capacity-100gb-yearly.png" = "100 GB yearly. Same encryption, smaller cost.";
+
+"10-capacity-1tb-monthly.png-keyword" = "1 TB. Month to month.";
+"10-capacity-1tb-monthly.png" = "1 TB monthly. Most popular choice. Upgrade anytime.";
+
+"11-capacity-1tb-yearly.png-keyword" = "1 TB. Better yearly rate.";
+"11-capacity-1tb-yearly.png" = "1 TB yearly. Best value. Redundantly replicated across our datacenter cluster.";
+
+"12-capacity-5tb-monthly.png-keyword" = "5 TB encrypted. Flexible.";
+"12-capacity-5tb-monthly.png" = "5 TB monthly. For families. Same zero-knowledge architecture as every size.";
+
+"13-capacity-5tb-yearly.png-keyword" = "5 TB. Committed.";
+"13-capacity-5tb-yearly.png" = "5 TB yearly. Deepest discount. Encrypted, redundantly replicated across our cluster.";

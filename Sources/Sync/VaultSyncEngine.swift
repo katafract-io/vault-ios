@@ -545,6 +545,13 @@ public class VaultSyncEngine: ObservableObject {
     // MARK: - Download (unchanged from PR #16)
 
     /// Download and decrypt a file. Returns decrypted data.
+    ///
+    /// For files still in the upload queue (syncState pending_upload / partial)
+    /// the encrypted manifest lives only in `ChunkCache` under
+    /// `__manifest__<fileId>` — the server doesn't have it yet. Try that path
+    /// first so previewing a queued file works the same as a synced one. Per-
+    /// chunk reads already have a local-cache fallback (`ChunkCache.get`), so
+    /// once the manifest resolves, the rest of the flow is identical.
     public func downloadFile(
         fileId: String,
         folderKey: SymmetricKey,
@@ -553,7 +560,12 @@ public class VaultSyncEngine: ObservableObject {
         await MainActor.run { self.syncState = .downloading; self.activeDownloads += 1 }
         defer { Task { await MainActor.run { self.activeDownloads -= 1 } } }
 
-        let encryptedManifest = try await apiClient.fetchManifest(fileId: fileId)
+        let encryptedManifest: Data
+        if let local = ChunkCache.get(hash: "__manifest__\(fileId)") {
+            encryptedManifest = local
+        } else {
+            encryptedManifest = try await apiClient.fetchManifest(fileId: fileId)
+        }
 
         let apiClient = self.apiClient
         let fileData = try await Task.detached(priority: .userInitiated) { () -> Data in
