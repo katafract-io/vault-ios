@@ -85,9 +85,14 @@ struct VaultApp: App {
                 if lock.isLocked && lock.isIdleTooLong() {
                     Task { await lock.unlock() }
                 }
-                // Opportunistic foreground drain — runs alongside BGProcessingTask
-                // so uploads progress even when the user has the app open.
-                Task { await services.syncEngine.syncPending() }
+                // Drain the share-extension import inbox FIRST — convert any
+                // dropped files into proper LocalFile + chunk-queue rows. Then
+                // run the upload drain so chunks (including those just queued
+                // from the inbox) start moving to S3.
+                Task {
+                    await services.drainShareExtensionInbox()
+                    await services.syncEngine.syncPending()
+                }
             @unknown default: break
             }
         }
