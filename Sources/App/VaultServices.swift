@@ -1,6 +1,9 @@
 import Foundation
+import OSLog
 import SwiftData
 import CryptoKit
+
+private let inboxLog = Logger(subsystem: "com.katafract.vault", category: "share-import")
 
 /// App-wide services container. One instance lives on the main actor, owned
 /// by `VaultApp` and injected via the environment.
@@ -131,7 +134,16 @@ public final class VaultServices: ObservableObject {
     /// key, the SwiftData context, and a real upload queue.
     public func drainShareExtensionInbox() async {
         let pending = ImportInbox.pending()
-        guard !pending.isEmpty else { return }
+        guard !pending.isEmpty else {
+            inboxLog.debug("drain: inbox empty")
+            return
+        }
+        inboxLog.info("drain: \(pending.count) pending entr(y/ies)")
+        dlog("share-import drain: \(pending.count) pending", category: "share-import", level: .info)
+
+        var imported = 0
+        var failures: [String] = []
+
         for (fileURL, sidecar) in pending {
             do {
                 let folderKey = try await keyManager.getOrCreateFolderKey(
@@ -143,12 +155,17 @@ public final class VaultServices: ObservableObject {
                     masterKey: masterKey,
                     filename: sidecar.originalName)
                 ImportInbox.consume(fileURL: fileURL)
+                imported += 1
             } catch {
                 // Leave the entry in place so a future drain can retry.
-                #if DEBUG
-                print("[InboxDrain] importFile failed for \(fileURL.lastPathComponent): \(error)")
-                #endif
+                let detail = "\(sidecar.originalName): \(error.localizedDescription)"
+                failures.append(detail)
+                inboxLog.error("importFile failed for \(sidecar.originalName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("share-import importFile failed: \(detail)", category: "share-import", level: .error)
             }
         }
+
+        inboxLog.info("drain done: imported=\(imported), failed=\(failures.count)")
+        dlog("share-import drain done: imported=\(imported), failed=\(failures.count)", category: "share-import", level: failures.isEmpty ? .info : .warn)
     }
 }

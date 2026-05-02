@@ -1,4 +1,5 @@
 import UIKit
+import OSLog
 import Social
 import UniformTypeIdentifiers
 
@@ -21,6 +22,7 @@ import UniformTypeIdentifiers
 class ShareViewController: UIViewController {
 
     private static let appGroupID = "group.com.katafract.vault"
+    private static let log = Logger(subsystem: "com.katafract.vault.share", category: "import")
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -90,9 +92,16 @@ class ShareViewController: UIViewController {
         _ staged: [(originalName: String, sourceURL: URL?, data: Data?)]
     ) {
         guard let inbox = sharedInboxURL() else {
-            self.cancel()
+            Self.log.error("App Group container '\(Self.appGroupID, privacy: .public)' is unavailable; share-extension entitlement is missing or its provisioning profile lacks the App Group capability.")
+            presentTerminalError(
+                title: "Vaultyx Share Unavailable",
+                message: "Vaultyx couldn't reach its shared storage on this device. The share extension's provisioning profile may be missing the App Group entitlement."
+            )
             return
         }
+
+        var failed: [String] = []
+        var written = 0
 
         for item in staged {
             let stem = UUID().uuidString
@@ -109,6 +118,7 @@ class ShareViewController: UIViewController {
                 } else if let data = item.data {
                     try data.write(to: fileURL, options: [.atomic])
                 } else {
+                    failed.append("\(item.originalName): no source URL or data")
                     continue
                 }
                 try? (fileURL as NSURL).setResourceValue(
@@ -126,13 +136,45 @@ class ShareViewController: UIViewController {
                 try sidecarData.write(to: sidecarURL, options: [.atomic])
                 try? (sidecarURL as NSURL).setResourceValue(
                     URLFileProtection.complete, forKey: .fileProtectionKey)
+                written += 1
             } catch {
-                // Best-effort — keep going on partial failures.
+                Self.log.error("inbox write failed for \(item.originalName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                failed.append("\(item.originalName): \(error.localizedDescription)")
                 continue
             }
         }
 
+        Self.log.info("share-extension drop complete: \(written) written, \(failed.count) failed")
+
+        if written == 0 {
+            presentTerminalError(
+                title: "Couldn't Save to Vault",
+                message: failed.isEmpty
+                    ? "No files were written. Try sharing again."
+                    : "All \(staged.count) file(s) failed:\n\n\(failed.joined(separator: "\n"))"
+            )
+            return
+        }
+        if !failed.isEmpty {
+            presentTerminalError(
+                title: "Partially Saved",
+                message: "Wrote \(written) of \(staged.count) file(s). Failures:\n\n\(failed.joined(separator: "\n"))"
+            )
+            return
+        }
+
         extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+    }
+
+    /// Present a blocking alert and only finish the extension request once
+    /// the user dismisses it — otherwise the share sheet snaps closed before
+    /// the user can read what went wrong.
+    private func presentTerminalError(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            self?.cancel()
+        })
+        present(alert, animated: true)
     }
 
     private func sharedInboxURL() -> URL? {
