@@ -374,20 +374,6 @@ struct SettingsView: View {
                 .listRowBackground(Color.kataSapphire.opacity(0.04))
 
                 NavigationLink {
-                    DebugLogView()
-                } label: {
-                    labeledRow(icon: "doc.text", title: "Debug Log")
-                }
-                .listRowBackground(Color.kataSapphire.opacity(0.04))
-
-                NavigationLink {
-                    DebugLogView()
-                } label: {
-                    labeledRow(icon: "doc.text", title: "Debug Log")
-                }
-                .listRowBackground(Color.kataSapphire.opacity(0.04))
-
-                NavigationLink {
                     AppGroupDiagnosticsView()
                 } label: {
                     labeledRow(icon: "checklist", title: "App Group Diagnostics")
