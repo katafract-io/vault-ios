@@ -268,59 +268,91 @@ public class VaultSyncEngine: ObservableObject {
         defer { Task { await MainActor.run { self.activeUploads -= 1 } } }
 
         let now = Date()
-        // Fetch pending rows
         let descriptor = FetchDescriptor<ChunkUploadQueue>(
             predicate: #Predicate { $0.doneAt == nil && $0.nextRetryAt <= now },
             sortBy: [SortDescriptor(\.nextRetryAt)]
         )
-        let rows: [ChunkUploadQueue]
+
+        // Fetch on MainActor and immediately copy out scalar snapshots. SwiftData
+        // @Model objects are bound to the actor that owns the ModelContext;
+        // touching `row.fileId` from a background task crashes the cooperative
+        // pool with "Thread X is not the owning thread of model context" or an
+        // EXC_BAD_ACCESS, depending on iOS version. Snapshots are Sendable and
+        // safe to pass into TaskGroup.
+        let snapshots: [ChunkSnapshot]
         do {
-            rows = try await MainActor.run { try modelContext.fetch(descriptor) }
+            snapshots = try await MainActor.run {
+                try modelContext.fetch(descriptor).map {
+                    ChunkSnapshot(fileId: $0.fileId, chunkHash: $0.chunkHash)
+                }
+            }
         } catch {
             await MainActor.run { self.syncState = .error("Queue fetch failed: \(error)") }
             return
         }
 
-        if rows.isEmpty {
+        if snapshots.isEmpty {
             await MainActor.run { self.syncState = .idle }
             return
         }
 
-        // Group by fileId for manifest-post logic
-        var byFile: [String: [ChunkUploadQueue]] = [:]
-        for row in rows {
-            byFile[row.fileId, default: []].append(row)
-        }
+        // Distinct fileIds for the post-drain finalization sweep.
+        var fileIds: [String] = []
+        var seen = Set<String>()
+        for s in snapshots where seen.insert(s.fileId).inserted { fileIds.append(s.fileId) }
 
-        // Upload each file's pending chunks with bounded concurrency (8 workers)
-        let sharedRows = rows // capture for task group
+        // Bounded concurrency without DispatchSemaphore. `DispatchSemaphore.wait`
+        // blocks the underlying cooperative thread; calling it from inside a
+        // Swift Task can starve the executor pool and deadlock on iOS 17+.
+        // Pattern: seed the group with N tasks, then refill by one each time
+        // a task completes (`await group.next()`).
+        let maxConcurrent = 8
+        var iterator = snapshots.makeIterator()
         await withTaskGroup(of: (fileId: String, chunkHash: String, success: Bool).self) { group in
-            let semaphore = DispatchSemaphore(value: 8)
-            for row in sharedRows {
-                group.addTask {
-                    semaphore.wait()
-                    defer { semaphore.signal() }
-                    return await self.drainChunk(row)
+            var inflight = 0
+            while inflight < maxConcurrent, let snap = iterator.next() {
+                group.addTask { [weak self] in
+                    guard let self else { return (snap.fileId, snap.chunkHash, false) }
+                    return await self.drainChunk(fileId: snap.fileId, chunkHash: snap.chunkHash)
+                }
+                inflight += 1
+            }
+            while let result = await group.next() {
+                await self.updateChunkResult(
+                    fileId: result.fileId, chunkHash: result.chunkHash, success: result.success)
+                if let snap = iterator.next() {
+                    group.addTask { [weak self] in
+                        guard let self else { return (snap.fileId, snap.chunkHash, false) }
+                        return await self.drainChunk(fileId: snap.fileId, chunkHash: snap.chunkHash)
+                    }
                 }
             }
-            // Collect results and update rows on main actor
-            for await result in group {
-                await self.updateChunkResult(fileId: result.fileId, chunkHash: result.chunkHash, success: result.success, rows: rows)
-            }
         }
 
-        // After uploading, check which files have all chunks done → post manifest
-        for (fileId, fileRows) in byFile {
-            await checkAndFinalizeFile(fileId: fileId, queuedRows: fileRows)
+        // After uploading, check which files have all chunks done → post manifest.
+        for fileId in fileIds {
+            await checkAndFinalizeFile(fileId: fileId)
         }
 
         await MainActor.run { self.syncState = .idle }
     }
 
-    /// Update a chunk row after drainChunk completes.
-    private func updateChunkResult(fileId: String, chunkHash: String, success: Bool, rows: [ChunkUploadQueue]) async {
+    /// Sendable snapshot of a queue row's identifying scalars. Lets us pass
+    /// upload work into TaskGroup without leaking the @Model object across
+    /// actors (which crashes; see syncPending).
+    private struct ChunkSnapshot: Sendable {
+        let fileId: String
+        let chunkHash: String
+    }
+
+    /// Update a chunk row after drainChunk completes. Re-fetches by predicate
+    /// inside MainActor to avoid holding @Model references across actor hops.
+    private func updateChunkResult(fileId: String, chunkHash: String, success: Bool) async {
         await MainActor.run {
-            guard let row = rows.first(where: { $0.fileId == fileId && $0.chunkHash == chunkHash }) else { return }
+            let descriptor = FetchDescriptor<ChunkUploadQueue>(
+                predicate: #Predicate { $0.fileId == fileId && $0.chunkHash == chunkHash }
+            )
+            guard let row = (try? modelContext.fetch(descriptor))?.first else { return }
             if success {
                 row.doneAt = Date()
             } else {
@@ -333,10 +365,9 @@ public class VaultSyncEngine: ObservableObject {
     }
 
     /// Upload one chunk. On failure: increment attempts + backoff nextRetryAt.
-    /// Returns fileId + chunkHash for row lookup + update on main thread.
-    private func drainChunk(_ row: ChunkUploadQueue) async -> (fileId: String, chunkHash: String, success: Bool) {
-        let fileId = row.fileId
-        let chunkHash = row.chunkHash
+    /// Takes scalar IDs (not the @Model row) so it is safe to invoke from any
+    /// actor — see ChunkSnapshot for rationale.
+    private func drainChunk(fileId: String, chunkHash: String) async -> (fileId: String, chunkHash: String, success: Bool) {
 
         // Dedup: HEAD the chunk on the server
         let alreadyUploaded = (try? await apiClient.chunkExists(
@@ -379,7 +410,7 @@ public class VaultSyncEngine: ObservableObject {
     }
 
     /// After all chunks for a file are confirmed, post the manifest and mark synced.
-    private func checkAndFinalizeFile(fileId: String, queuedRows: [ChunkUploadQueue]) async {
+    private func checkAndFinalizeFile(fileId: String) async {
         // Re-fetch to check current done state (rows may have been updated by concurrent drains)
         let allDone: Bool = await MainActor.run {
             let desc = FetchDescriptor<ChunkUploadQueue>(
