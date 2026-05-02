@@ -309,11 +309,23 @@ public class VaultSyncEngine: ObservableObject {
         // EXC_BAD_ACCESS, depending on iOS version. Snapshots are Sendable and
         // safe to pass into TaskGroup.
         let snapshots: [ChunkSnapshot]
+        let pendingFileIds: [String]
         do {
             snapshots = try await MainActor.run {
                 try modelContext.fetch(descriptor).map {
                     ChunkSnapshot(fileId: $0.fileId, chunkHash: $0.chunkHash)
                 }
+            }
+            pendingFileIds = try await MainActor.run {
+                let files = try modelContext.fetch(FetchDescriptor<LocalFile>())
+                var ids: [String] = []
+                var seen = Set<String>()
+                for file in files where ["pending_upload", "uploading", "partial"].contains(file.syncState) {
+                    if seen.insert(file.fileId).inserted {
+                        ids.append(file.fileId)
+                    }
+                }
+                return ids
             }
         } catch {
             await MainActor.run { self.syncState = .error("Queue fetch failed: \(error)") }
@@ -321,13 +333,19 @@ public class VaultSyncEngine: ObservableObject {
         }
 
         if snapshots.isEmpty {
+            for fileId in pendingFileIds {
+                await checkAndFinalizeFile(fileId: fileId)
+            }
             await MainActor.run { self.syncState = .idle }
             return
         }
 
         // Distinct fileIds for the post-drain finalization sweep.
-        var fileIds: [String] = []
+        var fileIds: [String] = pendingFileIds
         var seen = Set<String>()
+        for id in pendingFileIds {
+            seen.insert(id)
+        }
         for s in snapshots where seen.insert(s.fileId).inserted { fileIds.append(s.fileId) }
 
         // Bounded concurrency without DispatchSemaphore. `DispatchSemaphore.wait`
@@ -466,6 +484,10 @@ public class VaultSyncEngine: ObservableObject {
                     file.syncState = "conflict"
                     do {
                         try modelContext.save()
+                        NotificationCenter.default.post(
+                            name: .vaultyxFileSynced,
+                            object: nil,
+                            userInfo: ["fileId": fileId])
                     } catch {
                         self.logger.error("failed to mark \(fileId) as conflict: \(error)")
                     }

@@ -352,6 +352,9 @@ struct FileBrowserView: View {
             viewModel.configure(services: services)
             await viewModel.load(folderId: folderId)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaultyxFileSynced)) { _ in
+            viewModel.refreshFromCache()
+        }
         .refreshable {
             // Pull-to-refresh: run the full sync inline (user-initiated, so
             // we can block the spinner on the network round-trip) rather

@@ -479,6 +479,14 @@ struct SettingsView: View {
             loadPendingStats()
             loadOfflineStats()
         }
+        .onAppear {
+            loadPendingStats()
+            loadOfflineStats()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaultyxFileSynced)) { _ in
+            loadPendingStats()
+            usedBytes = StorageUsageCalculator.compute(from: modelContext)
+        }
         .sheet(isPresented: $showPhrase) {
             RecoveryPhraseView(
                 phrase: RecoveryPhrase.phrase(for: services.masterKey),
