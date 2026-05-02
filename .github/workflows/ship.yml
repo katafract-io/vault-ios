@@ -142,7 +142,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          set -o pipefail
+          set +e
           xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx \
             -configuration Release -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
@@ -150,10 +150,26 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            CURRENT_PROJECT_VERSION=$BUILD_NUM archive 2>&1 | tee /tmp/archive.log | grep -E "error:|warning:|\*\* |Signing Identity" | tail -30
-          if [ ! -f "$ARCHIVE_PATH/Info.plist" ]; then
-            echo "::error::archive incomplete"; tail -80 /tmp/archive.log; exit 1
+            CURRENT_PROJECT_VERSION=$BUILD_NUM archive > /tmp/archive.log 2>&1
+          XCB_RC=$?
+          echo "::group::archive.log summary (errors + warnings)"
+          grep -E "error:|warning:|\*\* |Signing Identity" /tmp/archive.log | tail -50 || true
+          echo "::endgroup::"
+          if [ $XCB_RC -ne 0 ] || [ ! -f "$ARCHIVE_PATH/Info.plist" ]; then
+            echo "::error::archive failed (rc=$XCB_RC, info_plist=$([ -f "$ARCHIVE_PATH/Info.plist" ] && echo yes || echo no))"
+            echo "::group::archive.log last 200 lines"
+            tail -200 /tmp/archive.log
+            echo "::endgroup::"
+            exit 1
           fi
+
+      - name: Upload archive log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-log-${{ github.run_id }}
+          path: /tmp/archive.log
+          retention-days: 7
 
       - name: Force-embed .appex extensions from archive's own UninstalledProducts
         run: |
