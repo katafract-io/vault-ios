@@ -1,0 +1,88 @@
+name: PR check (compile gate)
+
+# Verification framework — Tier 0 (static / compile).
+# See .doctrine/verification-framework.md
+#
+# Goal: every PR that touches Swift / Xcode files must compile-check on a real
+# Xcode toolchain BEFORE merge. Catches the kind of silent breakage that
+# previously only surfaced in TestFlight / ASC upload (e.g. ship.yml run
+# 25227640893 — closed-train CFBundleShortVersionString that the dev never
+# saw locally).
+#
+# Cheap by design: simulator build, no archive, no test, no signing.
+# Should complete in 3-5 min on cmfmbp / chronos-macbuilder.
+
+on:
+  pull_request:
+    paths:
+      - '**/*.swift'
+      - '**/*.xcodeproj/**'
+      - '**/*.pbxproj'
+      - 'project.yml'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - '.github/workflows/pr-check.yml'
+      - '.github/repo-meta.yml'
+
+concurrency:
+  group: pr-check-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compile (iOS Simulator, no signing)
+    runs-on: [self-hosted, macOS, ios-build]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Read repo-meta.yml
+        id: meta
+        run: |
+          set -euo pipefail
+          if [ ! -f .github/repo-meta.yml ]; then
+            echo "::error::.github/repo-meta.yml missing — required by verification framework"
+            exit 1
+          fi
+          # Minimal yq-free parser; works for the flat key:value file we ship.
+          SCHEME=$(awk -F': *' '/^scheme:/ {print $2; exit}' .github/repo-meta.yml | tr -d '"' | tr -d "'")
+          PROJECT=$(awk -F': *' '/^project:/ {print $2; exit}' .github/repo-meta.yml | tr -d '"' | tr -d "'")
+          if [ -z "$SCHEME" ] || [ -z "$PROJECT" ]; then
+            echo "::error::repo-meta.yml must define both scheme and project"
+            cat .github/repo-meta.yml
+            exit 1
+          fi
+          echo "scheme=$SCHEME"   >> "$GITHUB_OUTPUT"
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "✅ scheme=$SCHEME project=$PROJECT"
+
+      - name: Regenerate Xcode project (xcodegen if present)
+        run: |
+          if [ -f project.yml ] && command -v xcodegen >/dev/null 2>&1; then
+            xcodegen generate 2>&1 | tail -10
+          else
+            echo "no xcodegen / no project.yml — skipping regen"
+          fi
+
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild -scheme "${{ steps.meta.outputs.scheme }}" \
+                     -project "${{ steps.meta.outputs.project }}" \
+                     -resolvePackageDependencies 2>&1 | tail -10
+
+      - name: Compile (Debug, simulator, no signing)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme "${{ steps.meta.outputs.scheme }}" \
+            -project "${{ steps.meta.outputs.project }}" \
+            -destination "generic/platform=iOS Simulator" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -quiet 2>&1 | tail -50
