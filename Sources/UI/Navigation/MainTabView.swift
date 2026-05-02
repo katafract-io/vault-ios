@@ -410,7 +410,7 @@ struct SettingsView: View {
                     Button {
                         isDraining = true
                         Task {
-                            await services.syncEngine.syncPending()
+                            await services.syncEngine.syncPending(force: true)
                             isDraining = false
                             loadPendingStats()
                         }

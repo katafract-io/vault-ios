@@ -288,19 +288,28 @@ public class VaultSyncEngine: ObservableObject {
     ///
     /// Algorithm:
     ///   1. Fetch all ChunkUploadQueue rows not yet done and past nextRetryAt
+    ///      (`force=true` ignores retry backoff for user-initiated "Back Up Now")
     ///   2. Group by fileId
     ///   3. For each chunk: HEAD server (dedup) → presign PUT → upload
     ///   4. On ACK: delete local cache file, mark row done
     ///   5. When all rows for a file are done: POST manifest, syncState='synced'
-    public func syncPending() async {
+    public func syncPending(force: Bool = false) async {
         await MainActor.run { self.syncState = .uploading; self.activeUploads += 1 }
         defer { Task { await MainActor.run { self.activeUploads -= 1 } } }
 
         let now = Date()
-        let descriptor = FetchDescriptor<ChunkUploadQueue>(
-            predicate: #Predicate { $0.doneAt == nil && $0.nextRetryAt <= now },
-            sortBy: [SortDescriptor(\.nextRetryAt)]
-        )
+        let descriptor: FetchDescriptor<ChunkUploadQueue>
+        if force {
+            descriptor = FetchDescriptor<ChunkUploadQueue>(
+                predicate: #Predicate { $0.doneAt == nil },
+                sortBy: [SortDescriptor(\.nextRetryAt)]
+            )
+        } else {
+            descriptor = FetchDescriptor<ChunkUploadQueue>(
+                predicate: #Predicate { $0.doneAt == nil && $0.nextRetryAt <= now },
+                sortBy: [SortDescriptor(\.nextRetryAt)]
+            )
+        }
 
         // Fetch on MainActor and immediately copy out scalar snapshots. SwiftData
         // @Model objects are bound to the actor that owns the ModelContext;
