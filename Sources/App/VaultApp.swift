@@ -9,6 +9,7 @@ struct VaultApp: App {
     @StateObject private var subscriptionStore: SubscriptionStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var splashComplete = ScreenshotMode.isActive  // skip splash in screenshot mode
+    @State private var drainTicker: Task<Void, Never>?
 
     init() {
         // Register BGProcessingTask identifier BEFORE the first runloop cycle.
@@ -79,6 +80,8 @@ struct VaultApp: App {
                 if lock.isEnabled && lock.isIdleTooLong() {
                     lock.lock()
                 }
+                drainTicker?.cancel()
+                drainTicker = nil
             case .active:
                 lock.markActive()
                 // Trigger biometric unlock only if locked AND idle timeout has passed
@@ -92,6 +95,15 @@ struct VaultApp: App {
                 Task {
                     await services.drainShareExtensionInbox()
                     await services.syncEngine.syncPending()
+                }
+                let engine = services.syncEngine
+                drainTicker?.cancel()
+                drainTicker = Task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(30))
+                        if Task.isCancelled { return }
+                        await engine.syncPending()
+                    }
                 }
             @unknown default: break
             }
