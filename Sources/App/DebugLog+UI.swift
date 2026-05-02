@@ -119,7 +119,7 @@ public struct DebugLogView: View {
 
     public init() {}
 
-    var body: some View {
+    public var body: some View {
         List {
             // Filter chips: all levels + clear
             Section {
@@ -243,7 +243,7 @@ private struct FilterChip: View {
     let isSelected: Bool
     let action: () -> Void
 
-    var body: some View {
+    public var body: some View {
         Button(action: action) {
             Text(label)
                 .font(.caption.weight(.semibold))
@@ -261,7 +261,7 @@ private struct SearchBar: View {
     @Binding var text: String
     let placeholder: String
 
-    var body: some View {
+    public var body: some View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
@@ -290,7 +290,7 @@ private struct LogEntryRow: View {
     let entry: DebugLog.Entry
     let dateFormatter: DateFormatter
 
-    var body: some View {
+    public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(dateFormatter.string(from: entry.timestamp))
@@ -320,7 +320,7 @@ private struct LogEntryRow: View {
 private struct LevelBadge: View {
     let level: DebugLog.Level
 
-    var body: some View {
+    public var body: some View {
         Text(level.rawValue)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.white)
