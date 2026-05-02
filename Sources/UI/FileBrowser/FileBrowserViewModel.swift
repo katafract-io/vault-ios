@@ -99,6 +99,7 @@ class FileBrowserViewModel: ObservableObject {
                 isFolder: true,
                 sizeBytes: 0,
                 modifiedAt: folder.modifiedAt,
+                parentFolderId: folder.parentFolderId,
                 syncState: .synced,
                 isPinned: false)
         }
@@ -118,6 +119,7 @@ class FileBrowserViewModel: ObservableObject {
                 isFolder: false,
                 sizeBytes: row.sizeBytes,
                 modifiedAt: row.modifiedAt,
+                parentFolderId: row.parentFolderId,
                 syncState: syncDisplay,
                 isPinned: row.isPinned)
         }
@@ -403,6 +405,7 @@ class FileBrowserViewModel: ObservableObject {
                         isFolder: updated.isFolder,
                         sizeBytes: updated.sizeBytes,
                         modifiedAt: updated.modifiedAt,
+                        parentFolderId: updated.parentFolderId,
                         syncState: updated.syncState,
                         isPinned: updated.isPinned,
                         thumbnailImage: updated.thumbnailImage)
@@ -458,7 +461,7 @@ class FileBrowserViewModel: ObservableObject {
     /// Drives `downloadInProgress` / `downloadProgress` / `downloadFilename`
     /// for FileDownloadProgressBanner. Cancel-safe: `CancellationError` is
     /// caught silently — no error alert surfaces on user-initiated cancel.
-    func materializeLocalURL(for item: VaultFileItem) async -> URL? {
+    func materializeLocalURL(for item: VaultFileItem, markOpened: Bool = true) async -> URL? {
         guard let services else {
             error = "VaultServices not configured"
             return nil
@@ -469,12 +472,16 @@ class FileBrowserViewModel: ObservableObject {
         let row = (try? context.fetch(FetchDescriptor<LocalFile>()))?
             .first { $0.fileId == item.id }
         if let cachedPath = row?.localPath, LocalCache.exists(at: cachedPath) {
+            if markOpened {
+                row?.lastOpenedAt = Date()
+            }
+            try? context.save()
             return URL(fileURLWithPath: cachedPath)
         }
 
         // Branch 2: pull from server, decrypt, write into LocalCache so the
         // next open hits the fast path.
-        let folderId = currentFolderId ?? "root"
+        let folderId = item.parentFolderId ?? currentFolderId ?? "root"
         downloadFilename = item.name
         downloadProgress = 0
         downloadInProgress = true
@@ -496,6 +503,9 @@ class FileBrowserViewModel: ObservableObject {
             // Persist the path so future opens skip the download.
             if let row {
                 row.localPath = cached.path
+                if markOpened {
+                    row.lastOpenedAt = Date()
+                }
                 try? context.save()
             }
             return cached
@@ -509,26 +519,33 @@ class FileBrowserViewModel: ObservableObject {
 
     func togglePin(_ item: VaultFileItem) {
         guard let services else { return }
+        guard !item.isFolder else { return }
         let context = ModelContext(services.modelContainer)
         let descriptor = FetchDescriptor<LocalFile>()
         if let rows = try? context.fetch(descriptor) {
             for row in rows where row.fileId == item.id {
-                row.isPinned.toggle()
+                if row.isPinned {
+                    row.isPinned = false
+                } else if let localPath = row.localPath, LocalCache.exists(at: localPath) {
+                    row.isPinned = true
+                } else {
+                    Task {
+                        guard await materializeLocalURL(for: item, markOpened: false) != nil else { return }
+                        let context = ModelContext(services.modelContainer)
+                        if let rows = try? context.fetch(FetchDescriptor<LocalFile>()) {
+                            for row in rows where row.fileId == item.id {
+                                row.isPinned = true
+                            }
+                            try? context.save()
+                        }
+                        refreshFromCache()
+                    }
+                    return
+                }
             }
             try? context.save()
         }
-        if let idx = items.firstIndex(where: { $0.id == item.id }) {
-            let updated = items[idx]
-            items[idx] = VaultFileItem(
-                id: updated.id,
-                name: updated.name,
-                isFolder: updated.isFolder,
-                sizeBytes: updated.sizeBytes,
-                modifiedAt: updated.modifiedAt,
-                syncState: updated.syncState,
-                isPinned: !updated.isPinned,
-                thumbnailImage: updated.thumbnailImage)
-        }
+        refreshFromCache()
     }
 
     /// Injects synthetic seed data for XCUITest screenshot runs.

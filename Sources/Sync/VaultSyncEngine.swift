@@ -135,7 +135,7 @@ public class VaultSyncEngine: ObservableObject {
             // --- Chunk + encrypt + cache ---
             let fileHandle = try FileHandle(forReadingFrom: localURL)
             defer { try? fileHandle.close() }
-            let totalFileSize = try fileHandle.seekToEndOfFile()
+            let totalFileSize = fileHandle.seekToEndOfFile()
             try fileHandle.seek(toOffset: 0)
 
             var descriptors: [VaultManifest.ChunkDescriptor] = []
@@ -761,6 +761,11 @@ enum LocalCache {
 
     static func remove(at path: String) {
         try? FileManager.default.removeItem(atPath: path)
+    }
+
+    static func byteCount(at path: String) -> Int64 {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        return attrs?[.size] as? Int64 ?? 0
     }
 }
 

@@ -15,6 +15,7 @@ import Foundation
     var chunkHashes: [String]       // ordered list of chunk hashes
     var sizeBytes: Int64
     var modifiedAt: Date
+    var lastOpenedAt: Date?
     var syncState: String           // synced | uploading | downloading | conflict | deleted | pending | pending_upload | partial
     var isPinned: Bool              // pinned for offline access
     var thumbnailPath: String?      // local thumbnail cache path
@@ -28,6 +29,7 @@ import Foundation
         chunkHashes: [String] = [],
         sizeBytes: Int64 = 0,
         modifiedAt: Date = Date(),
+        lastOpenedAt: Date? = nil,
         syncState: String = "pending",
         isPinned: Bool = false,
         thumbnailPath: String? = nil
@@ -40,6 +42,7 @@ import Foundation
         self.chunkHashes = chunkHashes
         self.sizeBytes = sizeBytes
         self.modifiedAt = modifiedAt
+        self.lastOpenedAt = lastOpenedAt
         self.syncState = syncState
         self.isPinned = isPinned
         self.thumbnailPath = thumbnailPath

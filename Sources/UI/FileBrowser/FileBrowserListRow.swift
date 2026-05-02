@@ -64,7 +64,7 @@ struct FileBrowserListRow: View {
                         Label("Move", systemImage: "folder")
                     }
                     Button(action: onPin) {
-                        Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+                        Label(item.isPinned ? "Remove Offline" : "Keep Offline", systemImage: item.isPinned ? "pin.slash" : "pin")
                     }
                     Button(role: .destructive, action: onDelete) {
                         Label("Delete", systemImage: "trash")
@@ -89,7 +89,7 @@ struct FileBrowserListRow: View {
                 }
                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                     Button(action: onPin) {
-                        Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+                        Label(item.isPinned ? "Remove Offline" : "Keep Offline", systemImage: item.isPinned ? "pin.slash" : "pin")
                     }
                     .tint(Color.kataSapphire)
                 }

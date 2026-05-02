@@ -6,9 +6,32 @@ struct VaultFileItem: Identifiable, Hashable {
     let isFolder: Bool
     let sizeBytes: Int64
     let modifiedAt: Date
+    let parentFolderId: String?
     let syncState: SyncStateDisplay
     let isPinned: Bool
     var thumbnailImage: UIImage?
+
+    init(
+        id: String,
+        name: String,
+        isFolder: Bool,
+        sizeBytes: Int64,
+        modifiedAt: Date,
+        parentFolderId: String? = nil,
+        syncState: SyncStateDisplay,
+        isPinned: Bool,
+        thumbnailImage: UIImage? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.isFolder = isFolder
+        self.sizeBytes = sizeBytes
+        self.modifiedAt = modifiedAt
+        self.parentFolderId = parentFolderId
+        self.syncState = syncState
+        self.isPinned = isPinned
+        self.thumbnailImage = thumbnailImage
+    }
 
     enum SyncStateDisplay: Equatable {
         case synced

@@ -18,7 +18,7 @@ struct FileBrowserView: View {
     @State private var selectedIds = Set<String>()
     @State private var isEditing = false
     @State private var previewURL: URL?
-    @State private var previewIsLoading = false
+    @State private var previewTask: Task<Void, Never>?
     @State private var renameTarget: VaultFileItem?
     @State private var renamingName: String = ""
     @State private var showDeleteConfirmation = false
@@ -31,6 +31,37 @@ struct FileBrowserView: View {
 
     enum ViewMode { case list, grid }
     enum SortOrder { case name, date, size, type }
+
+    /// Materialize before presenting QuickLook. This keeps large downloads in
+    /// the file browser with one stable progress banner instead of repeatedly
+    /// rebuilding a loading sheet while progress updates arrive.
+    private func beginPreview(_ item: VaultFileItem) {
+        guard !fileLoadingStates.contains(item.id) else { return }
+        fileLoadingStates.insert(item.id)
+        previewTask?.cancel()
+        previewURL = nil
+
+        previewTask = Task { @MainActor in
+            let url = await viewModel.materializeLocalURL(for: item)
+            guard !Task.isCancelled else { return }
+            if let url {
+                previewURL = url
+                selectedFile = item
+            } else {
+                fileLoadingStates.remove(item.id)
+            }
+            previewTask = nil
+        }
+    }
+
+    private func cancelPreviewDownload() {
+        previewTask?.cancel()
+        previewTask = nil
+        viewModel.cancelDownload()
+        selectedFile = nil
+        previewURL = nil
+        fileLoadingStates.removeAll()
+    }
 
     /// Gate a write-side action behind the Sovereign subscription. If the
     /// user is a subscriber, the action runs immediately; otherwise the
@@ -129,7 +160,7 @@ struct FileBrowserView: View {
                         FileDownloadProgressBanner(
                             filename: viewModel.downloadFilename,
                             progress: viewModel.downloadProgress,
-                            onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+                            onCancel: cancelPreviewDownload
                         )
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
@@ -167,7 +198,7 @@ struct FileBrowserView: View {
 
                     Button(action: { bulkTogglePin() }) {
                         Image(systemName: "pin")
-                        Text("Pin")
+                        Text("Keep Offline")
                     }
                     .foregroundColor(.kataGold)
                 }
@@ -264,41 +295,12 @@ struct FileBrowserView: View {
         }
         .sheet(item: $selectedFile, onDismiss: {
             previewURL = nil
-            previewIsLoading = false
-            // selectedFile is already nil here (that's what triggered dismiss).
-            // Clear all loading states — the tap guard below blocks re-entry
-            // during an in-flight materialize, but on dismiss we're done.
             fileLoadingStates.removeAll()
         }) { file in
-            // Kick off the materialize task immediately on sheet present, but show
-            // loading until URL is ready. Using a separate @State flag ensures the
-            // task stays alive even if parent re-renders — the sheet itself owns the
-            // async work and is only dismissed when selectedFile becomes nil.
-            Group {
-                if let url = previewURL {
-                    FilePreviewSheet(fileURL: url, displayName: file.name)
-                } else {
-                    FilePreviewLoadingSheet(displayName: file.name)
-                }
-            }
-            .onAppear {
-                // onAppear fires once when sheet is first presented, even if parent
-                // redraws later. Async task is guaranteed to run until sheet dismisses.
-                guard !previewIsLoading else { return }
-                previewIsLoading = true
-
-                Task {
-                    let url = await viewModel.materializeLocalURL(for: file)
-                    if let url {
-                        previewURL = url
-                    } else {
-                        // Dismiss the sheet; the error alert below will
-                        // surface the reason via viewModel.error.
-                        selectedFile = nil
-                        fileLoadingStates.remove(file.id)
-                    }
-                    previewIsLoading = false
-                }
+            if let url = previewURL {
+                FilePreviewSheet(fileURL: url, displayName: file.name)
+            } else {
+                FilePreviewLoadingSheet(displayName: file.name)
             }
         }
         .sheet(item: $shareFile, onDismiss: {
@@ -377,7 +379,7 @@ struct FileBrowserView: View {
                 FileDownloadProgressBanner(
                     filename: viewModel.downloadFilename,
                     progress: viewModel.downloadProgress,
-                    onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+                    onCancel: cancelPreviewDownload
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -403,13 +405,8 @@ struct FileBrowserView: View {
                             } else {
                                 selectedIds.insert(item.id)
                             }
-                        } else if !fileLoadingStates.contains(item.id) {
-                            // Guard: prevent re-entry while materialize is in
-                            // flight. Without this, an impatient user tapping
-                            // multiple times starts parallel downloads of the
-                            // same file and the cell flashes repeatedly.
-                            fileLoadingStates.insert(item.id)
-                            selectedFile = item
+                        } else {
+                            beginPreview(item)
                         }
                     },
                     onLongPress: {
@@ -445,7 +442,7 @@ struct FileBrowserView: View {
                 FileDownloadProgressBanner(
                     filename: viewModel.downloadFilename,
                     progress: viewModel.downloadProgress,
-                    onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+                    onCancel: cancelPreviewDownload
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -478,10 +475,8 @@ struct FileBrowserView: View {
                                         } else {
                                             selectedIds.insert(item.id)
                                         }
-                                    } else if !item.isFolder && !fileLoadingStates.contains(item.id) {
-                                        // Same re-entry guard as list view.
-                                        fileLoadingStates.insert(item.id)
-                                        selectedFile = item
+                                    } else if !item.isFolder {
+                                        beginPreview(item)
                                     }
                                 }
                                 .onLongPressGesture {

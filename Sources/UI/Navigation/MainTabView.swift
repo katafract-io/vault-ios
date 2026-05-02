@@ -15,13 +15,6 @@ struct MainTabView: View {
             }
 
             NavigationStack {
-                PhotosView()
-            }
-            .tabItem {
-                Label("Photos", systemImage: "photo.fill")
-            }
-
-            NavigationStack {
                 RecentsView()
             }
             .tabItem {
@@ -125,24 +118,34 @@ class RecentsViewModel: ObservableObject {
             return
         }
 
-        do {
-            let response = try await services.apiClient.listRecentFiles(limit: 20)
-            let fileItems = response.files.map { record in
-                VaultFileItem(
-                    id: record.file_id,
-                    name: record.filename_enc,
+        let context = ModelContext(services.modelContainer)
+        let rows = (try? context.fetch(FetchDescriptor<LocalFile>())) ?? []
+        items = rows
+            .sorted {
+                ($0.lastOpenedAt ?? $0.modifiedAt) > ($1.lastOpenedAt ?? $1.modifiedAt)
+            }
+            .prefix(20)
+            .map { row in
+                let syncDisplay: VaultFileItem.SyncStateDisplay
+                switch row.syncState {
+                case "pending_upload": syncDisplay = .pendingUpload
+                case "partial":        syncDisplay = .partial
+                case "uploading":      syncDisplay = .uploading(0)
+                case "downloading":    syncDisplay = .downloading(0)
+                case "conflict":       syncDisplay = .conflict
+                default:               syncDisplay = .synced
+                }
+                return VaultFileItem(
+                    id: row.fileId,
+                    name: row.filename,
                     isFolder: false,
-                    sizeBytes: record.size_bytes,
-                    modifiedAt: Date(timeIntervalSince1970: TimeInterval(record.modified_at)),
-                    syncState: .synced,
-                    isPinned: false
+                    sizeBytes: row.sizeBytes,
+                    modifiedAt: row.lastOpenedAt ?? row.modifiedAt,
+                    parentFolderId: row.parentFolderId,
+                    syncState: syncDisplay,
+                    isPinned: row.isPinned
                 )
             }
-            items = fileItems
-        } catch {
-            self.error = "Failed to load recent files: \(error.localizedDescription)"
-            items = []
-        }
     }
 
     private func injectSeedRecentFiles() {
@@ -177,20 +180,39 @@ class RecentsViewModel: ObservableObject {
         ]
     }
 
-    func materializeLocalURL(for item: VaultFileItem) async -> URL? {
+    func materializeLocalURL(for item: VaultFileItem, markOpened: Bool = true) async -> URL? {
         guard let services else {
             error = "VaultServices not configured"
             return nil
         }
+        let context = ModelContext(services.modelContainer)
+        let row = (try? context.fetch(FetchDescriptor<LocalFile>()))?
+            .first { $0.fileId == item.id }
+        if let cachedPath = row?.localPath, LocalCache.exists(at: cachedPath) {
+            if markOpened {
+                row?.lastOpenedAt = Date()
+            }
+            try? context.save()
+            await load()
+            return URL(fileURLWithPath: cachedPath)
+        }
+
         do {
-            let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: "root")
+            let folderKey = try await services.keyManager.getOrCreateFolderKey(
+                folderId: item.parentFolderId ?? "root")
             let plaintext = try await services.syncEngine.downloadFile(
                 fileId: item.id, folderKey: folderKey)
-            let tmp = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension((item.name as NSString).pathExtension)
-            try plaintext.write(to: tmp, options: .atomic)
-            return tmp
+            let cached = try LocalCache.adoptData(
+                fileId: item.id, originalName: item.name, data: plaintext)
+            if let row {
+                row.localPath = cached.path
+                if markOpened {
+                    row.lastOpenedAt = Date()
+                }
+                try? context.save()
+            }
+            await load()
+            return cached
         } catch {
             self.error = "Couldn't open \(item.name): \(error.localizedDescription)"
             return nil
@@ -203,10 +225,28 @@ class RecentsViewModel: ObservableObject {
         let descriptor = FetchDescriptor<LocalFile>()
         if let rows = try? context.fetch(descriptor) {
             for row in rows where row.fileId == item.id {
-                row.isPinned.toggle()
+                if row.isPinned {
+                    row.isPinned = false
+                } else if let localPath = row.localPath, LocalCache.exists(at: localPath) {
+                    row.isPinned = true
+                } else {
+                    Task {
+                        guard await materializeLocalURL(for: item, markOpened: false) != nil else { return }
+                        let context = ModelContext(services.modelContainer)
+                        if let rows = try? context.fetch(FetchDescriptor<LocalFile>()) {
+                            for row in rows where row.fileId == item.id {
+                                row.isPinned = true
+                            }
+                            try? context.save()
+                        }
+                        await load()
+                    }
+                    return
+                }
             }
             try? context.save()
         }
+        Task { await load() }
     }
 }
 
@@ -226,6 +266,9 @@ struct SettingsView: View {
     @State private var pendingCount: Int = 0
     @State private var pendingBytes: Int64 = 0
     @State private var isDraining = false
+    @State private var offlineCount: Int = 0
+    @State private var offlineBytes: Int64 = 0
+    @State private var pinnedCount: Int = 0
 
     private let sovereignQuota: Int64 = 1_099_511_627_776  // 1 TiB
 
@@ -300,7 +343,35 @@ struct SettingsView: View {
                 sectionHeader("Storage")
             }
 
-            // Pending uploads — only visible when there's something queued
+            Section {
+                settingsRow(
+                    icon: "externaldrive.fill",
+                    title: "Available Offline",
+                    value: "\(offlineCount) · \(ByteCountFormatter.string(fromByteCount: offlineBytes, countStyle: .file))"
+                )
+                settingsRow(
+                    icon: "pin.fill",
+                    title: "Kept Offline",
+                    value: "\(pinnedCount)"
+                )
+
+                Button {
+                    clearUnpinnedDownloads()
+                } label: {
+                    Label("Clear Unpinned Downloads", systemImage: "externaldrive.badge.xmark")
+                        .font(.kataBody(15))
+                        .foregroundStyle(Color.kataSapphire)
+                }
+                .disabled(offlineCount == pinnedCount)
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+            } header: {
+                sectionHeader("Offline Files")
+            } footer: {
+                Text("Pinned files stay on this device. Opened files may be kept for fast preview until cleared.")
+                    .font(.kataCaption(11))
+            }
+
+            // Sync queue — only visible when there's something queued.
             if pendingCount > 0 {
                 Section {
                     HStack(spacing: 12) {
@@ -309,7 +380,7 @@ struct SettingsView: View {
                             .foregroundStyle(Color.cyan.opacity(0.85))
                             .frame(width: 28)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(pendingCount) file\(pendingCount == 1 ? "" : "s") queued")
+                            Text("\(pendingCount) encrypted backup\(pendingCount == 1 ? "" : "s") queued")
                                 .font(.kataBody(15))
                                 .foregroundStyle(.primary)
                             Text(ByteCountFormatter.string(fromByteCount: pendingBytes, countStyle: .file) + " total")
@@ -333,14 +404,14 @@ struct SettingsView: View {
                             loadPendingStats()
                         }
                     } label: {
-                        Label("Upload Now", systemImage: "arrow.up.circle")
+                        Label("Back Up Now", systemImage: "arrow.up.circle")
                             .font(.kataBody(15))
                             .foregroundStyle(Color.cyan)
                     }
                     .disabled(isDraining)
                     .listRowBackground(Color.cyan.opacity(0.04))
                 } header: {
-                    sectionHeader("Pending Uploads")
+                    sectionHeader("Sync Queue")
                 }
             }
 
@@ -395,6 +466,7 @@ struct SettingsView: View {
             usedBytes = StorageUsageCalculator.compute(from: modelContext)
             Task { await loadServerQuota() }
             loadPendingStats()
+            loadOfflineStats()
         }
         .sheet(isPresented: $showPhrase) {
             RecoveryPhraseView(
@@ -545,6 +617,31 @@ struct SettingsView: View {
         ))) ?? []
         pendingCount = files.count
         pendingBytes = files.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    private func loadOfflineStats() {
+        let files = (try? modelContext.fetch(FetchDescriptor<LocalFile>())) ?? []
+        let offline = files.filter { file in
+            guard let path = file.localPath else { return false }
+            return LocalCache.exists(at: path)
+        }
+        offlineCount = offline.count
+        pinnedCount = offline.filter(\.isPinned).count
+        offlineBytes = offline.reduce(Int64(0)) { total, file in
+            guard let path = file.localPath else { return total }
+            return total + LocalCache.byteCount(at: path)
+        }
+    }
+
+    private func clearUnpinnedDownloads() {
+        let files = (try? modelContext.fetch(FetchDescriptor<LocalFile>())) ?? []
+        for file in files where !file.isPinned {
+            guard let path = file.localPath, LocalCache.exists(at: path) else { continue }
+            LocalCache.remove(at: path)
+            file.localPath = nil
+        }
+        try? modelContext.save()
+        loadOfflineStats()
     }
 }
 

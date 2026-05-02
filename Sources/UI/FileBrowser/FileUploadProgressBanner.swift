@@ -23,8 +23,9 @@ struct FileUploadProgressBanner: View {
                 // Spinning progress indicator
                 KataProgressRing(size: 18)
 
-                // File count
-                Text("\(fileIndex) of \(totalFiles)")
+                // Local import/sealing count. The network backup continues
+                // through the sync queue after this fast path returns.
+                Text("Sealing \(fileIndex) of \(totalFiles)")
                     .font(.kataMono(12))
                     .foregroundStyle(Color.kataChampagne)
 
@@ -51,6 +52,11 @@ struct FileUploadProgressBanner: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Text("Encrypting locally. Encrypted backup continues in Sync Queue.")
+                .font(.kataMono(10))
+                .foregroundStyle(Color.kataChampagne.opacity(0.65))
+                .lineLimit(1)
 
             // Gold hairline progress bar
             GeometryReader { geo in
