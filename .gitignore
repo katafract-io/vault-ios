@@ -36,3 +36,5 @@ fastlane/test_output/
 MEMORY.md
 docs/
 *.ai.md
+__pycache__/
+*.pyc
