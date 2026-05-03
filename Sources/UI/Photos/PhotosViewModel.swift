@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import OSLog
 import Photos
 import SwiftUI
 
@@ -145,15 +147,155 @@ class PhotosViewModel: ObservableObject {
         // TODO: trigger/stop backup when album is enabled/disabled
     }
 
+    /// Logger for the photo backup pipeline. Visible in Console.app on
+    /// TestFlight builds with subsystem `com.katafract.vault.photos`.
+    private let logger = Logger(subsystem: "com.katafract.vault.photos", category: "backup")
+
+    /// Convention: photos back up to the vault root. When per-album folder
+    /// targeting lands (separate WP), this becomes a parameter on
+    /// `enqueuePhoto(asset:targetFolderId:)`.
+    private static let rootFolderId = "root"
+
     func startBackupNow() {
+        guard let services = self.services else {
+            logger.error("startBackupNow called before VaultServices was wired")
+            dlog("startBackupNow called before VaultServices was wired", category: "photos", level: .error)
+            return
+        }
+        guard !backupInProgress else { return }
+
+        let pending = backedUpPhotos.filter { $0.backupState != .backedUp }
+        guard !pending.isEmpty else {
+            allBackedUp = true
+            return
+        }
+
         backupInProgress = true
         backupProgress = 0
-        remainingCount = backedUpPhotos.filter { $0.backupState != .backedUp }.count
-        // TODO: trigger VaultSyncEngine photo backup
-        Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            backupInProgress = false
+        remainingCount = pending.count
+
+        let pendingIDs = pending.map(\.id)
+        Task { [weak self] in
+            await self?.runBackupBatch(pendingIDs: pendingIDs, services: services)
         }
+    }
+
+    /// Iterate pending photos, encrypt + queue each via syncEngine.importFile,
+    /// promote per-asset state in `backedUpPhotos`. Failures don't abort the
+    /// batch — they mark that photo `.failed` and continue.
+    private func runBackupBatch(pendingIDs: [String], services: VaultServices) async {
+        defer {
+            backupInProgress = false
+            backupProgress = 1.0
+            remainingCount = 0
+            services.photoBackup.refresh()
+            allBackedUp = backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
+        }
+
+        // Resolve folder key once for the whole batch.
+        let folderKey: SymmetricKey
+        do {
+            folderKey = try await services.keyManager.getOrCreateFolderKey(
+                folderId: Self.rootFolderId)
+        } catch {
+            logger.error("getOrCreateFolderKey(root) failed: \(error.localizedDescription, privacy: .public)")
+            dlog("getOrCreateFolderKey(root) failed: \(error.localizedDescription)", category: "photos", level: .error)
+            return
+        }
+
+        let total = pendingIDs.count
+        var done = 0
+
+        for assetID in pendingIDs {
+            done += 1
+            updateAssetState(id: assetID, to: .uploading(0.0))
+
+            // Resolve PHAsset by localIdentifier.
+            let fetchOpts = PHFetchOptions()
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetID], options: fetchOpts)
+            guard let asset = assets.firstObject else {
+                logger.error("PHAsset \(assetID, privacy: .public) not found in library")
+                dlog("PHAsset not found for \(assetID)", category: "photos", level: .error)
+                updateAssetState(id: assetID, to: .failed)
+                advanceProgress(done: done, total: total)
+                continue
+            }
+
+            do {
+                let (tempURL, originalName, sizeBytes) = try await Self.exportAssetToTemp(asset: asset)
+                defer { try? FileManager.default.removeItem(at: tempURL) }
+
+                let fileId = try await services.syncEngine.importFile(
+                    localURL: tempURL,
+                    parentFolderId: nil,                        // root
+                    folderKey: folderKey,
+                    masterKey: services.masterKey,
+                    filename: originalName)
+
+                services.photoBackup.markBackedUp(
+                    assetIdentifier: assetID,
+                    fileId: fileId,
+                    folderId: Self.rootFolderId,
+                    sizeBytes: sizeBytes)
+
+                updateAssetState(id: assetID, to: .backedUp)
+                logger.info("photo backed up: \(assetID, privacy: .public) → \(fileId, privacy: .public)")
+            } catch {
+                logger.error("photo backup failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("photo backup failed for \(assetID): \(error.localizedDescription)", category: "photos", level: .error)
+                updateAssetState(id: assetID, to: .failed)
+            }
+
+            advanceProgress(done: done, total: total)
+        }
+    }
+
+    private func updateAssetState(id: String, to newState: BackedUpPhoto.BackupState) {
+        if let idx = backedUpPhotos.firstIndex(where: { $0.id == id }) {
+            backedUpPhotos[idx].backupState = newState
+        }
+    }
+
+    private func advanceProgress(done: Int, total: Int) {
+        backupProgress = total > 0 ? Double(done) / Double(total) : 1.0
+        remainingCount = max(0, total - done)
+    }
+
+    /// Write the original asset bytes to a temp URL the sync engine can read.
+    /// Uses `PHAssetResourceManager` so we get the unmodified original (no
+    /// re-encode), preserving HEIC / RAW / Live Photo metadata.
+    private static func exportAssetToTemp(
+        asset: PHAsset
+    ) async throws -> (url: URL, originalName: String, sizeBytes: Int64) {
+        let resources = PHAssetResource.assetResources(for: asset)
+        guard let primary = resources.first(where: { $0.type == .photo })
+                ?? resources.first(where: { $0.type == .fullSizePhoto })
+                ?? resources.first else {
+            throw PhotoBackupError.noResource
+        }
+
+        let originalName = primary.originalFilename
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-" + originalName)
+
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = true   // iCloud Photo Library originals
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            PHAssetResourceManager.default().writeData(
+                for: primary, toFile: tempURL, options: options
+            ) { error in
+                if let error = error {
+                    cont.resume(throwing: error)
+                } else {
+                    cont.resume()
+                }
+            }
+        }
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: tempURL.path)
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        return (tempURL, originalName, size)
     }
 
     /// Injects synthetic seed photos for XCUITest screenshot runs.
@@ -233,4 +375,8 @@ class PhotosViewModel: ObservableObject {
         backedUpPhotos = seedPhotos
         allBackedUp = seedPhotos.allSatisfy { $0.backupState == .backedUp }
     }
+}
+
+enum PhotoBackupError: Error {
+    case noResource
 }
