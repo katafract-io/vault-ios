@@ -150,6 +150,7 @@ public final class VaultServices: ObservableObject {
     public func drainShareExtensionInbox() async {
         let pending = ImportInbox.pending()
         guard !pending.isEmpty else { return }
+        dlog("share-inbox drain: \(pending.count) pending file(s)", category: "sync", level: .info)
         for (fileURL, sidecar) in pending {
             do {
                 let folderKey = try await keyManager.getOrCreateFolderKey(
@@ -162,11 +163,34 @@ public final class VaultServices: ObservableObject {
                     filename: sidecar.originalName)
                 ImportInbox.consume(fileURL: fileURL)
             } catch {
-                // Leave the entry in place so a future drain can retry.
-                #if DEBUG
-                print("[InboxDrain] importFile failed for \(fileURL.lastPathComponent): \(error)")
-                #endif
+                dlog("share-inbox import failed for \(fileURL.lastPathComponent): \(error.localizedDescription)", category: "sync", level: .error)
             }
         }
+    }
+
+    /// Read-only summary of the local upload queue + LocalFile state, written
+    /// to the in-app Debug Log so a TestFlight smoke export reveals what state
+    /// the app is in without the user having to unwind it from individual
+    /// events. Called once on every `.active` scene transition. Pure read; no
+    /// mutations to SwiftData or the server.
+    public func logQueueSummary() {
+        let context = ModelContext(modelContainer)
+        let queueRows = (try? context.fetch(FetchDescriptor<ChunkUploadQueue>())) ?? []
+        let pendingChunks = queueRows.filter { $0.doneAt == nil }
+        let inFlight = pendingChunks.filter { $0.inFlightTaskIdentifier != nil }
+        let waitingRetry = pendingChunks.filter { $0.inFlightTaskIdentifier == nil && $0.nextRetryAt > Date() }
+        let readyNow = pendingChunks.count - inFlight.count - waitingRetry.count
+
+        let allFiles = (try? context.fetch(FetchDescriptor<LocalFile>())) ?? []
+        var stateCounts: [String: Int] = [:]
+        for f in allFiles { stateCounts[f.syncState, default: 0] += 1 }
+        let stateSummary = stateCounts
+            .sorted(by: { $0.key < $1.key })
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: " ")
+
+        dlog(
+            "queue summary: chunks pending=\(pendingChunks.count) inflight=\(inFlight.count) ready=\(readyNow) backoff=\(waitingRetry.count) | files: \(stateSummary)",
+            category: "sync", level: .info)
     }
 }

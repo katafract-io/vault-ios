@@ -152,6 +152,7 @@ struct VaultApp: App {
                 // run the upload drain so chunks (including those just queued
                 // from the inbox) start moving to S3.
                 Task {
+                    services.logQueueSummary()
                     await services.drainShareExtensionInbox()
                     await services.syncEngine.syncPending()
                 }

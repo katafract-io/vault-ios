@@ -116,6 +116,10 @@ public class VaultSyncEngine: ObservableObject {
             .replacingOccurrences(of: "-", with: "").lowercased()
         let displayName = filename ?? localURL.lastPathComponent
 
+        let preflightSize = (try? Self.fileSize(of: localURL)) ?? 0
+        self.logger.info("importFile: \(displayName, privacy: .public) size=\(preflightSize, privacy: .public) parent=\(parentFolderId ?? "root", privacy: .public)")
+        dlog("importFile: \(displayName) size=\(preflightSize) parent=\(parentFolderId ?? "root")", category: "sync", level: .info)
+
         // Step 0: adopt the picked file into the local plaintext cache so
         // preview/open/share work the moment the user sees the row, even
         // before the encrypted chunks have reached the server. Off main thread.
@@ -272,6 +276,8 @@ public class VaultSyncEngine: ObservableObject {
             await self?.syncPending()
         }
 
+        self.logger.info("importFile complete: \(displayName, privacy: .public) fileId=\(fileId, privacy: .public) chunks=\(chunkDescriptors.count, privacy: .public)")
+        dlog("importFile complete: \(displayName) fileId=\(fileId) chunks=\(chunkDescriptors.count)", category: "sync", level: .info)
         return fileId
     }
 
@@ -526,6 +532,7 @@ public class VaultSyncEngine: ObservableObject {
         // mark the chunk failed and back off.
         guard let keyManager = self.keyManager else {
             self.logger.error("recovery: keyManager not attached, cannot re-chunk \(fileId, privacy: .public)")
+            dlog("recovery failed for \(fileId): keyManager not attached", category: "sync", level: .error)
             return nil
         }
 
@@ -540,10 +547,12 @@ public class VaultSyncEngine: ObservableObject {
         }
         guard let lookup else {
             self.logger.error("recovery: no LocalFile or no localPath for \(fileId, privacy: .public)")
+            dlog("recovery failed for \(fileId): no LocalFile or localPath unset", category: "sync", level: .error)
             return nil
         }
         guard FileManager.default.fileExists(atPath: lookup.path) else {
             self.logger.error("recovery: LocalCache plaintext gone for \(fileId, privacy: .public) at \(lookup.path, privacy: .public)")
+            dlog("recovery failed for \(fileId): plaintext gone", category: "sync", level: .error)
             return nil
         }
         let folderId = lookup.parentFolderId ?? "root"
@@ -552,6 +561,7 @@ public class VaultSyncEngine: ObservableObject {
             folderKey = try await keyManager.getOrCreateFolderKey(folderId: folderId)
         } catch {
             self.logger.error("recovery: folder key fetch failed for \(folderId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            dlog("recovery failed for \(fileId): folder key fetch error: \(error.localizedDescription)", category: "sync", level: .error)
             return nil
         }
 
@@ -592,6 +602,7 @@ public class VaultSyncEngine: ObservableObject {
             return target
         } catch {
             self.logger.error("recovery: re-chunk failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            dlog("recovery failed for \(fileId): re-chunk error: \(error.localizedDescription)", category: "sync", level: .error)
             return nil
         }
     }
@@ -636,6 +647,8 @@ public class VaultSyncEngine: ObservableObject {
             return
         }
 
+        self.logger.info("manifest POST start fileId=\(fileId, privacy: .public) chunks=\(sidecar.chunkCount, privacy: .public)")
+        dlog("manifest POST start \(fileId) chunks=\(sidecar.chunkCount)", category: "sync", level: .info)
         do {
             try await apiClient.uploadManifest(
                 fileId: sidecar.fileId,
@@ -670,6 +683,8 @@ public class VaultSyncEngine: ObservableObject {
                     object: nil,
                     userInfo: ["fileId": fileId])
             }
+            self.logger.info("file synced fileId=\(fileId, privacy: .public)")
+            dlog("file synced \(fileId)", category: "sync", level: .info)
         } catch {
             // Manifest POST failed. Transition to manifest_pending with
             // exponential backoff so the post-drain sweep in syncPending()

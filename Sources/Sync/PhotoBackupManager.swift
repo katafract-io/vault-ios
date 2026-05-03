@@ -173,8 +173,10 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     public func enqueueAsset(_ asset: PHAsset) async throws -> String {
         if excludedIdentifiers.contains(asset.localIdentifier) {
             logger.info("skipping excluded asset \(asset.localIdentifier, privacy: .public)")
+            dlog("photo enqueue skipped (excluded): \(asset.localIdentifier)", category: "photos", level: .debug)
             throw PhotoBackupManagerError.excluded
         }
+        dlog("photo enqueue start: \(asset.localIdentifier)", category: "photos", level: .info)
         let folderKey = try await keyManager.getOrCreateFolderKey(folderId: "root")
         let (tempURL, originalName, sizeBytes) = try await Self.exportAssetToTemp(asset: asset)
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -191,6 +193,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             fileId: fileId,
             folderId: "root",
             sizeBytes: sizeBytes)
+        dlog("photo enqueued ok: \(originalName) size=\(sizeBytes) fileId=\(fileId)", category: "photos", level: .info)
         return fileId
     }
 
