@@ -482,6 +482,212 @@ def gate_tek_device_smoke(cfg: dict) -> tuple[str, str]:
     return "green", f"v{version} smoked by {smoked_by} {age_days}d ago on {devices}"
 
 
+def gate_app_completeness_check(cfg: dict) -> tuple[str, str]:
+    """Static-grep user-reachable Swift code for stub markers.
+
+    Pairs with tek_device_smoke: even if Tek skipped a flow, the grep catches
+    the obvious 'this button does nothing' / 'this method crashes on click' cases
+    before submission, where Apple's reviewer would otherwise find them.
+    """
+    ac = cfg.get("app_completeness", {})
+    scan_paths = ac.get("scan_paths", [])
+    blocker_patterns = [re.compile(p, re.IGNORECASE) for p in ac.get("blocker_patterns", [])]
+    warn_patterns = [re.compile(p, re.IGNORECASE) for p in ac.get("warn_patterns", [])]
+
+    if not scan_paths or (not blocker_patterns and not warn_patterns):
+        return "yellow", "app_completeness not configured — check skipped"
+
+    blocker_hits: list[tuple[str, str]] = []
+    warn_hits: list[tuple[str, str]] = []
+    files_scanned = 0
+
+    for sp in scan_paths:
+        root = Path(sp)
+        if not root.exists():
+            continue
+        for f in root.rglob("*.swift"):
+            try:
+                text = f.read_text(errors="replace")
+            except Exception:
+                continue
+            files_scanned += 1
+            for pat in blocker_patterns:
+                for m in pat.finditer(text):
+                    line_no = text[:m.start()].count("\n") + 1
+                    blocker_hits.append((f"{f}:{line_no}", m.group(0)[:60]))
+            for pat in warn_patterns:
+                for m in pat.finditer(text):
+                    line_no = text[:m.start()].count("\n") + 1
+                    warn_hits.append((f"{f}:{line_no}", m.group(0)[:60]))
+
+    if blocker_hits:
+        sample = ", ".join(f"{loc}" for loc, _ in blocker_hits[:3])
+        return "red", f"{len(blocker_hits)} stub marker(s) in user-reachable code: {sample}"
+    if warn_hits:
+        sample = ", ".join(f"{loc}" for loc, _ in warn_hits[:3])
+        return "yellow", f"{len(warn_hits)} TODO/FIXME/empty-closure(s) across {files_scanned} files: {sample}"
+    return "green", f"{files_scanned} files scanned, no stub markers"
+
+
+def gate_subscription_disclosure_check(cfg: dict) -> tuple[str, str]:
+    """ASRG 3.1.2(a) — sub disclosure language + free-trial truthfulness + privacy URL."""
+    sd = cfg.get("subscription_disclosure", {})
+    expected_subs = {s["product_id"] for s in cfg["asc"].get("subscriptions", [])}
+    if not expected_subs:
+        return "yellow", "no subs configured — disclosure check no-op"
+
+    auto_renew_terms = [t.lower() for t in sd.get("required_auto_renew_terms",
+                                                  ["auto-renew", "automatically renew"])]
+    free_trial_phrases = [p.lower() for p in sd.get("free_trial_claim_phrases",
+                                                    ["free trial"])]
+    try:
+        jwt = asc_jwt()
+    except Exception as e:
+        return "yellow", f"could not mint ASC JWT: {e}"
+
+    app_id = cfg["asc"]["app_id"]
+    issues: list[str] = []
+
+    # 1. App-level privacyPolicyUrl
+    try:
+        ai = asc_get(f"/v1/apps/{app_id}/appInfos?include=appInfoLocalizations", jwt)
+        en_loc = next(
+            (x for x in ai.get("included", [])
+             if x.get("type") == "appInfoLocalizations"
+             and (x["attributes"].get("locale") or "").startswith("en")),
+            None,
+        )
+        if en_loc is None:
+            issues.append("no en appInfoLocalization")
+        elif not en_loc["attributes"].get("privacyPolicyUrl"):
+            issues.append("app missing privacyPolicyUrl")
+    except Exception as e:
+        issues.append(f"appInfo fetch failed: {e}")
+
+    # 2. Per-sub disclosure
+    groups = asc_get(f"/v1/apps/{app_id}/subscriptionGroups?limit=20", jwt)["data"]
+    for g in groups:
+        try:
+            payload = asc_get(
+                f"/v1/subscriptionGroups/{g['id']}/subscriptions"
+                f"?limit=200&include=introductoryOffers",
+                jwt,
+            )
+        except Exception as e:
+            issues.append(f"sub group {g['id']} fetch failed: {e}")
+            continue
+
+        offers_by_sub: dict[str, list[dict]] = {}
+        for io in payload.get("included", []):
+            if io.get("type") != "subscriptionIntroductoryOffers":
+                continue
+            rel = (io.get("relationships", {}).get("subscription", {}) or {}).get("data") or {}
+            sid = rel.get("id")
+            if sid:
+                offers_by_sub.setdefault(sid, []).append(io)
+
+        for s in payload.get("data", []):
+            pid = s["attributes"].get("productId")
+            if pid not in expected_subs:
+                continue
+            sid = s["id"]
+
+            try:
+                locs = asc_get(f"/v1/subscriptions/{sid}/subscriptionLocalizations?limit=20", jwt)["data"]
+            except Exception as e:
+                issues.append(f"{pid}: localizations fetch failed: {e}")
+                continue
+            en = next((l for l in locs if (l["attributes"].get("locale") or "").startswith("en")), None)
+            if not en:
+                issues.append(f"{pid}: no en localization")
+                continue
+            desc = (en["attributes"].get("description") or "").lower()
+
+            # Auto-renew language required
+            if not any(t in desc for t in auto_renew_terms):
+                issues.append(f"{pid}: description missing auto-renew language")
+
+            # Free-trial cross-check
+            claims_free_trial = any(p in desc for p in free_trial_phrases)
+            if claims_free_trial:
+                offers = offers_by_sub.get(sid, [])
+                has_free_trial = any(
+                    (o["attributes"].get("offerMode") or "").upper() == "FREE_TRIAL"
+                    for o in offers
+                )
+                if not has_free_trial:
+                    issues.append(f"{pid}: claims free trial but no FREE_TRIAL introductoryOffer in ASC")
+
+    if issues:
+        return "red", " | ".join(issues[:5]) + (f" (+{len(issues)-5} more)" if len(issues) > 5 else "")
+    return "green", f"{len(expected_subs)} sub(s) disclosure language + intro-offer consistency + privacyPolicyUrl OK"
+
+
+def gate_apple_review_policy_check(cfg: dict) -> tuple[str, str]:
+    """Grep ASC version description against forbidden phrase categories.
+
+    Same haystack as marketing_truth_audit (ASC en localization), different
+    needles: things Apple rejects under its developer agreement, not things
+    we promise to ourselves.
+    """
+    pol = cfg.get("apple_review_policy", {})
+    if not pol:
+        return "yellow", "apple_review_policy not configured — check skipped"
+
+    try:
+        jwt = asc_jwt()
+    except Exception as e:
+        return "yellow", f"could not mint ASC JWT: {e}"
+    app_id = cfg["asc"]["app_id"]
+
+    versions = asc_get(
+        f"/v1/apps/{app_id}/appStoreVersions"
+        f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,READY_FOR_DISTRIBUTION"
+        f"&limit=1",
+        jwt,
+    )["data"]
+    if not versions:
+        return "yellow", "no draft or in-review version to audit"
+    v = versions[0]
+    vstr = v["attributes"].get("versionString", "?")
+
+    locs = asc_get(f"/v1/appStoreVersions/{v['id']}/appStoreVersionLocalizations", jwt)["data"]
+    en = next((l for l in locs if (l["attributes"].get("locale") or "").startswith("en")), None)
+    if en is None:
+        return "yellow", "no en-* localization to audit"
+
+    a = en["attributes"]
+    haystack = " | ".join(filter(None, [
+        a.get("description", ""),
+        a.get("keywords", ""),
+        a.get("whatsNew", ""),
+        a.get("promotionalText", ""),
+    ])).lower()
+
+    categories = [
+        ("competitor", pol.get("forbidden_competitor_names", [])),
+        ("incompleteness", pol.get("forbidden_incompleteness_markers", [])),
+        ("other_platform", pol.get("forbidden_other_platforms", [])),
+        ("superlative", pol.get("forbidden_superlatives", [])),
+    ]
+    hits: list[str] = []
+    total_phrases = 0
+    for label, phrases in categories:
+        total_phrases += len(phrases)
+        for ph in phrases:
+            ph_l = str(ph).lower()
+            if not ph_l:
+                continue
+            # Word-boundary match for short tokens like "Box" / "#1" to avoid
+            # accidentally matching inside other words.
+            if re.search(rf"(?<![A-Za-z0-9_]){re.escape(ph_l)}(?![A-Za-z0-9_])", haystack):
+                hits.append(f"{label}:'{ph}'")
+
+    if hits:
+        return "red", f"version {vstr} description hits {len(hits)} forbidden phrase(s): {', '.join(hits[:5])}"
+    return "green", f"version {vstr} description clean against {total_phrases} forbidden phrase(s) across {len(categories)} categories"
+
+
 GATE_TABLE: dict[str, Callable[[dict], tuple[str, str]]] = {
     "pr_check_main_green": gate_pr_check_main_green,
     "ship_yml_main_green": gate_ship_yml_main_green,
@@ -494,6 +700,9 @@ GATE_TABLE: dict[str, Callable[[dict], tuple[str, str]]] = {
     "signing_cert_valid_30d": gate_signing_cert_valid_30d,
     "build_provenance_clean": gate_build_provenance_clean,
     "tek_device_smoke": gate_tek_device_smoke,
+    "app_completeness_check": gate_app_completeness_check,
+    "subscription_disclosure_check": gate_subscription_disclosure_check,
+    "apple_review_policy_check": gate_apple_review_policy_check,
 }
 
 

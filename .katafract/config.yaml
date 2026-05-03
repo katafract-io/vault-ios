@@ -119,6 +119,74 @@ marketing_truth:
     - feature: family_pool_quota   # blocked by WP #100
       phrases: ["share storage with family", "family pool", "shared quota", "Family Sharing storage"]
 
+# ---- App completeness static checks ----
+# Catches stub markers in user-reachable Swift code BEFORE Apple reviewer clicks them.
+# Pairs with tek_device_smoke (manual attestation) for two-layer defense.
+app_completeness:
+  scan_paths:
+    - Sources/UI
+    - Sources/App
+  blocker_patterns:
+    - 'preconditionFailure\("stub'
+    - 'fatalError\("(?i:not implemented|placeholder|TODO|stub)'
+  warn_patterns:
+    - '// TODO:'
+    - '// FIXME:'
+    - 'Button\s*\([^)]*\)\s*\{\s*\}'         # empty Button("Title") { }
+    - '\.onTapGesture\s*\{\s*\}'              # empty .onTapGesture { }
+
+# ---- Apple review policy (App Store Review Guidelines compliance) ----
+# Phrases that have triggered rejections under various ASRG sections.
+# Grep the ASC version description / keywords / whatsNew / promotionalText.
+apple_review_policy:
+  forbidden_competitor_names:    # ASRG 3.1.6 — naming competitor apps
+    - Dropbox
+    - Google Drive
+    - iCloud
+    - OneDrive
+    - Box
+    - Backblaze
+    - pCloud
+    - Sync.com
+    - Mega
+    - Tresorit
+  forbidden_incompleteness_markers:    # ASRG 2.2 — completeness
+    - coming soon
+    - TBD
+    - placeholder
+    - lorem ipsum
+    - to be announced
+    - stay tuned
+    - in development
+    - experimental
+  forbidden_other_platforms:    # ASRG 2.3.7 — cross-platform name-drops
+    - Android
+    - Windows
+    - Chrome OS
+    - Linux
+  forbidden_superlatives:    # ASRG 2.3.10 — substantiated claims
+    - "#1"
+    - "the best"
+    - "world's best"
+    - "top-rated"
+    - "most secure"
+
+# ---- Subscription disclosure (ASRG 3.1.2(a)) ----
+subscription_disclosure:
+  # Each sub's en-US description MUST contain at least one of these phrases.
+  required_auto_renew_terms:
+    - auto-renew
+    - auto renew
+    - automatically renew
+  # If a sub description claims any of these, ASC must have a matching introductoryOffer
+  # in FREE_TRIAL mode. Lying about a free trial is an instant rejection.
+  free_trial_claim_phrases:
+    - free trial
+    - 7-day trial
+    - 30-day trial
+    - try free
+    - start free
+
 # ---- Readiness gates ----
 # Each gate: id, severity (blocker | warn), runtime check.
 # release-readiness.yml evaluates these and posts a structured artifact.
@@ -162,6 +230,18 @@ readiness_gates:
   - id: build_provenance_clean
     severity: blocker
     description: "current target version's TF build is HUMAN_PUSHED or AGENT_DISPATCHED (never AUTOFIX_UNSUPERVISED)"
+
+  - id: app_completeness_check
+    severity: blocker
+    description: "no stub markers (preconditionFailure stub, fatalError not-implemented, empty Button closures) in user-reachable code"
+
+  - id: subscription_disclosure_check
+    severity: blocker
+    description: "every sub: auto-renew language + free-trial claims match ASC introductoryOffer + app has privacyPolicyUrl"
+
+  - id: apple_review_policy_check
+    severity: blocker
+    description: "ASC description/keywords/whatsNew clean of competitor names, incompleteness markers, other-platform refs, superlatives"
 
   - id: tek_device_smoke
     severity: blocker
