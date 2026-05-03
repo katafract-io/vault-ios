@@ -46,6 +46,12 @@ public class VaultSyncEngine: ObservableObject {
 
     private let apiClient: VaultAPIClient
     private let modelContext: ModelContext
+    /// Optional, set after init via `attachKeyManager`. Used by the
+    /// re-chunk recovery path in `drainChunk` when ChunkCache evicts a chunk
+    /// and we need to derive the folder key to re-encrypt from LocalCache.
+    /// Optional so existing callers that construct without a key manager
+    /// continue to compile; recovery just no-ops in that case.
+    private var keyManager: VaultKeyManager?
     private let logger = Logger(subsystem: "com.katafract.vault", category: "sync")
 
     /// URLSession with background identifier so uploads survive app suspends.
@@ -96,6 +102,13 @@ public class VaultSyncEngine: ObservableObject {
     public init(apiClient: VaultAPIClient, modelContext: ModelContext) {
         self.apiClient = apiClient
         self.modelContext = modelContext
+    }
+
+    /// Wire the key manager after construction. Done as a separate call so
+    /// the existing init signature stays source-compatible while recovery
+    /// gets the dependency it needs to derive folder keys at re-chunk time.
+    public func attachKeyManager(_ km: VaultKeyManager) {
+        self.keyManager = km
     }
 
     // MARK: - Import (fast path)
@@ -510,13 +523,20 @@ public class VaultSyncEngine: ObservableObject {
     private func recoverChunkFromLocalCache(
         fileId: String, chunkHash: String
     ) async -> Data? {
-        // Look up LocalFile to find both the plaintext path and the folder
-        // key the chunks were originally encrypted under.
-        let context = self.modelContext
-        let lookup: (path: String, parentFolderId: String?)? = await MainActor.run {
+        // Recovery requires the key manager to derive the folder key. If
+        // it wasn't attached (legacy callers), no recovery — caller will
+        // mark the chunk failed and back off.
+        guard let keyManager = self.keyManager else {
+            self.logger.error("recovery: keyManager not attached, cannot re-chunk \(fileId, privacy: .public)")
+            return nil
+        }
+
+        // Look up LocalFile on MainActor (where modelContext lives) and
+        // copy the scalars out so nothing non-Sendable crosses the boundary.
+        let lookup: (path: String, parentFolderId: String?)? = await MainActor.run { [modelContext] in
             let desc = FetchDescriptor<LocalFile>(
                 predicate: #Predicate { $0.fileId == fileId })
-            guard let row = (try? context.fetch(desc))?.first,
+            guard let row = (try? modelContext.fetch(desc))?.first,
                   let path = row.localPath else { return nil }
             return (path, row.parentFolderId)
         }
@@ -524,7 +544,6 @@ public class VaultSyncEngine: ObservableObject {
             self.logger.error("recovery: no LocalFile or no localPath for \(fileId, privacy: .public)")
             return nil
         }
-        let url = URL(fileURLWithPath: lookup.path)
         guard FileManager.default.fileExists(atPath: lookup.path) else {
             self.logger.error("recovery: LocalCache plaintext gone for \(fileId, privacy: .public) at \(lookup.path, privacy: .public)")
             return nil
@@ -542,9 +561,15 @@ public class VaultSyncEngine: ObservableObject {
         // the file, not just the requested one, because FastCDC is
         // deterministic — every chunk hash will match what's in the queue —
         // and one drain pass usually needs many chunks back. Cheap to do once.
-        let target: Data?
+        // folderKey is unused inside the closure today (per-chunk keys are
+        // freshly generated and the existing manifest already references the
+        // hashes), but is held in scope so future code that needs to wrap the
+        // chunk key with the folder key can reach it.
+        _ = folderKey
+        let url = URL(fileURLWithPath: lookup.path)
+        let targetHash = chunkHash
         do {
-            target = try await Task.detached(priority: .userInitiated) { () -> Data? in
+            let target: Data? = try await Task.detached(priority: .userInitiated) { () -> Data? in
                 let fileHandle = try FileHandle(forReadingFrom: url)
                 defer { try? fileHandle.close() }
                 let totalSize = try fileHandle.seekToEndOfFile()
@@ -561,16 +586,16 @@ public class VaultSyncEngine: ObservableObject {
                         // Re-cache with looser protection so this doesn't
                         // happen again on the next screen-lock cycle.
                         try ChunkCache.put(hash: chunk.hash, data: encrypted)
-                        if chunk.hash == chunkHash { found = encrypted }
+                        if chunk.hash == targetHash { found = encrypted }
                     }
                 }
                 return found
             }.value
+            return target
         } catch {
             self.logger.error("recovery: re-chunk failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
         }
-        return target
     }
 
     /// After all chunks for a file are confirmed, post the manifest and mark synced.
