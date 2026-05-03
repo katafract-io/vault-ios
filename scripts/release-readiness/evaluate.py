@@ -293,7 +293,91 @@ def gate_screenshots_fresh(cfg: dict) -> tuple[str, str]:
     if missing_devices:
         return "red", f"version {vstr} missing screenshots for: {', '.join(missing_devices)}"
 
-    return "green", f"version {vstr} screenshots complete for {len(expected_devices)} device class(es){age_days_label}"
+    # IAP / subscription review screenshots — every configured product needs one
+    # attached, in COMPLETE delivery state, before App Review will accept the build.
+    iap_issues = _check_iap_review_screenshots(cfg, app_id, jwt)
+    if iap_issues:
+        return "red", f"version {vstr} IAP review screenshots: {iap_issues}"
+
+    sub_count = len(cfg["asc"].get("subscriptions", []))
+    iap_count = len(cfg["asc"].get("iaps", []))
+    iap_label = f" + IAP review shots OK ({sub_count} subs, {iap_count} iaps)" if (sub_count or iap_count) else ""
+    return "green", f"version {vstr} screenshots complete for {len(expected_devices)} device class(es){iap_label}{age_days_label}"
+
+
+def _check_iap_review_screenshots(cfg: dict, app_id: str, jwt: str) -> str:
+    """Returns empty string if all IAP/sub review screenshots are present + COMPLETE.
+
+    Otherwise returns a one-line summary of issues for inclusion in the gate detail.
+    """
+    expected_subs = {s["product_id"] for s in cfg["asc"].get("subscriptions", [])}
+    expected_iaps = {i["product_id"] for i in cfg["asc"].get("iaps", [])}
+    if not expected_subs and not expected_iaps:
+        return ""
+
+    missing_attached: list[str] = []
+    incomplete_state: list[str] = []
+
+    # Subscriptions: appStoreReviewScreenshot relationship is per-product.
+    if expected_subs:
+        groups = asc_get(f"/v1/apps/{app_id}/subscriptionGroups?limit=20", jwt)["data"]
+        for g in groups:
+            try:
+                payload = asc_get(
+                    f"/v1/subscriptionGroups/{g['id']}/subscriptions"
+                    f"?limit=200&include=appStoreReviewScreenshot",
+                    jwt,
+                )
+            except Exception as e:
+                return f"sub group {g['id']}: include fetch failed: {e}"
+            data = payload.get("data", [])
+            included = {x["id"]: x for x in payload.get("included", []) if x.get("type") == "subscriptionAppStoreReviewScreenshots"}
+            for s in data:
+                pid = s["attributes"].get("productId")
+                if pid not in expected_subs:
+                    continue
+                rel = (s.get("relationships", {}).get("appStoreReviewScreenshot", {}) or {}).get("data")
+                if not rel:
+                    missing_attached.append(f"sub:{pid}")
+                    continue
+                shot = included.get(rel["id"])
+                if shot:
+                    state = (shot["attributes"].get("assetDeliveryState") or {}).get("state")
+                    if state != "COMPLETE":
+                        incomplete_state.append(f"sub:{pid}({state or '?'})")
+
+    # IAPs (v2): same relationship name.
+    if expected_iaps:
+        try:
+            payload = asc_get(
+                f"/v2/apps/{app_id}/inAppPurchases"
+                f"?limit=200&include=appStoreReviewScreenshot",
+                jwt,
+            )
+        except Exception as e:
+            return f"iap include fetch failed: {e}"
+        data = payload.get("data", [])
+        included = {x["id"]: x for x in payload.get("included", []) if "appStoreReviewScreenshot" in (x.get("type") or "").lower() or "reviewScreenshot" in (x.get("type") or "")}
+        for i in data:
+            pid = i["attributes"].get("productId")
+            if pid not in expected_iaps:
+                continue
+            rel = (i.get("relationships", {}).get("appStoreReviewScreenshot", {}) or {}).get("data")
+            if not rel:
+                missing_attached.append(f"iap:{pid}")
+                continue
+            shot = included.get(rel["id"])
+            if shot:
+                state = (shot["attributes"].get("assetDeliveryState") or {}).get("state")
+                if state != "COMPLETE":
+                    incomplete_state.append(f"iap:{pid}({state or '?'})")
+
+    parts: list[str] = []
+    if missing_attached:
+        parts.append(f"missing on {len(missing_attached)} product(s): {', '.join(missing_attached[:5])}")
+    if incomplete_state:
+        parts.append(f"not COMPLETE on {len(incomplete_state)} product(s): {', '.join(incomplete_state[:5])}")
+    return " | ".join(parts)
 
 
 def gate_marketing_truth_audit(cfg: dict) -> tuple[str, str]:
