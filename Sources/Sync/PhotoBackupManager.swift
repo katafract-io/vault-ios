@@ -19,6 +19,15 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     /// build does not silently start uploading anything until the user opts in.
     public static let autoBackupNewAssetsKey = "vaultyx.photos.auto_backup_new"
 
+    /// UserDefaults key holding the array of `PHAsset.localIdentifier` values
+    /// the user has explicitly removed from backup. `enqueueAsset` and the
+    /// auto-backup observer both honor this set, so a user who deletes a
+    /// photo from the vault then taps Backup Now does NOT see it re-uploaded.
+    /// Re-checking the same album, or the user explicitly Backup-Now'ing a
+    /// single photo via PhotoDetailView (when that flow lands), removes the
+    /// id from this set.
+    private static let excludedAssetsKey = "vaultyx.photos.excluded_from_backup"
+
     private let syncEngine: VaultSyncEngine
     private let modelContext: ModelContext
     private let keyManager: VaultKeyManager
@@ -34,6 +43,34 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     /// Cached set of backed-up asset identifiers, refreshed on `refresh()` /
     /// after `markBackedUp`. Faster than a SwiftData query per grid cell.
     private(set) public var backedUpIdentifiers: Set<String> = []
+
+    /// In-memory mirror of `excludedAssetsKey`. Read by `enqueueAsset` and
+    /// `runAlbumBackup` to skip user-deleted photos.
+    private var excludedIdentifiers: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Self.excludedAssetsKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.excludedAssetsKey) }
+    }
+
+    /// True if the user has explicitly removed this asset from backup.
+    public func isExcludedFromBackup(_ assetIdentifier: String) -> Bool {
+        excludedIdentifiers.contains(assetIdentifier)
+    }
+
+    /// Mark `assetIdentifier` as user-excluded so future Backup Now / album
+    /// sweeps skip it. Idempotent — safe to call repeatedly.
+    public func excludeFromBackup(_ assetIdentifier: String) {
+        var current = excludedIdentifiers
+        current.insert(assetIdentifier)
+        excludedIdentifiers = current
+    }
+
+    /// Re-include an asset in backup. Used when the user re-enables an album
+    /// (intent: "I want this back") or explicitly re-uploads a single photo.
+    public func includeInBackup(_ assetIdentifier: String) {
+        var current = excludedIdentifiers
+        current.remove(assetIdentifier)
+        excludedIdentifiers = current
+    }
 
     public init(
         syncEngine: VaultSyncEngine,
@@ -112,7 +149,10 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             }
             self.logger.info("\(newAssets.count, privacy: .public) new asset(s) detected; auto-backup on, enqueuing")
             dlog("library-change: enqueuing \(newAssets.count) new asset(s)", category: "photos", level: .info)
-            for asset in newAssets where !self.backedUpIdentifiers.contains(asset.localIdentifier) {
+            let excluded = self.excludedIdentifiers
+            for asset in newAssets
+            where !self.backedUpIdentifiers.contains(asset.localIdentifier)
+                  && !excluded.contains(asset.localIdentifier) {
                 do {
                     let fileId = try await self.enqueueAsset(asset)
                     self.logger.info("auto-backed-up new asset \(asset.localIdentifier, privacy: .public) → \(fileId, privacy: .public)")
@@ -131,6 +171,10 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     /// Convention: photos go to the vault root. Per-album folder targeting
     /// lands separately when `toggleAlbum` is wired (WP 73).
     public func enqueueAsset(_ asset: PHAsset) async throws -> String {
+        if excludedIdentifiers.contains(asset.localIdentifier) {
+            logger.info("skipping excluded asset \(asset.localIdentifier, privacy: .public)")
+            throw PhotoBackupManagerError.excluded
+        }
         let folderKey = try await keyManager.getOrCreateFolderKey(folderId: "root")
         let (tempURL, originalName, sizeBytes) = try await Self.exportAssetToTemp(asset: asset)
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -160,6 +204,20 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         // Cancel any prior task for the same album so toggling enable→disable→
         // enable doesn't leave two batches racing.
         albumOperations[albumId]?.cancel()
+
+        // User intent on enable: "back up everything in this album, including
+        // anything I previously removed." Drop those assets from the exclusion
+        // set so runAlbumBackup actually picks them up.
+        let coll = PHAssetCollection.fetchAssetCollections(
+            withLocalIdentifiers: [albumId], options: nil)
+        if let collection = coll.firstObject {
+            let assets = PHAsset.fetchAssets(in: collection, options: nil)
+            var current = excludedIdentifiers
+            assets.enumerateObjects { asset, _, _ in
+                current.remove(asset.localIdentifier)
+            }
+            excludedIdentifiers = current
+        }
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -215,7 +273,11 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
     /// Remove the vault copy for a single backed-up asset. Idempotent: if
     /// there's no matching `BackedUpAsset` row, returns silently.
+    /// Adds `assetIdentifier` to the exclusion list so a subsequent Backup
+    /// Now / library-change observer will NOT re-upload it. The exclusion
+    /// is removed when the user re-enables an album containing this photo.
     public func removeBackup(assetIdentifier: String, apiClient: VaultAPIClient) async {
+        excludeFromBackup(assetIdentifier)
         let descriptor = FetchDescriptor<BackedUpAsset>(
             predicate: #Predicate { $0.assetIdentifier == assetIdentifier })
         guard let row = (try? modelContext.fetch(descriptor))?.first else { return }
@@ -254,9 +316,11 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             format: "mediaType = %d", PHAssetMediaType.image.rawValue)
         let assetsResult = PHAsset.fetchAssets(in: collection, options: opts)
 
+        let excluded = excludedIdentifiers
         var assets: [PHAsset] = []
         assetsResult.enumerateObjects { asset, _, _ in
-            if !self.backedUpIdentifiers.contains(asset.localIdentifier) {
+            let id = asset.localIdentifier
+            if !self.backedUpIdentifiers.contains(id) && !excluded.contains(id) {
                 assets.append(asset)
             }
         }
@@ -322,4 +386,6 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
 enum PhotoBackupManagerError: Error {
     case noResource
+    /// User explicitly removed this asset from backup; skip it.
+    case excluded
 }

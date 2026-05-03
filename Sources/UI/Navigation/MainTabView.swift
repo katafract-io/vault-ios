@@ -306,6 +306,7 @@ struct SettingsView: View {
     @State private var pendingCount: Int = 0
     @State private var pendingBytes: Int64 = 0
     @State private var isDraining = false
+    @State private var confirmClearQueue = false
 
     private let sovereignQuota: Int64 = 1_099_511_627_776  // 1 TiB
 
@@ -419,6 +420,16 @@ struct SettingsView: View {
                     }
                     .disabled(isDraining)
                     .listRowBackground(Color.cyan.opacity(0.04))
+
+                    Button(role: .destructive) {
+                        confirmClearQueue = true
+                    } label: {
+                        Label("Clear stuck queue", systemImage: "xmark.bin")
+                            .font(.kataBody(15))
+                            .foregroundStyle(.red)
+                    }
+                    .listRowBackground(Color.red.opacity(0.04))
+                    .accessibilityHint("Removes pending upload rows that are stuck. Files will need to be re-imported.")
                 } header: {
                     sectionHeader("Pending Uploads")
                 }
@@ -479,6 +490,18 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaultyxFileSynced)) { _ in
             loadPendingStats()
             usedBytes = StorageUsageCalculator.compute(from: modelContext)
+        }
+        .confirmationDialog(
+            "Clear stuck queue?",
+            isPresented: $confirmClearQueue,
+            titleVisibility: .visible
+        ) {
+            Button("Clear queue", role: .destructive) {
+                clearStuckQueue()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes all pending upload rows and their cached chunks. Files will need to be re-imported. Already-uploaded files are not affected.")
         }
         .sheet(isPresented: $showPhrase) {
             RecoveryPhraseView(
@@ -620,6 +643,39 @@ struct SettingsView: View {
         }
         do { vaultMeta = try await services.apiClient.vaultMeta() }
         catch { print("vaultMeta fetch failed: \(error)") }
+    }
+
+    /// Drop every ChunkUploadQueue row + every LocalFile in pending_upload /
+    /// partial / manifest_pending state, plus their on-disk chunks. Used as
+    /// the escape hatch when queued rows are unrecoverable (chunk cache
+    /// missing AND plaintext source gone). Already-synced files are
+    /// untouched.
+    private func clearStuckQueue() {
+        let queueRows = (try? modelContext.fetch(FetchDescriptor<ChunkUploadQueue>())) ?? []
+        var orphanHashes = Set<String>()
+        for row in queueRows {
+            orphanHashes.insert(row.chunkHash)
+            modelContext.delete(row)
+        }
+        let stuckFiles = (try? modelContext.fetch(FetchDescriptor<LocalFile>(
+            predicate: #Predicate {
+                $0.syncState == "pending_upload"
+                    || $0.syncState == "partial"
+                    || $0.syncState == "manifest_pending"
+                    || $0.syncState == "manifest_failed"
+                    || $0.syncState == "uploading"
+            }
+        ))) ?? []
+        for f in stuckFiles {
+            // Drop the manifest + sidecar cache slots too.
+            ChunkCache.delete(hash: "__manifest__\(f.fileId)")
+            ChunkCache.delete(hash: "__sidecar__\(f.fileId)")
+            modelContext.delete(f)
+        }
+        try? modelContext.save()
+        for hash in orphanHashes { ChunkCache.delete(hash: hash) }
+        loadPendingStats()
+        usedBytes = StorageUsageCalculator.compute(from: modelContext)
     }
 
     /// Count + sum pending-upload files from SwiftData.
