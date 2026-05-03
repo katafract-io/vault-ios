@@ -70,19 +70,32 @@ public final class VaultTreeSync {
             var deletedCount = 0
             var skippedCount = 0
             for file in localFiles where !remoteFileIds.contains(file.fileId) {
-                // Skip files that haven't reached the server yet; they will either
-                // be re-synced by the drain worker or appear in the next remote scan.
-                // States: pending_upload (fast import, chunks queued), uploading (mid-drain),
-                // partial (partial manifest), or any future in-flight state.
-                let pendingStates = ["pending_upload", "uploading", "partial", "pending"]
-                if pendingStates.contains(file.syncState) {
+                // Skip files that the server doesn't yet know about — either they
+                // haven't finished uploading, or the manifest POST failed/is retrying,
+                // or local cache went sideways. In all those cases the row represents
+                // real user data that we must NOT silently delete: the drain worker
+                // (or user-driven force-retry) needs the row to stay so it can finish
+                // landing the file. Only rows the user explicitly deleted (or the
+                // server confirmed gone) should be reaped here.
+                let preserveStates = [
+                    "pending_upload",   // fast import, chunks queued
+                    "uploading",        // mid-drain
+                    "partial",          // partial manifest
+                    "pending",          // legacy
+                    "manifest_pending", // chunks done, manifest POST retrying
+                    "manifest_failed",  // chunks done, manifest gave up — surface to user
+                    "conflict"          // sidecar/manifest cache lost — surface to user
+                ]
+                if preserveStates.contains(file.syncState) {
                     skippedCount += 1
                 } else {
+                    dlog("tree-sync reaping local file \(file.fileId) state=\(file.syncState)", category: "sync", level: .warn)
                     context.delete(file)
                     deletedCount += 1
                 }
             }
             self.logger.debug("tree-sync reconcile: deleted=\(deletedCount) skipped=\(skippedCount)")
+            dlog("tree-sync reconcile: deleted=\(deletedCount) skipped=\(skippedCount)", category: "sync", level: .info)
         }
 
         try? context.save()

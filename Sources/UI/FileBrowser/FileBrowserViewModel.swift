@@ -105,12 +105,14 @@ class FileBrowserViewModel: ObservableObject {
         let fileItems = files.map { row in
             let syncDisplay: VaultFileItem.SyncStateDisplay
             switch row.syncState {
-            case "pending_upload": syncDisplay = .pendingUpload
-            case "partial":        syncDisplay = .partial
-            case "uploading":      syncDisplay = .uploading(0)
-            case "downloading":    syncDisplay = .downloading(0)
-            case "conflict":       syncDisplay = .conflict
-            default:               syncDisplay = .synced
+            case "pending_upload":   syncDisplay = .pendingUpload
+            case "partial":          syncDisplay = .partial
+            case "uploading":        syncDisplay = .uploading(0)
+            case "downloading":      syncDisplay = .downloading(0)
+            case "manifest_pending": syncDisplay = .uploading(0)
+            case "manifest_failed":  syncDisplay = .conflict
+            case "conflict":         syncDisplay = .conflict
+            default:                 syncDisplay = .synced
             }
             return VaultFileItem(
                 id: row.fileId,
