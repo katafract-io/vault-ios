@@ -421,6 +421,29 @@ struct SettingsView: View {
                     .disabled(isDraining)
                     .listRowBackground(Color.cyan.opacity(0.04))
 
+                    // "Force retry stuck" resets backoff timers + clears any
+                    // orphan in-flight markers (background URLSession tasks
+                    // that died without firing the delegate). Less destructive
+                    // than Clear Stuck Queue — the file rows + chunks stay,
+                    // we just nudge the drain to retry every queued chunk
+                    // immediately.
+                    Button {
+                        isDraining = true
+                        Task {
+                            forceRetryStuckChunks()
+                            await services.syncEngine.syncPending()
+                            isDraining = false
+                            loadPendingStats()
+                        }
+                    } label: {
+                        Label("Force retry stuck", systemImage: "arrow.clockwise.circle")
+                            .font(.kataBody(15))
+                            .foregroundStyle(Color.orange)
+                    }
+                    .disabled(isDraining)
+                    .listRowBackground(Color.orange.opacity(0.04))
+                    .accessibilityHint("Resets backoff timers and orphan in-flight markers so the drain retries every stuck chunk immediately. Doesn't delete anything.")
+
                     Button(role: .destructive) {
                         confirmClearQueue = true
                     } label: {
@@ -643,6 +666,28 @@ struct SettingsView: View {
         }
         do { vaultMeta = try await services.apiClient.vaultMeta() }
         catch { print("vaultMeta fetch failed: \(error)") }
+    }
+
+    /// Reset retry-bookkeeping on every pending ChunkUploadQueue row so the
+    /// next drain treats them as immediately eligible. Also resets
+    /// `nextManifestRetryAt` on LocalFile rows in `manifest_pending` state.
+    /// Doesn't delete anything; use Clear Stuck Queue for that.
+    private func forceRetryStuckChunks() {
+        let queueRows = (try? modelContext.fetch(FetchDescriptor<ChunkUploadQueue>(
+            predicate: #Predicate { $0.doneAt == nil }
+        ))) ?? []
+        let now = Date()
+        for row in queueRows {
+            row.inFlightTaskIdentifier = nil
+            row.lastDispatchedAt = nil
+            row.nextRetryAt = now
+        }
+        let pendingFiles = (try? modelContext.fetch(FetchDescriptor<LocalFile>(
+            predicate: #Predicate { $0.syncState == "manifest_pending" }
+        ))) ?? []
+        for f in pendingFiles { f.nextManifestRetryAt = now }
+        try? modelContext.save()
+        dlog("force retry: reset \(queueRows.count) chunk(s) + \(pendingFiles.count) manifest-pending file(s)", category: "ui", level: .info)
     }
 
     /// Drop every ChunkUploadQueue row + every LocalFile in pending_upload /

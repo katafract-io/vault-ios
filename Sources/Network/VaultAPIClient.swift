@@ -581,7 +581,7 @@ public struct FounderCodeRedeemResponse: Decodable, Sendable {
 
 // MARK: - Error types
 
-public enum VaultAPIClientError: Error, CustomStringConvertible {
+public enum VaultAPIClientError: Error, CustomStringConvertible, LocalizedError {
     case invalidURL
     case invalidBase64
     case httpError(status: Int, body: String)
@@ -595,6 +595,13 @@ public enum VaultAPIClientError: Error, CustomStringConvertible {
         case .decodingError: return "JSON decoding error"
         }
     }
+
+    /// LocalizedError conformance so callers using `error.localizedDescription`
+    /// get the actual cause (e.g. "HTTP 403: Forbidden") instead of Swift's
+    /// default fallback "<TypeName> error <ordinal>" string. Without this,
+    /// every dlog line that surfaces an API failure read "VaultAPIClientError
+    /// error 0" or similar — useless for diagnosing TestFlight failures.
+    public var errorDescription: String? { description }
 }
 
 // MARK: - Private body types

@@ -136,6 +136,7 @@ class FileBrowserViewModel: ObservableObject {
             return
         }
         let folderId = currentFolderId ?? "root"
+        dlog("user picked \(urls.count) file(s) for upload to folder=\(folderId)", category: "ui", level: .info)
         uploadTask = Task {
             // Estimate total bytes for LiveActivity progress tracking.
             // Reads file sizes without loading contents — safe and fast.
@@ -317,6 +318,7 @@ class FileBrowserViewModel: ObservableObject {
         let snapshotFolderId = currentFolderId
         let itemId = item.id
         let itemIsFolder = item.isFolder
+        dlog("delete \(itemIsFolder ? "folder" : "file"): \(snapshotName) id=\(itemId)", category: "ui", level: .info)
 
         // Optimistic: remove from the visible list immediately so the user
         // doesn't see a phantom row while the network call is in flight.
