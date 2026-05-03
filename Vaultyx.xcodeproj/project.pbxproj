@@ -47,6 +47,7 @@
 		7980FC2D27B6826C7B2E5E96 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C228B6C51D78AFA3F2DED89 /* Keychain.swift */; };
 		7CEB072609382D8E3D11256B /* VaultServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF366EE5FA273857E1DB4409 /* VaultServices.swift */; };
 		7FA737D88616FE6464506964 /* PerFolderLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5AB12DC5F0732E9AD18ACEF /* PerFolderLock.swift */; };
+		856E4D1FB39D017DEEF19123 /* BackgroundUploadCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362426F4CD4D32467C01E4DA /* BackgroundUploadCoordinator.swift */; };
 		85F2286A32BE2A91E14D9651 /* FilePreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C3576C399AF300EC808B34A /* FilePreviewSheet.swift */; };
 		871CB667B019E09C79141701 /* SubscriptionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5202E341C8D1959F0077CB3E /* SubscriptionStore.swift */; };
 		8751ACD78548AE1FD6453A3D /* VaultTreeSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A95B7F2B96B712A555DDC10 /* VaultTreeSync.swift */; };
@@ -149,6 +150,7 @@
 		3055AC015F92D31B18995F7D /* RestoreFromPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreFromPhraseView.swift; sourceTree = "<group>"; };
 		324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhrase.swift; sourceTree = "<group>"; };
 		32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		362426F4CD4D32467C01E4DA /* BackgroundUploadCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackgroundUploadCoordinator.swift; path = Sources/Sync/BackgroundUploadCoordinator.swift; sourceTree = "<group>"; };
 		39481199B6CB3F3482004760 /* VaultAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAPIClient.swift; sourceTree = "<group>"; };
 		3C42BCDD24AE3DCEA9C6E315 /* FileBrowserListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserListRow.swift; sourceTree = "<group>"; };
 		3D0EFA9CC6E443C612546AFC /* VaultShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VaultShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -177,7 +179,6 @@
 		896ACA5F82A229E1E822031F /* FileUploadProgressBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUploadProgressBanner.swift; sourceTree = "<group>"; };
 		8E4CBF6623D63357E5B61B0A /* CapacityPickerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CapacityPickerView.swift; sourceTree = "<group>"; };
 		901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotMode.swift; sourceTree = "<group>"; };
-		D1E2F3A4B5C6D7E8F9A0B1C2 /* DebugLog+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DebugLog+UI.swift"; sourceTree = "<group>"; };
 		934B71E7AE2335EB96BE6F9E /* Vaultyx.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Vaultyx.entitlements; sourceTree = "<group>"; };
 		94C764086C160239DF5BEBF5 /* UndoToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoToast.swift; sourceTree = "<group>"; };
 		9666910505BD37658AE382BF /* RecoveryPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseView.swift; sourceTree = "<group>"; };
@@ -205,6 +206,7 @@
 		CEAD44FBB38C36294058F6E4 /* VaultyxUploadAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxUploadAttributes.swift; sourceTree = "<group>"; };
 		CEE91C06CE40E3712B8898B6 /* VaultFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFile.swift; sourceTree = "<group>"; };
 		D088B5DC02E6D99790A3EC67 /* VaultyxLiveActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VaultyxLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1E2F3A4B5C6D7E8F9A0B1C2 /* DebugLog+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DebugLog+UI.swift"; sourceTree = "<group>"; };
 		D5906A8BF8BC26BD6FFA7E98 /* DocArmorFolderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocArmorFolderView.swift; sourceTree = "<group>"; };
 		D995CE496B48FA55FD9DEF6A /* FileBrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModel.swift; sourceTree = "<group>"; };
 		DDEE00DCCBEBF9B2575EEBFE /* TokenRedemptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRedemptionView.swift; sourceTree = "<group>"; };
@@ -324,7 +326,6 @@
 				901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */,
 				5202E341C8D1959F0077CB3E /* SubscriptionStore.swift */,
 				E99F9D00876693B1D808BA2C /* VaultApp.swift */,
-				
 				D1E2F3A4B5C6D7E8F9A0B1C2 /* DebugLog+UI.swift */,
 				AF366EE5FA273857E1DB4409 /* VaultServices.swift */,
 				934B71E7AE2335EB96BE6F9E /* Vaultyx.entitlements */,
@@ -393,6 +394,7 @@
 				E013B80AC71124C74DE2B55D /* UITests */,
 				3D3A1FD2183C857158A62230 /* VaultyxLiveActivity */,
 				A6E36D091AF0E1C6BC0EFA1B /* Products */,
+				362426F4CD4D32467C01E4DA /* BackgroundUploadCoordinator.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -756,6 +758,7 @@
 				8751ACD78548AE1FD6453A3D /* VaultTreeSync.swift in Sources */,
 				2670E40A7A865D8B915F0B09 /* VaultyxUploadAttributes.swift in Sources */,
 				F29337BD12474B13C36EF0F1 /* CapacityPickerView.swift in Sources */,
+				856E4D1FB39D017DEEF19123 /* BackgroundUploadCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

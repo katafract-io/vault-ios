@@ -52,40 +52,12 @@ public class VaultSyncEngine: ObservableObject {
     /// Optional so existing callers that construct without a key manager
     /// continue to compile; recovery just no-ops in that case.
     private var keyManager: VaultKeyManager?
+    /// OS-managed background URLSession owner. Wired via
+    /// `attachUploadCoordinator(_:)` from `VaultServices`. When nil, the
+    /// engine still functions but uploads stop happening — that's a hard
+    /// configuration error in production builds, logged on every drain.
+    private var uploadCoordinator: BackgroundUploadCoordinator?
     private let logger = Logger(subsystem: "com.katafract.vault", category: "sync")
-
-    /// URLSession with background identifier so uploads survive app suspends.
-    ///
-    /// NOTE: Background sessions on iOS do NOT support `upload(for:from:)`
-    /// (in-memory `Data` body) — Apple raises an Objective-C exception inside
-    /// `-[__NSURLBackgroundSession _uploadTaskWithTaskForClass:]` which
-    /// propagates through `__cxa_throw` → `abort()` (SIGABRT). Background
-    /// sessions only accept `uploadTask(with:fromFile:)`. Reserved here for
-    /// future file-based / OS-managed resumable uploads. See `foregroundSession`
-    /// for the path actually exercised by `drainChunk`.
-    private lazy var backgroundSession: URLSession = {
-        let cfg = URLSessionConfiguration.background(
-            withIdentifier: "com.katafract.vault.upload")
-        cfg.isDiscretionary = false
-        cfg.sessionSendsLaunchEvents = true
-        return URLSession(configuration: cfg)
-    }()
-
-    /// Foreground URLSession used for in-memory `Data` chunk uploads.
-    ///
-    /// We deliberately do NOT use `backgroundSession` here: the OS background
-    /// session crashes with SIGABRT when called via `upload(for:from:)` with an
-    /// in-memory `Data` body (observed Vaultyx 1.0.2 build 482 on iPhone17,2 /
-    /// iOS 26.5 beta). A foreground session is correct for the single-chunk
-    /// PUT path; chunks are bounded (<= a few MB each) and the drain worker
-    /// already handles retries / backoff if the app is suspended mid-upload.
-    private lazy var foregroundSession: URLSession = {
-        let cfg = URLSessionConfiguration.default
-        cfg.waitsForConnectivity = true
-        cfg.timeoutIntervalForRequest = 60
-        cfg.timeoutIntervalForResource = 600
-        return URLSession(configuration: cfg)
-    }()
 
     @Published public var syncState: EngineState = .idle
     @Published public var activeUploads: Int = 0
@@ -109,6 +81,20 @@ public class VaultSyncEngine: ObservableObject {
     /// gets the dependency it needs to derive folder keys at re-chunk time.
     public func attachKeyManager(_ km: VaultKeyManager) {
         self.keyManager = km
+    }
+
+    /// Wire the OS-managed background upload coordinator. Once attached,
+    /// `drainChunk` dispatches PUTs through it (`URLSession.background`)
+    /// instead of the foreground session, so uploads survive app suspend
+    /// and termination. The coordinator's `onChunkCompleted` callback is
+    /// pointed at this engine's manifest finalizer so a chunk completion
+    /// triggers `checkAndFinalizeFile` immediately.
+    public func attachUploadCoordinator(_ coordinator: BackgroundUploadCoordinator) {
+        self.uploadCoordinator = coordinator
+        coordinator.onChunkCompleted = { [weak self] fileId, _, success in
+            guard success, let self else { return }
+            await self.checkAndFinalizeFile(fileId: fileId)
+        }
     }
 
     // MARK: - Import (fast path)
@@ -327,8 +313,15 @@ public class VaultSyncEngine: ObservableObject {
         defer { Task { await MainActor.run { self.activeUploads -= 1 } } }
 
         let now = Date()
+        // Skip rows that already have a background upload in flight — the
+        // coordinator's URLSession delegate will mark them done when iOS
+        // reports completion, no need to dispatch again.
         let descriptor = FetchDescriptor<ChunkUploadQueue>(
-            predicate: #Predicate { $0.doneAt == nil && $0.nextRetryAt <= now },
+            predicate: #Predicate {
+                $0.doneAt == nil
+                && $0.nextRetryAt <= now
+                && $0.inFlightTaskIdentifier == nil
+            },
             sortBy: [SortDescriptor(\.nextRetryAt)]
         )
 
@@ -350,45 +343,34 @@ public class VaultSyncEngine: ObservableObject {
             return
         }
 
-        if snapshots.isEmpty {
-            await MainActor.run { self.syncState = .idle }
-            return
+        if !snapshots.isEmpty {
+            self.logger.info("syncPending: \(snapshots.count, privacy: .public) chunks eligible for dispatch")
+            dlog("syncPending: dispatching \(snapshots.count) chunk(s)", category: "sync", level: .info)
         }
 
-        // Distinct fileIds for the post-drain finalization sweep.
+        // Drain step: HEAD-dedup then dispatch via background URLSession.
+        // Each call short-circuits if the chunk is already on the server
+        // (HEAD 200 → mark done locally, no PUT) or hands the upload to the
+        // OS-managed session and returns. Outcomes for dispatched uploads
+        // arrive asynchronously through the coordinator delegate, possibly
+        // after the app has been suspended and relaunched.
+        for snap in snapshots {
+            await drainChunk(fileId: snap.fileId, chunkHash: snap.chunkHash)
+        }
+
+        // Distinct fileIds for the in-band finalize sweep below. Even files
+        // whose chunks finished entirely via the in-flight delegate path
+        // (without going through this drain at all) are caught by the
+        // manifest_pending sweep further down, so this set is just the
+        // "files we touched right now" hint.
         var fileIds: [String] = []
         var seen = Set<String>()
         for s in snapshots where seen.insert(s.fileId).inserted { fileIds.append(s.fileId) }
 
-        // Bounded concurrency without DispatchSemaphore. `DispatchSemaphore.wait`
-        // blocks the underlying cooperative thread; calling it from inside a
-        // Swift Task can starve the executor pool and deadlock on iOS 17+.
-        // Pattern: seed the group with N tasks, then refill by one each time
-        // a task completes (`await group.next()`).
-        let maxConcurrent = 8
-        var iterator = snapshots.makeIterator()
-        await withTaskGroup(of: (fileId: String, chunkHash: String, success: Bool).self) { group in
-            var inflight = 0
-            while inflight < maxConcurrent, let snap = iterator.next() {
-                group.addTask { [weak self] in
-                    guard let self else { return (snap.fileId, snap.chunkHash, false) }
-                    return await self.drainChunk(fileId: snap.fileId, chunkHash: snap.chunkHash)
-                }
-                inflight += 1
-            }
-            while let result = await group.next() {
-                await self.updateChunkResult(
-                    fileId: result.fileId, chunkHash: result.chunkHash, success: result.success)
-                if let snap = iterator.next() {
-                    group.addTask { [weak self] in
-                        guard let self else { return (snap.fileId, snap.chunkHash, false) }
-                        return await self.drainChunk(fileId: snap.fileId, chunkHash: snap.chunkHash)
-                    }
-                }
-            }
-        }
-
-        // After uploading, check which files have all chunks done → post manifest.
+        // Try to finalize any of the fileIds we touched whose chunks are now
+        // all done (via the synchronous HEAD-dedup path during drainChunk).
+        // Files whose chunks are dispatched-not-completed will be finalized
+        // by the coordinator delegate when their last chunk lands.
         for fileId in fileIds {
             await checkAndFinalizeFile(fileId: fileId)
         }
@@ -442,12 +424,18 @@ public class VaultSyncEngine: ObservableObject {
         }
     }
 
-    /// Upload one chunk. On failure: increment attempts + backoff nextRetryAt.
-    /// Takes scalar IDs (not the @Model row) so it is safe to invoke from any
-    /// actor — see ChunkSnapshot for rationale.
-    private func drainChunk(fileId: String, chunkHash: String) async -> (fileId: String, chunkHash: String, success: Bool) {
+    /// Drain one queue row. Either confirms the chunk is already on the
+    /// server (HEAD dedup) and marks the row done synchronously, OR hands
+    /// the upload to the OS-managed background URLSession and returns.
+    /// In the dispatched case the row's `inFlightTaskIdentifier` is set
+    /// and the actual completion (success / 4xx / 5xx) arrives via the
+    /// coordinator delegate — possibly after the app has been suspended
+    /// and relaunched.
+    private func drainChunk(fileId: String, chunkHash: String) async {
 
-        // Dedup: HEAD the chunk on the server
+        // Dedup: HEAD the chunk on the server. If the server already has it
+        // (deduped from another file or another device), we skip the PUT
+        // entirely and mark the row done.
         let alreadyUploaded: Bool
         do {
             alreadyUploaded = try await apiClient.chunkExists(
@@ -459,56 +447,66 @@ public class VaultSyncEngine: ObservableObject {
         }
 
         if alreadyUploaded {
-            return (fileId, chunkHash, true)
-        }
-
-        // Read from local cache. If the chunk file is missing — common after
-        // an iOS storage purge or a TestFlight install that wiped App Support
-        // while SwiftData persisted — try to recover by re-chunking from the
-        // original plaintext stored in LocalCache.
-        let data: Data
-        if let cached = ChunkCache.get(hash: chunkHash) {
-            data = cached
-        } else if let recovered = await recoverChunkFromLocalCache(
-            fileId: fileId, chunkHash: chunkHash
-        ) {
-            self.logger.info("recovered chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) from LocalCache")
-            dlog("recovered chunk \(chunkHash) for \(fileId) from LocalCache", category: "sync", level: .info)
-            data = recovered
-        } else {
-            self.logger.error("chunk cache miss for \(fileId, privacy: .public)/\(chunkHash, privacy: .public) and recovery failed")
-            dlog("chunk cache miss for \(fileId)/\(chunkHash) and recovery failed", category: "sync", level: .error)
-            return (fileId, chunkHash, false)
-        }
-
-        do {
-            let putURL = try await apiClient.presignPut(
-                fileId: fileId, chunkHash: chunkHash)
-            var req = URLRequest(url: putURL)
-            req.httpMethod = "PUT"
-            req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-            // Use a foreground session: background sessions cannot accept an
-            // in-memory `Data` body (`upload(for:from:)` raises an
-            // Objective-C exception inside
-            // `-[__NSURLBackgroundSession _uploadTaskWithTaskForClass:]`,
-            // which crashes the app via `__cxa_throw` → `abort()`).
-            let (_, response) = try await foregroundSession.upload(for: req, from: data)
-            guard let http = response as? HTTPURLResponse,
-                  (200...299).contains(http.statusCode) else {
-                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                throw VaultSyncEngineError.httpError(statusCode: code)
-            }
-            // ACK received — delete local cache file immediately
+            await updateChunkResult(fileId: fileId, chunkHash: chunkHash, success: true)
             ChunkCache.delete(hash: chunkHash)
-            return (fileId, chunkHash, true)
-        } catch {
-            // Return failure code; MainActor will increment attempts + backoff.
-            // Surface the cause: presign 4xx, PUT 5xx, network, AEAD-MAC error,
-            // 403 quota — without this log, TestFlight has zero signal.
-            self.logger.error("chunk upload failed for \(fileId, privacy: .public)/\(chunkHash, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            dlog("chunk upload failed for \(fileId)/\(chunkHash): \(error.localizedDescription)", category: "sync", level: .error)
-            return (fileId, chunkHash, false)
+            return
         }
+
+        // Need to upload. Make sure the encrypted chunk is on disk for
+        // URLSession.background to read (the OS-managed session reads from
+        // the file path passed to `uploadTask(with:fromFile:)` and may do so
+        // at any point until completion). If the cache file went missing —
+        // iOS storage purge, partial reinstall — re-chunk from LocalCache.
+        if !ChunkCache.fileExists(hash: chunkHash) {
+            let recovered = await recoverChunkFromLocalCache(
+                fileId: fileId, chunkHash: chunkHash)
+            if recovered != nil {
+                self.logger.info("recovered chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) from LocalCache")
+                dlog("recovered chunk \(chunkHash) for \(fileId) from LocalCache", category: "sync", level: .info)
+            }
+            // Recovery writes via ChunkCache.put as a side effect; if the
+            // chunk still isn't on disk afterwards, the file is unrecoverable.
+            if !ChunkCache.fileExists(hash: chunkHash) {
+                self.logger.error("chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) unrecoverable; backing off")
+                dlog("chunk \(chunkHash) for \(fileId) unrecoverable; backing off", category: "sync", level: .error)
+                await updateChunkResult(fileId: fileId, chunkHash: chunkHash, success: false)
+                return
+            }
+        }
+
+        // Presign the PUT. Even if the upload itself runs OS-side, the
+        // presigned URL must be obtained synchronously here because S3
+        // tokens are short-lived and per-request.
+        let putURL: URL
+        do {
+            putURL = try await apiClient.presignPut(
+                fileId: fileId, chunkHash: chunkHash)
+        } catch {
+            self.logger.error("presign PUT failed for \(fileId, privacy: .public)/\(chunkHash, privacy: .public): \(String(describing: error), privacy: .public)")
+            dlog("presign PUT failed for \(fileId)/\(chunkHash): \(String(describing: error))", category: "sync", level: .error)
+            await updateChunkResult(fileId: fileId, chunkHash: chunkHash, success: false)
+            return
+        }
+
+        // Hand the upload to the OS-managed background session. This call
+        // returns once `inFlightTaskIdentifier` is recorded; the PUT itself
+        // runs OS-side and the delegate flips `doneAt` (or backs off on
+        // failure) when iOS reports completion.
+        guard let coordinator = self.uploadCoordinator else {
+            // Hard configuration error — engine shipped without a coordinator.
+            // Without it nothing uploads. Log and back off so the queue isn't
+            // wedged in a tight loop.
+            self.logger.error("upload coordinator not attached; cannot dispatch \(fileId, privacy: .public)/\(chunkHash, privacy: .public)")
+            dlog("upload coordinator not attached for \(fileId)/\(chunkHash)", category: "sync", level: .error)
+            await updateChunkResult(fileId: fileId, chunkHash: chunkHash, success: false)
+            return
+        }
+        let chunkFileURL = ChunkCache.fileURL(for: chunkHash)
+        await coordinator.dispatchUpload(
+            fileId: fileId,
+            chunkHash: chunkHash,
+            fromFileURL: chunkFileURL,
+            putURL: putURL)
     }
 
     /// Re-chunk a file from its plaintext copy in `LocalCache` and rebuild
@@ -599,7 +597,11 @@ public class VaultSyncEngine: ObservableObject {
     }
 
     /// After all chunks for a file are confirmed, post the manifest and mark synced.
-    private func checkAndFinalizeFile(fileId: String) async {
+    /// `internal` instead of `private` so the background upload coordinator
+    /// can poke us when its delegate sees a chunk complete; that means a file
+    /// can be finalized within seconds of its last chunk landing, even when
+    /// no foreground drain is running.
+    func checkAndFinalizeFile(fileId: String) async {
         // Re-fetch to check current done state (rows may have been updated by concurrent drains)
         let allDone: Bool = await MainActor.run {
             let desc = FetchDescriptor<ChunkUploadQueue>(
@@ -1165,9 +1167,11 @@ enum ChunkCache {
         FileManager.default.fileExists(atPath: fileURL(for: hash).path)
     }
 
-    // MARK: - Private
-
-    private static func fileURL(for hash: String) -> URL {
+    /// On-disk URL for a chunk hash. Exposed for the background URLSession
+    /// `uploadTask(with:fromFile:)` path — that API needs a file URL, not a
+    /// `Data` body, and reads the file at unpredictable times until the
+    /// upload finishes.
+    static func fileURL(for hash: String) -> URL {
         cacheURL.appendingPathComponent(hash, isDirectory: false)
     }
 }

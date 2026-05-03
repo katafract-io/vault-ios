@@ -11,6 +11,10 @@ public final class VaultServices: ObservableObject {
     public let syncEngine: VaultSyncEngine
     public let photoBackup: PhotoBackupManager
     public let modelContainer: ModelContainer
+    /// OS-managed background URLSession coordinator. Held here (not on the
+    /// engine) so the AppDelegate `handleEventsForBackgroundURLSession`
+    /// callback can route to it without poking through the engine.
+    public let uploadCoordinator: BackgroundUploadCoordinator
 
     /// Master key, generated on first launch and stashed in Keychain.
     public let masterKey: SymmetricKey
@@ -36,6 +40,17 @@ public final class VaultServices: ObservableObject {
         self.syncEngine = VaultSyncEngine(
             apiClient: api, modelContext: ModelContext(container))
         self.syncEngine.attachKeyManager(self.keyManager)
+
+        // OS-managed background upload coordinator. The session is created
+        // immediately so iOS can deliver events for any pre-existing in-flight
+        // tasks (relaunched mid-upload) — those events would otherwise be
+        // dropped and we'd lose the completion signal for chunks that
+        // succeeded while the app was suspended.
+        let coordinator = BackgroundUploadCoordinator(
+            apiClient: api, modelContainer: container)
+        self.uploadCoordinator = coordinator
+        self.syncEngine.attachUploadCoordinator(coordinator)
+
         self.photoBackup = PhotoBackupManager(
             syncEngine: self.syncEngine,
             modelContext: ModelContext(container),
