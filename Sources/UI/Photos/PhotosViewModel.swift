@@ -189,7 +189,13 @@ class PhotosViewModel: ObservableObject {
         }
         guard !backupInProgress else { return }
 
-        let pending = backedUpPhotos.filter { $0.backupState != .backedUp }
+        // Skip both the already-uploaded and the user-excluded (deleted-from-
+        // backup) sets. Without the exclusion check, tapping Backup Now after
+        // the user has explicitly removed a photo would silently re-upload it.
+        let pending = backedUpPhotos.filter {
+            $0.backupState != .backedUp
+                && !services.photoBackup.isExcludedFromBackup($0.id)
+        }
         guard !pending.isEmpty else {
             allBackedUp = true
             return

@@ -1,6 +1,7 @@
 import SwiftUI
 import KatafractStyle
 import BackgroundTasks
+import UIKit
 
 @main
 struct VaultApp: App {
@@ -82,6 +83,17 @@ struct VaultApp: App {
                 }
                 drainTicker?.cancel()
                 drainTicker = nil
+                // Last-chance flush on background-transition: iOS gives apps
+                // ~30s of "background" runtime before suspend. Use it to push
+                // as many queued chunks as possible. The BGProcessingTask
+                // request submitted in importFile picks up whatever this
+                // misses, but that window can be hours away.
+                let engine = services.syncEngine
+                Task {
+                    let bgTask = await UIApplication.shared.beginBackgroundTask(withName: "com.katafract.vault.drain-on-bg")
+                    defer { Task { @MainActor in UIApplication.shared.endBackgroundTask(bgTask) } }
+                    await engine.syncPending()
+                }
             case .active:
                 lock.markActive()
                 // Trigger biometric unlock only if locked AND idle timeout has passed

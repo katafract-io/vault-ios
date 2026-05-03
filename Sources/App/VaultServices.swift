@@ -35,6 +35,7 @@ public final class VaultServices: ObservableObject {
         self.keyManager = VaultKeyManager()
         self.syncEngine = VaultSyncEngine(
             apiClient: api, modelContext: ModelContext(container))
+        self.syncEngine.attachKeyManager(self.keyManager)
         self.photoBackup = PhotoBackupManager(
             syncEngine: self.syncEngine,
             modelContext: ModelContext(container),

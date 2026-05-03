@@ -46,6 +46,12 @@ public class VaultSyncEngine: ObservableObject {
 
     private let apiClient: VaultAPIClient
     private let modelContext: ModelContext
+    /// Optional, set after init via `attachKeyManager`. Used by the
+    /// re-chunk recovery path in `drainChunk` when ChunkCache evicts a chunk
+    /// and we need to derive the folder key to re-encrypt from LocalCache.
+    /// Optional so existing callers that construct without a key manager
+    /// continue to compile; recovery just no-ops in that case.
+    private var keyManager: VaultKeyManager?
     private let logger = Logger(subsystem: "com.katafract.vault", category: "sync")
 
     /// URLSession with background identifier so uploads survive app suspends.
@@ -96,6 +102,13 @@ public class VaultSyncEngine: ObservableObject {
     public init(apiClient: VaultAPIClient, modelContext: ModelContext) {
         self.apiClient = apiClient
         self.modelContext = modelContext
+    }
+
+    /// Wire the key manager after construction. Done as a separate call so
+    /// the existing init signature stays source-compatible while recovery
+    /// gets the dependency it needs to derive folder keys at re-chunk time.
+    public func attachKeyManager(_ km: VaultKeyManager) {
+        self.keyManager = km
     }
 
     // MARK: - Import (fast path)
@@ -449,13 +462,22 @@ public class VaultSyncEngine: ObservableObject {
             return (fileId, chunkHash, true)
         }
 
-        // Read from local cache. Cache miss = data loss; treat as failure so
-        // the retry+backoff machinery surfaces it instead of silently marking
-        // the chunk done (which makes the manifest valid against an empty
-        // server-side object → file unreadable on download).
-        guard let data = ChunkCache.get(hash: chunkHash) else {
-            self.logger.error("chunk cache miss for \(fileId, privacy: .public)/\(chunkHash, privacy: .public) — was it evicted?")
-            dlog("chunk cache miss for \(fileId)/\(chunkHash) — was it evicted?", category: "sync", level: .error)
+        // Read from local cache. If the chunk file is missing — common after
+        // an iOS storage purge or a TestFlight install that wiped App Support
+        // while SwiftData persisted — try to recover by re-chunking from the
+        // original plaintext stored in LocalCache.
+        let data: Data
+        if let cached = ChunkCache.get(hash: chunkHash) {
+            data = cached
+        } else if let recovered = await recoverChunkFromLocalCache(
+            fileId: fileId, chunkHash: chunkHash
+        ) {
+            self.logger.info("recovered chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) from LocalCache")
+            dlog("recovered chunk \(chunkHash) for \(fileId) from LocalCache", category: "sync", level: .info)
+            data = recovered
+        } else {
+            self.logger.error("chunk cache miss for \(fileId, privacy: .public)/\(chunkHash, privacy: .public) and recovery failed")
+            dlog("chunk cache miss for \(fileId)/\(chunkHash) and recovery failed", category: "sync", level: .error)
             return (fileId, chunkHash, false)
         }
 
@@ -486,6 +508,93 @@ public class VaultSyncEngine: ObservableObject {
             self.logger.error("chunk upload failed for \(fileId, privacy: .public)/\(chunkHash, privacy: .public): \(error.localizedDescription, privacy: .public)")
             dlog("chunk upload failed for \(fileId)/\(chunkHash): \(error.localizedDescription)", category: "sync", level: .error)
             return (fileId, chunkHash, false)
+        }
+    }
+
+    /// Re-chunk a file from its plaintext copy in `LocalCache` and rebuild
+    /// the missing entry in `ChunkCache`. Used as a fallback when the per-
+    /// chunk encrypted cache disappears after import — typically caused by
+    /// iOS storage pressure purging App Support, a `URLFileProtection`
+    /// transition that left the file unreadable, or a partial reinstall.
+    ///
+    /// Returns the encrypted chunk bytes for `chunkHash` if recovery
+    /// succeeds, nil if the plaintext source is also gone (in which case
+    /// the file is unrecoverable and should be marked failed by the caller).
+    private func recoverChunkFromLocalCache(
+        fileId: String, chunkHash: String
+    ) async -> Data? {
+        // Recovery requires the key manager to derive the folder key. If
+        // it wasn't attached (legacy callers), no recovery — caller will
+        // mark the chunk failed and back off.
+        guard let keyManager = self.keyManager else {
+            self.logger.error("recovery: keyManager not attached, cannot re-chunk \(fileId, privacy: .public)")
+            return nil
+        }
+
+        // Look up LocalFile on MainActor (where modelContext lives) and
+        // copy the scalars out so nothing non-Sendable crosses the boundary.
+        let lookup: (path: String, parentFolderId: String?)? = await MainActor.run { [modelContext] in
+            let desc = FetchDescriptor<LocalFile>(
+                predicate: #Predicate { $0.fileId == fileId })
+            guard let row = (try? modelContext.fetch(desc))?.first,
+                  let path = row.localPath else { return nil }
+            return (path, row.parentFolderId)
+        }
+        guard let lookup else {
+            self.logger.error("recovery: no LocalFile or no localPath for \(fileId, privacy: .public)")
+            return nil
+        }
+        guard FileManager.default.fileExists(atPath: lookup.path) else {
+            self.logger.error("recovery: LocalCache plaintext gone for \(fileId, privacy: .public) at \(lookup.path, privacy: .public)")
+            return nil
+        }
+        let folderId = lookup.parentFolderId ?? "root"
+        let folderKey: SymmetricKey
+        do {
+            folderKey = try await keyManager.getOrCreateFolderKey(folderId: folderId)
+        } catch {
+            self.logger.error("recovery: folder key fetch failed for \(folderId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+
+        // Re-chunk + re-encrypt off main thread. We rebuild ALL chunks for
+        // the file, not just the requested one, because FastCDC is
+        // deterministic — every chunk hash will match what's in the queue —
+        // and one drain pass usually needs many chunks back. Cheap to do once.
+        // folderKey is unused inside the closure today (per-chunk keys are
+        // freshly generated and the existing manifest already references the
+        // hashes), but is held in scope so future code that needs to wrap the
+        // chunk key with the folder key can reach it.
+        _ = folderKey
+        let url = URL(fileURLWithPath: lookup.path)
+        let targetHash = chunkHash
+        do {
+            let target: Data? = try await Task.detached(priority: .userInitiated) { () -> Data? in
+                let fileHandle = try FileHandle(forReadingFrom: url)
+                defer { try? fileHandle.close() }
+                let totalSize = try fileHandle.seekToEndOfFile()
+                try fileHandle.seek(toOffset: 0)
+                let readChunkSize = 4 * 1024 * 1024
+                var found: Data? = nil
+                while try fileHandle.offset() < totalSize {
+                    guard let window = try fileHandle.read(upToCount: readChunkSize),
+                          !window.isEmpty else { break }
+                    for chunk in FastCDC.split(window) {
+                        let plaintext = Data(window[chunk.offset..<(chunk.offset + chunk.length)])
+                        let chunkKey = VaultCrypto.generateChunkKey()
+                        let encrypted = try VaultCrypto.encrypt(plaintext, key: chunkKey)
+                        // Re-cache with looser protection so this doesn't
+                        // happen again on the next screen-lock cycle.
+                        try ChunkCache.put(hash: chunk.hash, data: encrypted)
+                        if chunk.hash == targetHash { found = encrypted }
+                    }
+                }
+                return found
+            }.value
+            return target
+        } catch {
+            self.logger.error("recovery: re-chunk failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
         }
     }
 
@@ -829,7 +938,7 @@ enum LocalCache {
         }
         try FileManager.default.copyItem(at: sourceURL, to: dst)
         try? (dst as NSURL).setResourceValue(
-            URLFileProtection.complete, forKey: .fileProtectionKey)
+            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
         return dst
     }
 
@@ -842,7 +951,7 @@ enum LocalCache {
         let dst = cacheURL.appendingPathComponent(name, isDirectory: false)
         try data.write(to: dst, options: [.atomic])
         try? (dst as NSURL).setResourceValue(
-            URLFileProtection.complete, forKey: .fileProtectionKey)
+            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
         return dst
     }
 
@@ -900,13 +1009,13 @@ enum ImportInbox {
         let fileURL = inbox.appendingPathComponent(ext.isEmpty ? stem : "\(stem).\(ext)")
         try FileManager.default.copyItem(at: sourceURL, to: fileURL)
         try? (fileURL as NSURL).setResourceValue(
-            URLFileProtection.complete, forKey: .fileProtectionKey)
+            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
 
         let sidecar = Sidecar(originalName: originalName, parentFolderId: parentFolderId)
         let sidecarURL = inbox.appendingPathComponent("\(stem).json")
         try JSONEncoder().encode(sidecar).write(to: sidecarURL, options: [.atomic])
         try? (sidecarURL as NSURL).setResourceValue(
-            URLFileProtection.complete, forKey: .fileProtectionKey)
+            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
         return (fileURL, sidecarURL)
     }
 
@@ -922,13 +1031,13 @@ enum ImportInbox {
         let fileURL = inbox.appendingPathComponent(ext.isEmpty ? stem : "\(stem).\(ext)")
         try data.write(to: fileURL, options: [.atomic])
         try? (fileURL as NSURL).setResourceValue(
-            URLFileProtection.complete, forKey: .fileProtectionKey)
+            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
 
         let sidecar = Sidecar(originalName: originalName, parentFolderId: parentFolderId)
         let sidecarURL = inbox.appendingPathComponent("\(stem).json")
         try JSONEncoder().encode(sidecar).write(to: sidecarURL, options: [.atomic])
         try? (sidecarURL as NSURL).setResourceValue(
-            URLFileProtection.complete, forKey: .fileProtectionKey)
+            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
         return (fileURL, sidecarURL)
     }
 
@@ -996,13 +1105,36 @@ enum ChunkCache {
         let url = fileURL(for: hash)
         try data.write(to: url, options: [.atomic])
         try (url as NSURL).setResourceValue(
-            URLFileProtection.complete, forKey: .fileProtectionKey)
+            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
     }
 
     /// Read an encrypted chunk from the local cache. Returns nil if absent.
+    /// Logs the actual cause (file missing vs read-permission-denied vs
+    /// other) so a "cache miss" doesn't conflate eviction with file-
+    /// protection-locked. Used by the drain worker to decide whether to
+    /// fail-and-backoff or recover by re-chunking from the original
+    /// plaintext (LocalCache).
     static func get(hash: String) -> Data? {
         let url = fileURL(for: hash)
-        return try? Data(contentsOf: url)
+        do {
+            return try Data(contentsOf: url)
+        } catch {
+            let nsErr = error as NSError
+            let logger = Logger(subsystem: "com.katafract.vault", category: "chunk-cache")
+            if FileManager.default.fileExists(atPath: url.path) {
+                logger.error("chunk \(hash, privacy: .public) on disk but unreadable (code=\(nsErr.code, privacy: .public)): \(nsErr.localizedDescription, privacy: .public)")
+            } else {
+                logger.error("chunk \(hash, privacy: .public) not on disk")
+            }
+            return nil
+        }
+    }
+
+    /// True if a chunk file is present on disk regardless of readability.
+    /// Lets the drain worker tell "file deleted" (need recovery) from
+    /// "file there but locked" (just retry once unlocked).
+    static func fileExists(hash: String) -> Bool {
+        FileManager.default.fileExists(atPath: fileURL(for: hash).path)
     }
 
     /// Delete a chunk file after the server has confirmed receipt.
