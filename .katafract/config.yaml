@@ -1,0 +1,249 @@
+schema_version: 1
+
+# Canonical location: .katafract/config.yaml in this repo.
+# Read by .github/workflows/release-readiness.yml after checkout.
+# Mission Control consumes via GH contents API.
+
+# ---- Identity ----
+slug: vault-ios
+display_name: Vaultyx
+brand: Enclave
+platform: ios
+bundle_id: com.katafract.vault
+
+repo:
+  org: katafract-io
+  name: vault-ios
+  default_branch: main
+
+owners:
+  product: tek
+  founder_decision_required:
+    - pricing_change
+    - sku_drop
+    - tier_collapse
+
+# ---- Distribution ----
+asc:
+  app_id: "6762418528"
+  encryption_compliance: ITSEncryptionExportComplianceCode
+
+  subscription_groups:
+    - slug: sovereign
+      # id resolved at workflow time via /v1/apps/{app_id}/subscriptionGroups
+
+  subscriptions:
+    - product_id: com.katafract.vault.sovereign.monthly
+      role: tier
+      family_sharable: true
+      stripe_price: price_1TOOpEFwP12m7QTr6WZI8mSt
+    - product_id: com.katafract.vault.sovereign.yearly
+      role: tier
+      family_sharable: true
+      stripe_price: price_1TOOpEFwP12m7QTrD0eqFpO8
+    - product_id: com.katafract.vault.sovereign.forever
+      role: tier_lifetime
+      type: non_consumable
+      family_sharable: true
+    - product_id: com.katafract.vault.100gb.monthly
+      role: capacity_addon
+      family_sharable: true
+    - product_id: com.katafract.vault.1tb.monthly
+      role: capacity_addon
+      family_sharable: true
+    - product_id: com.katafract.vault.5tb.monthly
+      role: capacity_addon
+      family_sharable: true
+    # yearly capacity addons same shape — omitted for draft brevity
+
+  iaps: []
+
+testflight:
+  enabled: true
+  internal_group_name: "Internal Testers"
+  auto_distribute_internal: true
+
+# ---- Release target ----
+release:
+  current_target_version: "1.0"
+  attestation_dir: .katafract/attestations
+  attestation_freshness_days: 30
+
+# ---- Build / CI ----
+ci:
+  runner_labels: [self-hosted, macOS, ios-build]
+  # runner_pin: cmfmbp-ios   # set ONLY when an app has reproducible issues on the
+                              # other runner (e.g. wraith-ios on chronos-macbuilder
+                              # has had VPN-tunnel-up flakes). Leave unset to
+                              # load-balance across all matching runners.
+  workflows:
+    pr_check: .github/workflows/pr-check.yml
+    ship: .github/workflows/ship.yml
+    screenshots: .github/workflows/screenshots.yml
+    release_readiness: .github/workflows/release-readiness.yml
+
+  signing:
+    scheme: asc_api_key
+    secrets: [ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY]
+    app_groups: [group.com.katafract.enclave]
+    entitlements_file: Sources/App/Vaultyx.entitlements
+
+  build_provenance:
+    block_submit_on_unsupervised_autofix: true
+
+# ---- Content ----
+screenshots:
+  devices: [iphone-67, iphone-65, ipad-13]
+  locales: [en-US]
+  freshness_days: 30
+  iap_review_screenshots_on_demand: true
+
+marketing_truth:
+  audit_required_before_submit: true
+  freshness_days: 7
+  shipped:
+    - encrypted_e2ee_storage
+    - cross_device_sync
+    - photo_backup_album_selection
+    - sovereign_1tb_quota
+  # Each entry: a feature we don't ship + the phrases that would imply we do.
+  # If any phrase appears (case-insensitive) in the live ASC version description,
+  # keywords, or what's-new, marketing_truth_audit fails RED.
+  unshipped_forbidden_phrases:
+    - feature: selective_sync_finder_extension
+      phrases: ["selective sync", "Finder integration", "Finder extension"]
+    - feature: shared_folders
+      phrases: ["shared folder", "share folders with", "collaborate on files"]
+    - feature: file_versioning_ui
+      phrases: ["version history", "previous versions of files", "file versioning"]
+    - feature: family_pool_quota   # blocked by WP #100
+      phrases: ["share storage with family", "family pool", "shared quota", "Family Sharing storage"]
+
+# ---- App completeness static checks ----
+# Catches stub markers in user-reachable Swift code BEFORE Apple reviewer clicks them.
+# Pairs with tek_device_smoke (manual attestation) for two-layer defense.
+app_completeness:
+  scan_paths:
+    - Sources/UI
+    - Sources/App
+  blocker_patterns:
+    - 'preconditionFailure\("stub'
+    - 'fatalError\("(?i:not implemented|placeholder|TODO|stub)'
+  warn_patterns:
+    - '// TODO:'
+    - '// FIXME:'
+    - 'Button\s*\([^)]*\)\s*\{\s*\}'         # empty Button("Title") { }
+    - '\.onTapGesture\s*\{\s*\}'              # empty .onTapGesture { }
+
+# ---- Apple review policy (App Store Review Guidelines compliance) ----
+# Phrases that have triggered rejections under various ASRG sections.
+# Grep the ASC version description / keywords / whatsNew / promotionalText.
+apple_review_policy:
+  forbidden_competitor_names:    # ASRG 3.1.6 — naming competitor apps
+    - Dropbox
+    - Google Drive
+    - iCloud
+    - OneDrive
+    - Box
+    - Backblaze
+    - pCloud
+    - Sync.com
+    - Mega
+    - Tresorit
+  forbidden_incompleteness_markers:    # ASRG 2.2 — completeness
+    - coming soon
+    - TBD
+    - placeholder
+    - lorem ipsum
+    - to be announced
+    - stay tuned
+    - in development
+    - experimental
+  forbidden_other_platforms:    # ASRG 2.3.7 — cross-platform name-drops
+    - Android
+    - Windows
+    - Chrome OS
+    - Linux
+  forbidden_superlatives:    # ASRG 2.3.10 — substantiated claims
+    - "#1"
+    - "the best"
+    - "world's best"
+    - "top-rated"
+    - "most secure"
+
+# ---- Subscription disclosure (ASRG 3.1.2(a)) ----
+subscription_disclosure:
+  # Each sub's en-US description MUST contain at least one of these phrases.
+  required_auto_renew_terms:
+    - auto-renew
+    - auto renew
+    - automatically renew
+  # If a sub description claims any of these, ASC must have a matching introductoryOffer
+  # in FREE_TRIAL mode. Lying about a free trial is an instant rejection.
+  free_trial_claim_phrases:
+    - free trial
+    - 7-day trial
+    - 30-day trial
+    - try free
+    - start free
+
+# ---- Readiness gates ----
+# Each gate: id, severity (blocker | warn), runtime check.
+# release-readiness.yml evaluates these and posts a structured artifact.
+readiness_gates:
+  - id: pr_check_main_green
+    severity: blocker
+    description: "main's last pr-check run = success"
+
+  - id: ship_yml_main_green
+    severity: blocker
+    description: "main's last ship run uploaded to TestFlight"
+
+  - id: screenshots_fresh
+    severity: blocker
+    description: "screenshots artifact < freshness_days AND matches current marketing_version"
+
+  - id: marketing_truth_audit
+    severity: blocker
+    description: "marketing-truth audit run passed within freshness_days"
+
+  - id: app_group_entitlement_present
+    severity: blocker
+    description: "entitlements_file contains all configured app_groups"
+
+  - id: asc_version_metadata_complete
+    severity: blocker
+    description: "ASC App Store Version: description, keywords, what's-new, screenshots populated"
+
+  - id: asc_iap_metadata_complete
+    severity: blocker
+    description: "every IAP + sub: review screenshot + EN-US localization"
+
+  - id: signing_cert_valid_60d
+    severity: warn
+    description: "Apple Distribution cert expires > 60 days out"
+
+  - id: signing_cert_valid_30d
+    severity: blocker
+    description: "Apple Distribution cert expires > 30 days out (hard block — sub-30d is renewal-now territory)"
+
+  - id: build_provenance_clean
+    severity: blocker
+    description: "current target version's TF build is HUMAN_PUSHED or AGENT_DISPATCHED (never AUTOFIX_UNSUPERVISED)"
+
+  - id: app_completeness_check
+    severity: blocker
+    description: "no stub markers (preconditionFailure stub, fatalError not-implemented, empty Button closures) in user-reachable code"
+
+  - id: subscription_disclosure_check
+    severity: blocker
+    description: "every sub: auto-renew language + free-trial claims match ASC introductoryOffer + app has privacyPolicyUrl"
+
+  - id: apple_review_policy_check
+    severity: blocker
+    description: "ASC description/keywords/whatsNew clean of competitor names, incompleteness markers, other-platform refs, superlatives"
+
+  - id: tek_device_smoke
+    severity: blocker
+    requires_manual_attestation: true
+    description: "Tek smoke-tested current TF build on physical device"
