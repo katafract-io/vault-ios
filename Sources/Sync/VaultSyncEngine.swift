@@ -115,9 +115,16 @@ public class VaultSyncEngine: ObservableObject {
         // Step 0: adopt the picked file into the local plaintext cache so
         // preview/open/share work the moment the user sees the row, even
         // before the encrypted chunks have reached the server. Off main thread.
-        let localCacheURL: URL? = try? await Task.detached(priority: .userInitiated) {
-            try LocalCache.adopt(fileId: fileId, originalName: displayName, from: localURL)
-        }.value
+        let localCacheURL: URL?
+        do {
+            localCacheURL = try await Task.detached(priority: .userInitiated) {
+                try LocalCache.adopt(fileId: fileId, originalName: displayName, from: localURL)
+            }.value
+        } catch {
+            self.logger.error("LocalCache.adopt failed for \(displayName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            dlog("LocalCache.adopt failed for \(displayName): \(error.localizedDescription)", category: "sync", level: .error)
+            localCacheURL = nil
+        }
 
         // Step 1-3: chunk, encrypt, cache — off main thread
         let (totalSize, chunkDescriptors) = try await Task.detached(
@@ -186,7 +193,14 @@ public class VaultSyncEngine: ObservableObject {
             // Store encrypted manifest in chunk cache under a deterministic key
             // so the drain worker can read it without re-encrypting.
             let manifestKey = "__manifest__\(fileId)"
-            try? ChunkCache.put(hash: manifestKey, data: encryptedManifest)
+            do {
+                try ChunkCache.put(hash: manifestKey, data: encryptedManifest)
+            } catch {
+                // Without the manifest cached, checkAndFinalizeFile will mark
+                // this file as "conflict" once chunks finish. Surface the cause.
+                self.logger.error("manifest cache write failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("manifest cache write failed for \(fileId): \(error.localizedDescription)", category: "sync", level: .error)
+            }
 
             let localFile = LocalFile(
                 fileId: fileId,
@@ -397,17 +411,28 @@ public class VaultSyncEngine: ObservableObject {
     private func drainChunk(fileId: String, chunkHash: String) async -> (fileId: String, chunkHash: String, success: Bool) {
 
         // Dedup: HEAD the chunk on the server
-        let alreadyUploaded = (try? await apiClient.chunkExists(
-            fileId: fileId, chunkHash: chunkHash)) ?? false
+        let alreadyUploaded: Bool
+        do {
+            alreadyUploaded = try await apiClient.chunkExists(
+                fileId: fileId, chunkHash: chunkHash)
+        } catch {
+            self.logger.error("chunkExists HEAD failed for \(fileId, privacy: .public)/\(chunkHash, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            dlog("chunkExists HEAD failed for \(fileId)/\(chunkHash): \(error.localizedDescription)", category: "sync", level: .error)
+            alreadyUploaded = false
+        }
 
         if alreadyUploaded {
             return (fileId, chunkHash, true)
         }
 
-        // Read from local cache
+        // Read from local cache. Cache miss = data loss; treat as failure so
+        // the retry+backoff machinery surfaces it instead of silently marking
+        // the chunk done (which makes the manifest valid against an empty
+        // server-side object → file unreadable on download).
         guard let data = ChunkCache.get(hash: chunkHash) else {
-            // Cache file gone — mark done and move on (can't retry without data)
-            return (fileId, chunkHash, true)
+            self.logger.error("chunk cache miss for \(fileId, privacy: .public)/\(chunkHash, privacy: .public) — was it evicted?")
+            dlog("chunk cache miss for \(fileId)/\(chunkHash) — was it evicted?", category: "sync", level: .error)
+            return (fileId, chunkHash, false)
         }
 
         do {
@@ -431,7 +456,11 @@ public class VaultSyncEngine: ObservableObject {
             ChunkCache.delete(hash: chunkHash)
             return (fileId, chunkHash, true)
         } catch {
-            // Return failure code; MainActor will increment attempts + backoff
+            // Return failure code; MainActor will increment attempts + backoff.
+            // Surface the cause: presign 4xx, PUT 5xx, network, AEAD-MAC error,
+            // 403 quota — without this log, TestFlight has zero signal.
+            self.logger.error("chunk upload failed for \(fileId, privacy: .public)/\(chunkHash, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            dlog("chunk upload failed for \(fileId)/\(chunkHash): \(error.localizedDescription)", category: "sync", level: .error)
             return (fileId, chunkHash, false)
         }
     }
