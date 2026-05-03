@@ -3,8 +3,38 @@ import KatafractStyle
 import BackgroundTasks
 import UIKit
 
+/// UIApplicationDelegate adaptor for events SwiftUI doesn't expose natively.
+///
+/// The only reason this exists is `application(_:handleEventsForBackgroundURLSession:completionHandler:)`
+/// — when iOS relaunches the app to deliver completion events for an
+/// OS-managed background URLSession (chunks that finished uploading while
+/// the app was suspended), this delegate captures the system completion
+/// handler and forwards it to the upload coordinator. Without that wiring,
+/// background upload completions never reach our delegate methods and rows
+/// stay stuck `inFlightTaskIdentifier`-set forever.
+final class VaultAppDelegate: NSObject, UIApplicationDelegate {
+    /// Set in `VaultApp.init` immediately after `VaultServices` is created
+    /// so the delegate can route to its coordinator.
+    static weak var sharedServices: VaultServices?
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        guard identifier == BackgroundUploadCoordinator.sessionIdentifier,
+              let services = Self.sharedServices else {
+            completionHandler()
+            return
+        }
+        services.uploadCoordinator.setBackgroundEventsCompletionHandler(completionHandler)
+        dlog("handleEventsForBackgroundURLSession \(identifier)", category: "app", level: .info)
+    }
+}
+
 @main
 struct VaultApp: App {
+    @UIApplicationDelegateAdaptor(VaultAppDelegate.self) var appDelegate
     @ObservedObject private var lock = BiometricLock.shared
     @StateObject private var services: VaultServices
     @StateObject private var subscriptionStore: SubscriptionStore
@@ -24,6 +54,23 @@ struct VaultApp: App {
         _services = StateObject(wrappedValue: services)
         _subscriptionStore = StateObject(
             wrappedValue: SubscriptionStore(apiClient: services.apiClient))
+
+        // Expose services to the AppDelegate. The delegate is instantiated
+        // before this `init` runs (UIApplicationDelegateAdaptor builds it
+        // first) but it can't reach `services` from there — stash a weak
+        // reference once both objects exist. Weak so a hot reload that
+        // rebuilds VaultApp doesn't pin a stale services instance.
+        VaultAppDelegate.sharedServices = services
+
+        // Reconcile orphan in-flight queue rows. Background URLSession tasks
+        // are stable across launches, so on cold start we walk live tasks
+        // and clear `inFlightTaskIdentifier` for any row whose task no
+        // longer exists. Without this, a row whose upload silently died
+        // (session reset, low-storage kill) would sit `in_flight` forever.
+        let coordinator = services.uploadCoordinator
+        Task.detached {
+            await coordinator.reconcileOnLaunch()
+        }
 
         // Wire drain notification → syncPending() on this services instance.
         // Using NotificationCenter because BGTaskScheduler's handler fires in a

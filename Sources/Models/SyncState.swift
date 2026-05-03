@@ -133,6 +133,21 @@ import Foundation
     var nextRetryAt: Date
     var doneAt: Date?
 
+    /// URLSessionTask.taskIdentifier of the background upload currently in
+    /// flight for this row, or nil if no upload is dispatched. Used by the
+    /// background URLSession delegate to map an OS-side completion event back
+    /// to the SwiftData row that needs marking. Survives app suspend/kill —
+    /// background URLSession tasks have stable identifiers across launches,
+    /// so on cold launch we reconcile via `URLSession.getAllTasks()`.
+    var inFlightTaskIdentifier: Int? = nil
+
+    /// Wall-clock time the most recent upload was dispatched. Used to detect
+    /// orphan in-flight rows whose tasks died without firing the delegate
+    /// (e.g., session was reset) — if `lastDispatchedAt` is older than the
+    /// orphan window and `getAllTasks()` doesn't list the identifier, clear
+    /// `inFlightTaskIdentifier` and re-dispatch on the next drain.
+    var lastDispatchedAt: Date? = nil
+
     init(
         id: UUID = UUID(),
         fileId: String,
@@ -141,7 +156,9 @@ import Foundation
         size: Int64,
         attempts: Int = 0,
         nextRetryAt: Date = Date(),
-        doneAt: Date? = nil
+        doneAt: Date? = nil,
+        inFlightTaskIdentifier: Int? = nil,
+        lastDispatchedAt: Date? = nil
     ) {
         self.id = id
         self.fileId = fileId
@@ -151,6 +168,8 @@ import Foundation
         self.attempts = attempts
         self.nextRetryAt = nextRetryAt
         self.doneAt = doneAt
+        self.inFlightTaskIdentifier = inFlightTaskIdentifier
+        self.lastDispatchedAt = lastDispatchedAt
     }
 
     /// True when all retries are exhausted and the drain should skip this row
