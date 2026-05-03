@@ -15,9 +15,15 @@ import Foundation
     var chunkHashes: [String]       // ordered list of chunk hashes
     var sizeBytes: Int64
     var modifiedAt: Date
-    var syncState: String           // synced | uploading | downloading | conflict | deleted | pending | pending_upload | partial
+    var syncState: String           // synced | uploading | downloading | conflict | deleted | pending | pending_upload | manifest_pending | manifest_failed | partial
     var isPinned: Bool              // pinned for offline access
     var thumbnailPath: String?      // local thumbnail cache path
+
+    /// Retry bookkeeping for the manifest POST step. Chunks have their own
+    /// retry on `ChunkUploadQueue`; this pair handles the final manifest POST
+    /// in `checkAndFinalizeFile`. Defaults are SwiftData-migration-safe.
+    var manifestAttempts: Int = 0
+    var nextManifestRetryAt: Date = Date()
 
     init(
         fileId: String,
@@ -30,7 +36,9 @@ import Foundation
         modifiedAt: Date = Date(),
         syncState: String = "pending",
         isPinned: Bool = false,
-        thumbnailPath: String? = nil
+        thumbnailPath: String? = nil,
+        manifestAttempts: Int = 0,
+        nextManifestRetryAt: Date = Date()
     ) {
         self.fileId = fileId
         self.filename = filename
@@ -43,6 +51,8 @@ import Foundation
         self.syncState = syncState
         self.isPinned = isPinned
         self.thumbnailPath = thumbnailPath
+        self.manifestAttempts = manifestAttempts
+        self.nextManifestRetryAt = nextManifestRetryAt
     }
 }
 

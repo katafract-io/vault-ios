@@ -36,6 +36,11 @@ public class VaultSyncEngine: ObservableObject {
 
     public static let bgTaskIdentifier = "com.katafract.vault.drain"
     private static let uploadQueueCeiling: Int64 = 5 * 1024 * 1024 * 1024 // 5 GB
+    /// Max manifest POST attempts before a file moves to `manifest_failed`.
+    /// At 8 attempts with exponential backoff capped at 1 h, total wall-clock
+    /// before giving up is ~2 h — enough to ride out transient outages without
+    /// stranding files indefinitely on a permanent server-side reject.
+    private static let manifestRetryCap: Int = 8
 
     // MARK: - State
 
@@ -375,6 +380,25 @@ public class VaultSyncEngine: ObservableObject {
             await checkAndFinalizeFile(fileId: fileId)
         }
 
+        // Manifest-retry sweep: files whose chunks are all uploaded but the
+        // manifest POST previously failed sit in `manifest_pending` until the
+        // backoff window opens. Re-finalize them here so the user doesn't have
+        // to wait for a new import to kick the drain. Files that exhausted
+        // `manifestRetryCap` attempts move to `manifest_failed` and are NOT
+        // retried here — those need explicit user / Settings intervention.
+        let manifestPendingIds: [String] = await MainActor.run {
+            let nowDate = Date()
+            let desc = FetchDescriptor<LocalFile>(
+                predicate: #Predicate {
+                    $0.syncState == "manifest_pending" && $0.nextManifestRetryAt <= nowDate
+                }
+            )
+            return ((try? modelContext.fetch(desc)) ?? []).map(\.fileId)
+        }
+        for fileId in manifestPendingIds where !fileIds.contains(fileId) {
+            await checkAndFinalizeFile(fileId: fileId)
+        }
+
         await MainActor.run { self.syncState = .idle }
     }
 
@@ -516,12 +540,14 @@ public class VaultSyncEngine: ObservableObject {
             ChunkCache.delete(hash: sidecarKey)
             ChunkCache.delete(hash: manifestKey)
 
-            // Mark LocalFile as synced + emit notification
+            // Mark LocalFile as synced + emit notification. Reset retry
+            // bookkeeping so a re-imported file with the same id starts clean.
             await MainActor.run {
                 let desc = FetchDescriptor<LocalFile>(
                     predicate: #Predicate { $0.fileId == fileId })
                 if let file = (try? modelContext.fetch(desc))?.first {
                     file.syncState = "synced"
+                    file.manifestAttempts = 0
                     do {
                         try modelContext.save()
                     } catch {
@@ -534,8 +560,32 @@ public class VaultSyncEngine: ObservableObject {
                     userInfo: ["fileId": fileId])
             }
         } catch {
-            // Manifest POST failed — leave syncState as pending_upload; drain will retry
-            self.logger.error("manifest POST failed for \(fileId): \(error)")
+            // Manifest POST failed. Transition to manifest_pending with
+            // exponential backoff so the post-drain sweep in syncPending()
+            // re-tries without the user touching anything. After
+            // `Self.manifestRetryCap` attempts, give up → manifest_failed.
+            self.logger.error("manifest POST failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            dlog("manifest POST failed for \(fileId): \(error.localizedDescription)", category: "sync", level: .error)
+            await MainActor.run {
+                let desc = FetchDescriptor<LocalFile>(
+                    predicate: #Predicate { $0.fileId == fileId })
+                guard let file = (try? modelContext.fetch(desc))?.first else { return }
+                file.manifestAttempts += 1
+                if file.manifestAttempts >= Self.manifestRetryCap {
+                    file.syncState = "manifest_failed"
+                    self.logger.error("manifest POST gave up after \(Self.manifestRetryCap, privacy: .public) attempts for \(fileId, privacy: .public)")
+                    dlog("manifest POST gave up after \(Self.manifestRetryCap) attempts for \(fileId)", category: "sync", level: .warn)
+                } else {
+                    file.syncState = "manifest_pending"
+                    let delay = min(pow(2.0, Double(file.manifestAttempts)), 3600.0)
+                    file.nextManifestRetryAt = Date().addingTimeInterval(delay)
+                }
+                do {
+                    try modelContext.save()
+                } catch {
+                    self.logger.error("failed to persist manifest retry state for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
+            }
         }
     }
 
