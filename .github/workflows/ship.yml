@@ -109,15 +109,18 @@ jobs:
           # or ASC_KEY_PATH (per-runner file, legacy).
           #
           # Preferred: set ASC_KEY_CONTENT secret at the org level so any
-          # runner (existing or future) just works. Until that secret is
-          # configured, fall back to the per-runner .p8 at
-          # ~/runner-env/AuthKey_<KEY_ID>.p8.
-          if [ -z "${ASC_KEY_CONTENT:-}" ]; then
+          # runner (existing or future) just works. Otherwise prefer the
+          # ASC_KEY_PATH already exported by the runner's vault.env (which
+          # the "Load runner env" step above sourced into $GITHUB_ENV);
+          # only search ~/runner-env/AuthKey_*.p8 as a last-ditch fallback.
+          if [ -n "${ASC_KEY_CONTENT:-}" ]; then
+            echo "using ASC_KEY_CONTENT GH Actions secret"
+          elif [ -n "${ASC_KEY_PATH:-}" ] && [ -f "${ASC_KEY_PATH}" ]; then
+            echo "using ASC_KEY_PATH from runner env: $ASC_KEY_PATH"
+          else
             ASC_KEY_PATH=$(ls $HOME/runner-env/AuthKey_*.p8 2>/dev/null | head -1 || echo "")
             export ASC_KEY_PATH
-            echo "using per-runner key: ${ASC_KEY_PATH:-<none>}"
-          else
-            echo "using ASC_KEY_CONTENT GH Actions secret"
+            echo "using per-runner key (fallback search): ${ASC_KEY_PATH:-<none>}"
           fi
 
           # Extract the marketing-version train from pbxproj (all targets
