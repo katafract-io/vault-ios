@@ -34,13 +34,13 @@ import OSLog
 /// with `maxConcurrentOperationCount = 1`). Every SwiftData mutation hops to
 /// `MainActor` first because `ModelContext` is bound to the actor that owns
 /// it. The `responseBuffers` dictionary is guarded by `responseBuffersLock`.
-final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
+public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
 
     // MARK: - Constants
 
     /// URLSession identifier. Must match across launches so iOS can deliver
     /// in-flight tasks to the relaunched app instance.
-    static let sessionIdentifier = "com.katafract.vault.upload.v2"
+    public static let sessionIdentifier = "com.katafract.vault.upload.v2"
 
     /// Wall-clock seconds after which an in-flight task with no delegate
     /// callback is presumed dead and re-dispatched. Conservatively long so
@@ -82,7 +82,7 @@ final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
 
     // MARK: - Init
 
-    init(apiClient: VaultAPIClient, modelContainer: ModelContainer) {
+    public init(apiClient: VaultAPIClient, modelContainer: ModelContainer) {
         self.apiClient = apiClient
         self.modelContainer = modelContainer
         super.init()
@@ -109,7 +109,7 @@ final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
     /// when iOS relaunches the app to deliver background events. We stash the
     /// handler and call it from `urlSessionDidFinishEvents` once every queued
     /// event has been processed.
-    func setBackgroundEventsCompletionHandler(_ handler: @escaping () -> Void) {
+    public func setBackgroundEventsCompletionHandler(_ handler: @escaping () -> Void) {
         bgEventsLock.lock()
         bgEventsCompletionHandler = handler
         bgEventsLock.unlock()
@@ -123,7 +123,7 @@ final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
     /// Records `inFlightTaskIdentifier` in the matching ChunkUploadQueue row
     /// and calls `task.resume()`. Returns once the row is updated; the actual
     /// PUT runs entirely OS-side.
-    func dispatchUpload(
+    public func dispatchUpload(
         fileId: String,
         chunkHash: String,
         fromFileURL: URL,
@@ -164,7 +164,7 @@ final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
     /// matching live task is presumed dead (session reset, OS killed the
     /// transfer, etc.); clear the identifier so the next drain re-dispatches.
     /// Called once on cold launch.
-    func reconcileOnLaunch() async {
+    public func reconcileOnLaunch() async {
         let live = await session.allTasks
         let liveIds = Set(live.map(\.taskIdentifier))
         logger.info("reconcile on launch: \(liveIds.count, privacy: .public) live tasks")
