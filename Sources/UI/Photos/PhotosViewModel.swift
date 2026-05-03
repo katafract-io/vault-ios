@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import OSLog
 import Photos
@@ -144,7 +143,16 @@ class PhotosViewModel: ObservableObject {
         // writes an empty array (distinguishable from first-run via key presence).
         let enabledIDs = albums.filter(\.isEnabled).map(\.id)
         UserDefaults.standard.set(enabledIDs, forKey: enabledAlbumsKey)
-        // TODO: trigger/stop backup when album is enabled/disabled
+
+        guard let services = self.services else {
+            logger.error("toggleAlbum called before VaultServices was wired")
+            return
+        }
+        if enabled {
+            services.photoBackup.startAlbumBackup(albumId: album.id)
+        } else {
+            services.photoBackup.stopAlbumBackup(albumId: album.id)
+        }
     }
 
     /// Logger for the photo backup pipeline. Visible in Console.app on
@@ -192,17 +200,6 @@ class PhotosViewModel: ObservableObject {
             allBackedUp = backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
         }
 
-        // Resolve folder key once for the whole batch.
-        let folderKey: SymmetricKey
-        do {
-            folderKey = try await services.keyManager.getOrCreateFolderKey(
-                folderId: Self.rootFolderId)
-        } catch {
-            logger.error("getOrCreateFolderKey(root) failed: \(error.localizedDescription, privacy: .public)")
-            dlog("getOrCreateFolderKey(root) failed: \(error.localizedDescription)", category: "photos", level: .error)
-            return
-        }
-
         let total = pendingIDs.count
         var done = 0
 
@@ -222,22 +219,7 @@ class PhotosViewModel: ObservableObject {
             }
 
             do {
-                let (tempURL, originalName, sizeBytes) = try await Self.exportAssetToTemp(asset: asset)
-                defer { try? FileManager.default.removeItem(at: tempURL) }
-
-                let fileId = try await services.syncEngine.importFile(
-                    localURL: tempURL,
-                    parentFolderId: nil,                        // root
-                    folderKey: folderKey,
-                    masterKey: services.masterKey,
-                    filename: originalName)
-
-                services.photoBackup.markBackedUp(
-                    assetIdentifier: assetID,
-                    fileId: fileId,
-                    folderId: Self.rootFolderId,
-                    sizeBytes: sizeBytes)
-
+                let fileId = try await services.photoBackup.enqueueAsset(asset)
                 updateAssetState(id: assetID, to: .backedUp)
                 logger.info("photo backed up: \(assetID, privacy: .public) → \(fileId, privacy: .public)")
             } catch {
@@ -259,43 +241,6 @@ class PhotosViewModel: ObservableObject {
     private func advanceProgress(done: Int, total: Int) {
         backupProgress = total > 0 ? Double(done) / Double(total) : 1.0
         remainingCount = max(0, total - done)
-    }
-
-    /// Write the original asset bytes to a temp URL the sync engine can read.
-    /// Uses `PHAssetResourceManager` so we get the unmodified original (no
-    /// re-encode), preserving HEIC / RAW / Live Photo metadata.
-    private static func exportAssetToTemp(
-        asset: PHAsset
-    ) async throws -> (url: URL, originalName: String, sizeBytes: Int64) {
-        let resources = PHAssetResource.assetResources(for: asset)
-        guard let primary = resources.first(where: { $0.type == .photo })
-                ?? resources.first(where: { $0.type == .fullSizePhoto })
-                ?? resources.first else {
-            throw PhotoBackupError.noResource
-        }
-
-        let originalName = primary.originalFilename
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + "-" + originalName)
-
-        let options = PHAssetResourceRequestOptions()
-        options.isNetworkAccessAllowed = true   // iCloud Photo Library originals
-
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            PHAssetResourceManager.default().writeData(
-                for: primary, toFile: tempURL, options: options
-            ) { error in
-                if let error = error {
-                    cont.resume(throwing: error)
-                } else {
-                    cont.resume()
-                }
-            }
-        }
-
-        let attrs = try FileManager.default.attributesOfItem(atPath: tempURL.path)
-        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-        return (tempURL, originalName, size)
     }
 
     /// Injects synthetic seed photos for XCUITest screenshot runs.
@@ -377,6 +322,3 @@ class PhotosViewModel: ObservableObject {
     }
 }
 
-enum PhotoBackupError: Error {
-    case noResource
-}
