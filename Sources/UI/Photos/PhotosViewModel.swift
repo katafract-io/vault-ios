@@ -151,7 +151,24 @@ class PhotosViewModel: ObservableObject {
         if enabled {
             services.photoBackup.startAlbumBackup(albumId: album.id)
         } else {
-            services.photoBackup.stopAlbumBackup(albumId: album.id)
+            services.photoBackup.stopAlbumBackup(albumId: album.id, apiClient: services.apiClient)
+            // Optimistic UI: mark grid cells back to .pending immediately so
+            // the user sees uncheck = uncheck without waiting for the network
+            // round-trip. The actual backup state refreshes again from
+            // SwiftData via the next loadRecentPhotos call.
+            Task { @MainActor in
+                await services.photoBackup.unsyncAlbum(
+                    albumId: album.id, apiClient: services.apiClient)
+                services.photoBackup.refresh()
+                let backedUp = services.photoBackup.backedUpIdentifiers
+                for idx in backedUpPhotos.indices {
+                    if !backedUp.contains(backedUpPhotos[idx].id) {
+                        backedUpPhotos[idx].backupState = .pending
+                    }
+                }
+                allBackedUp = !backedUpPhotos.isEmpty
+                    && backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
+            }
         }
     }
 
@@ -235,6 +252,23 @@ class PhotosViewModel: ObservableObject {
     private func updateAssetState(id: String, to newState: BackedUpPhoto.BackupState) {
         if let idx = backedUpPhotos.firstIndex(where: { $0.id == id }) {
             backedUpPhotos[idx].backupState = newState
+        }
+    }
+
+    /// Remove a backed-up photo from the vault. Soft-deletes the encrypted
+    /// file on the server, deletes the matching `BackedUpAsset` record, and
+    /// flips the row back to `.pending` so the grid badge updates.
+    /// The local PHAsset is not touched — only the encrypted vault copy.
+    func removeFromBackup(_ photo: BackedUpPhoto) {
+        guard let services else {
+            logger.error("removeFromBackup called before VaultServices was wired")
+            return
+        }
+        let assetId = photo.id
+        Task { @MainActor in
+            await services.photoBackup.removeBackup(assetIdentifier: assetId, apiClient: services.apiClient)
+            updateAssetState(id: assetId, to: .pending)
+            allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
         }
     }
 

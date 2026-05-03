@@ -64,8 +64,7 @@ struct RecentsView: View {
                     ForEach(viewModel.items) { item in
                         FileRowView(
                             item: item,
-                            onRename: { _ in },
-                            onDelete: {},
+                            onDelete: { viewModel.deleteItem(item) },
                             onPin: { viewModel.togglePin(item) }
                         )
                         .onTapGesture { selectedFile = item }
@@ -98,6 +97,9 @@ struct RecentsView: View {
             viewModel.configure(services: services)
             await viewModel.load()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaultyxFileSynced)) { _ in
+            Task { await viewModel.load() }
+        }
         .refreshable {
             await viewModel.load()
         }
@@ -116,11 +118,14 @@ class RecentsViewModel: ObservableObject {
         self.services = services
     }
 
+    /// Build the Recents list from the union of local SwiftData rows and the
+    /// server's recents response. Local rows surface in-flight uploads (which
+    /// the server hasn't seen yet), so a freshly-imported file appears here
+    /// immediately instead of waiting on the drain to finalize.
     func load() async {
         isLoading = true
         defer { isLoading = false }
 
-        // Inject seed data if in ScreenshotMode
         if ScreenshotMode.seedData != nil {
             injectSeedRecentFiles()
             return
@@ -131,23 +136,92 @@ class RecentsViewModel: ObservableObject {
             return
         }
 
+        // Local cache rows — already have the plaintext filename and live
+        // syncState. Sorted newest-first; capped at 20 to match the server.
+        let context = ModelContext(services.modelContainer)
+        let localRows = ((try? context.fetch(FetchDescriptor<LocalFile>())) ?? [])
+            .sorted { $0.modifiedAt > $1.modifiedAt }
+            .prefix(20)
+
+        var merged: [VaultFileItem] = []
+        var seenIds = Set<String>()
+        for row in localRows {
+            seenIds.insert(row.fileId)
+            merged.append(VaultFileItem(
+                id: row.fileId,
+                name: row.filename,
+                isFolder: false,
+                sizeBytes: row.sizeBytes,
+                modifiedAt: row.modifiedAt,
+                syncState: Self.displayState(for: row.syncState),
+                isPinned: row.isPinned))
+        }
+
+        // Server response — decrypt filenames against the file's folder key
+        // (recents include files from any folder, so each file may need its
+        // own key). Skip records the local cache already covers.
         do {
             let response = try await services.apiClient.listRecentFiles(limit: 20)
-            let fileItems = response.files.map { record in
-                VaultFileItem(
+            for record in response.files where !seenIds.contains(record.file_id) {
+                let folderId = record.parent_folder_id ?? "root"
+                let displayName: String
+                do {
+                    let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId)
+                    displayName = try services.syncEngine.decryptFilename(record.filename_enc, folderKey: folderKey)
+                } catch {
+                    displayName = "Encrypted file"
+                }
+                merged.append(VaultFileItem(
                     id: record.file_id,
-                    name: record.filename_enc,
+                    name: displayName,
                     isFolder: false,
                     sizeBytes: record.size_bytes,
                     modifiedAt: Date(timeIntervalSince1970: TimeInterval(record.modified_at)),
                     syncState: .synced,
-                    isPinned: false
-                )
+                    isPinned: false))
             }
-            items = fileItems
         } catch {
-            self.error = "Failed to load recent files: \(error.localizedDescription)"
-            items = []
+            // Local rows still display; surface the network error only if there
+            // are no local rows either, otherwise the user sees a stale-but-
+            // useful list rather than an empty pane.
+            if merged.isEmpty {
+                self.error = "Failed to load recent files: \(error.localizedDescription)"
+            }
+        }
+
+        merged.sort { $0.modifiedAt > $1.modifiedAt }
+        items = Array(merged.prefix(20))
+    }
+
+    private static func displayState(for raw: String) -> VaultFileItem.SyncStateDisplay {
+        switch raw {
+        case "pending_upload": return .pendingUpload
+        case "partial":        return .partial
+        case "uploading":      return .uploading(0)
+        case "downloading":    return .downloading(0)
+        case "conflict":       return .conflict
+        default:               return .synced
+        }
+    }
+
+    /// Soft-delete a recents row. Mirrors FileBrowserViewModel.deleteItem's
+    /// network + local cleanup so the row disappears immediately.
+    func deleteItem(_ item: VaultFileItem) {
+        guard let services else { return }
+        items.removeAll { $0.id == item.id }
+        let context = ModelContext(services.modelContainer)
+        Task { @MainActor in
+            do {
+                try await services.apiClient.softDeleteFile(fileId: item.id)
+                if let rows = try? context.fetch(FetchDescriptor<LocalFile>()) {
+                    for row in rows where row.fileId == item.id {
+                        context.delete(row)
+                    }
+                    try? context.save()
+                }
+            } catch {
+                self.error = "Delete failed: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -401,6 +475,10 @@ struct SettingsView: View {
             usedBytes = StorageUsageCalculator.compute(from: modelContext)
             Task { await loadServerQuota() }
             loadPendingStats()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaultyxFileSynced)) { _ in
+            loadPendingStats()
+            usedBytes = StorageUsageCalculator.compute(from: modelContext)
         }
         .sheet(isPresented: $showPhrase) {
             RecoveryPhraseView(

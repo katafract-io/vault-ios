@@ -169,13 +169,76 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         albumOperations[albumId] = task
     }
 
-    /// Cancel the in-flight backup for `albumId`. Already-uploaded files stay
-    /// in the vault; this only stops new uploads from starting.
-    public func stopAlbumBackup(albumId: String) {
+    /// Cancel the in-flight backup for `albumId` AND remove already-backed-up
+    /// assets in that album from the vault. The user model is "uncheck = stop
+    /// syncing AND undo what was synced from this album"; cancelling alone
+    /// would leave orphaned encrypted copies that the user thought they had
+    /// removed from the vault.
+    ///
+    /// The local PHAsset in the camera roll is NOT touched — only the vault
+    /// copy. Asynchronous: enumerate the album, soft-delete each matching
+    /// `BackedUpAsset`, refresh the cached identifier set.
+    public func stopAlbumBackup(albumId: String, apiClient: VaultAPIClient? = nil) {
         albumOperations[albumId]?.cancel()
         albumOperations[albumId] = nil
         logger.info("album backup cancelled: \(albumId, privacy: .public)")
         dlog("album backup cancelled: \(albumId)", category: "photos", level: .info)
+        guard let apiClient else { return }
+        Task { @MainActor in
+            await self.unsyncAlbum(albumId: albumId, apiClient: apiClient)
+        }
+    }
+
+    /// Soft-delete every `BackedUpAsset` whose `assetIdentifier` is contained
+    /// in `albumId`. Best-effort: per-asset failures are logged and the loop
+    /// continues so a transient 404 doesn't strand the user with a half-
+    /// removed album.
+    public func unsyncAlbum(albumId: String, apiClient: VaultAPIClient) async {
+        let coll = PHAssetCollection.fetchAssetCollections(
+            withLocalIdentifiers: [albumId], options: nil)
+        guard let collection = coll.firstObject else {
+            logger.error("unsyncAlbum: album not found \(albumId, privacy: .public)")
+            return
+        }
+        let assetsResult = PHAsset.fetchAssets(in: collection, options: nil)
+        var assetIds: [String] = []
+        assetsResult.enumerateObjects { asset, _, _ in
+            assetIds.append(asset.localIdentifier)
+        }
+        var removed = 0
+        for assetId in assetIds {
+            await removeBackup(assetIdentifier: assetId, apiClient: apiClient)
+            removed += 1
+        }
+        logger.info("unsync complete for album \(albumId, privacy: .public) — touched \(removed, privacy: .public) asset(s)")
+    }
+
+    /// Remove the vault copy for a single backed-up asset. Idempotent: if
+    /// there's no matching `BackedUpAsset` row, returns silently.
+    public func removeBackup(assetIdentifier: String, apiClient: VaultAPIClient) async {
+        let descriptor = FetchDescriptor<BackedUpAsset>(
+            predicate: #Predicate { $0.assetIdentifier == assetIdentifier })
+        guard let row = (try? modelContext.fetch(descriptor))?.first else { return }
+        let fileId = row.fileId
+        do {
+            try await apiClient.softDeleteFile(fileId: fileId)
+        } catch {
+            logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            dlog("vault soft-delete failed for \(assetIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
+            // Continue — also drop the local LocalFile + BackedUpAsset rows
+            // so the UI doesn't keep showing a phantom backup. The recycle bin
+            // sweep on the server will reconcile if the file actually exists.
+        }
+        // Drop the matching LocalFile cache row too so refreshFromCache stops
+        // surfacing the file in any browser the user opens next.
+        let lfDescriptor = FetchDescriptor<LocalFile>(
+            predicate: #Predicate { $0.fileId == fileId })
+        if let localRows = try? modelContext.fetch(lfDescriptor) {
+            for r in localRows { modelContext.delete(r) }
+        }
+        modelContext.delete(row)
+        try? modelContext.save()
+        backedUpIdentifiers.remove(assetIdentifier)
     }
 
     private func runAlbumBackup(albumId: String) async {
