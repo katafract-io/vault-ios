@@ -37,7 +37,9 @@ public final class VaultServices: ObservableObject {
             apiClient: api, modelContext: ModelContext(container))
         self.photoBackup = PhotoBackupManager(
             syncEngine: self.syncEngine,
-            modelContext: ModelContext(container))
+            modelContext: ModelContext(container),
+            keyManager: self.keyManager,
+            masterKey: self.masterKey)
 
         // Seed screenshot demo data if requested
         if let seedPreset = ScreenshotMode.seedData {
