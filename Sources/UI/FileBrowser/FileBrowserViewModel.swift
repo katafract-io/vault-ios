@@ -191,6 +191,12 @@ class FileBrowserViewModel: ObservableObject {
                         masterKey: services.masterKey,
                         filename: filename)
 
+                    // Surface the queued row immediately. Without this, users
+                    // who pick a file and don't navigate away see "nothing
+                    // happens" until the whole batch finishes — which on a
+                    // slow drain looks indistinguishable from a no-op.
+                    refreshFromCache()
+
                     // Brief sealing transition after upload completes
                     activityMgr.update(
                         stage: .sealing,
@@ -305,61 +311,70 @@ class FileBrowserViewModel: ObservableObject {
         guard let services else {
             return .init(message: "", undo: {})
         }
-        let context = ModelContext(services.modelContainer)
 
         // Snapshot what we need to restore locally
         let snapshotName = item.name
         let snapshotFolderId = currentFolderId
+        let itemId = item.id
+        let itemIsFolder = item.isFolder
 
-        if item.isFolder {
-            Task {
-                do {
-                    _ = try await services.apiClient.deleteFolder(folderId: item.id)
-                    // Sync will eventually catch the cascade; remove locally now
-                    // so the UI reflects the action immediately.
-                    refreshFromCache()
-                } catch {
-                    self.error = "Delete failed: \(error.localizedDescription)"
+        // Optimistic: remove from the visible list immediately so the user
+        // doesn't see a phantom row while the network call is in flight.
+        items.removeAll { $0.id == itemId }
+
+        // Also drop the matching BackedUpAsset row(s) so the Photos grid
+        // flips back to .pending if this file was a backed-up photo. Done
+        // synchronously on the main actor so the row vanishes immediately.
+        if !itemIsFolder {
+            let context = ModelContext(services.modelContainer)
+            if let rows = try? context.fetch(FetchDescriptor<BackedUpAsset>()) {
+                var touched = false
+                for row in rows where row.fileId == itemId {
+                    context.delete(row)
+                    touched = true
+                }
+                if touched {
+                    try? context.save()
+                    services.photoBackup.refresh()
                 }
             }
-            // Optimistic: remove from the visible list immediately
-            items.removeAll { $0.id == item.id }
-            return DeleteResult(
-                message: "Deleted \(snapshotName)",
-                undo: { [weak self] in
-                    do {
-                        _ = try await services.apiClient.restoreFolder(folderId: item.id)
-                        try await VaultTreeSync(services: services).sync()
-                        self?.refreshFromCache()
-                    } catch {
-                        self?.error = "Undo failed: \(error.localizedDescription)"
-                    }
-                })
         }
 
-        // File path — hit the server's soft-delete (moves manifest to trash/)
-        Task {
+        // Network + local-cache cleanup. Explicit @MainActor on the Task so
+        // SwiftData operations always run on the actor that owns the context;
+        // capturing services + itemId by value avoids any non-Sendable hops.
+        Task { @MainActor [weak self] in
             do {
-                try await services.apiClient.softDeleteFile(fileId: item.id)
-                if let rows = try? context.fetch(FetchDescriptor<LocalFile>()) {
-                    for row in rows where row.fileId == item.id {
-                        context.delete(row)
+                if itemIsFolder {
+                    _ = try await services.apiClient.deleteFolder(folderId: itemId)
+                    self?.refreshFromCache()
+                } else {
+                    try await services.apiClient.softDeleteFile(fileId: itemId)
+                    let context = ModelContext(services.modelContainer)
+                    if let rows = try? context.fetch(FetchDescriptor<LocalFile>()) {
+                        for row in rows where row.fileId == itemId {
+                            context.delete(row)
+                        }
+                        try? context.save()
                     }
-                    try? context.save()
                 }
             } catch {
-                self.error = "Delete failed: \(error.localizedDescription)"
+                self?.error = "Delete failed: \(error.localizedDescription)"
             }
         }
-        items.removeAll { $0.id == item.id }
+
         return DeleteResult(
             message: "Deleted \(snapshotName)",
             undo: { [weak self] in
                 do {
-                    try await services.apiClient.restoreFile(fileId: item.id)
+                    if itemIsFolder {
+                        _ = try await services.apiClient.restoreFolder(folderId: itemId)
+                    } else {
+                        try await services.apiClient.restoreFile(fileId: itemId)
+                    }
                     try await VaultTreeSync(services: services).sync()
                     self?.refreshFromCache()
-                    _ = snapshotFolderId  // keep the snapshot alive in closure scope
+                    _ = snapshotFolderId
                 } catch {
                     self?.error = "Undo failed: \(error.localizedDescription)"
                 }

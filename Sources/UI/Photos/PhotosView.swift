@@ -83,7 +83,9 @@ struct PhotosView: View {
                 await viewModel.loadRecentPhotos()
             }
             .sheet(item: $viewModel.selectedPhoto) { photo in
-                PhotoDetailView(photo: photo)
+                PhotoDetailView(photo: photo, onDelete: {
+                    viewModel.removeFromBackup(photo)
+                })
             }
             .sheet(isPresented: $showAlbumsSheet) {
                 AlbumDrawerSheet(
@@ -392,7 +394,11 @@ struct BackupStateBadge: View {
 
 struct PhotoDetailView: View {
     let photo: BackedUpPhoto
+    /// Invoked when the user taps Delete. Caller is responsible for the
+    /// soft-delete + BackedUpAsset removal; this view only requests it.
+    var onDelete: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmDelete = false
 
     var body: some View {
         NavigationStack {
@@ -408,14 +414,29 @@ struct PhotoDetailView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") { dismiss() }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button { } label: { Label("Share", systemImage: "square.and.arrow.up") }
-                        Button { } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
-                        Divider()
-                        Button(role: .destructive) { } label: { Label("Delete", systemImage: "trash") }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                if photo.backupState == .backedUp, onDelete != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(role: .destructive) {
+                            confirmDelete = true
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .accessibilityLabel("Remove from vault")
+                    }
                 }
+            }
+            .confirmationDialog(
+                "Remove from vault?",
+                isPresented: $confirmDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    onDelete?()
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The encrypted backup will be moved to the recycle bin. The photo on this device is not affected.")
             }
         }
     }

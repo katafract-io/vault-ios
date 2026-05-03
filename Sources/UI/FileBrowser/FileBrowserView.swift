@@ -353,6 +353,12 @@ struct FileBrowserView: View {
             viewModel.configure(services: services)
             await viewModel.load(folderId: folderId)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaultyxFileSynced)) { _ in
+            // Drain worker just confirmed a manifest. Refresh so the row's
+            // sync badge transitions from .pendingUpload → .synced without
+            // waiting for the user to navigate away and back.
+            viewModel.refreshFromCache()
+        }
         .refreshable {
             // Pull-to-refresh: run the full sync inline (user-initiated, so
             // we can block the spinner on the network round-trip) rather
