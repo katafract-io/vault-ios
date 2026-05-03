@@ -298,7 +298,7 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
 
 extension BackgroundUploadCoordinator: URLSessionDelegate, URLSessionTaskDelegate, URLSessionDataDelegate {
 
-    func urlSession(
+    public func urlSession(
         _ session: URLSession,
         dataTask: URLSessionDataTask,
         didReceive data: Data
@@ -312,7 +312,7 @@ extension BackgroundUploadCoordinator: URLSessionDelegate, URLSessionTaskDelegat
         responseBuffers[dataTask.taskIdentifier] = buf
     }
 
-    func urlSession(
+    public func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
         didCompleteWithError error: Error?
@@ -333,7 +333,7 @@ extension BackgroundUploadCoordinator: URLSessionDelegate, URLSessionTaskDelegat
         }
     }
 
-    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+    public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         bgEventsLock.lock()
         let handler = bgEventsCompletionHandler
         bgEventsCompletionHandler = nil
