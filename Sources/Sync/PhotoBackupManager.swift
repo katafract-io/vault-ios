@@ -26,6 +26,11 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     private var isRegistered = false
     private let logger = Logger(subsystem: "com.katafract.vault.photos", category: "library-change")
 
+    /// In-flight album-backup tasks, keyed by album localIdentifier. Used so
+    /// `stopAlbumBackup` can cancel a running batch when the user disables
+    /// the album mid-sync. Tasks self-remove from the dict on exit.
+    private var albumOperations: [String: Task<Void, Never>] = [:]
+
     /// Cached set of backed-up asset identifiers, refreshed on `refresh()` /
     /// after `markBackedUp`. Faster than a SwiftData query per grid cell.
     private(set) public var backedUpIdentifiers: Set<String> = []
@@ -143,6 +148,71 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             folderId: "root",
             sizeBytes: sizeBytes)
         return fileId
+    }
+
+    /// Start backing up every asset in the album that isn't already in
+    /// `BackedUpAsset`. Cancels any previous in-flight task for the same
+    /// album. Cooperative cancellation: between assets, the loop checks
+    /// `Task.isCancelled` and exits cleanly if `stopAlbumBackup` was called.
+    /// In-progress assets finish (PHAssetResourceManager.writeData isn't
+    /// cancellable mid-write), but no new assets start.
+    public func startAlbumBackup(albumId: String) {
+        // Cancel any prior task for the same album so toggling enable→disable→
+        // enable doesn't leave two batches racing.
+        albumOperations[albumId]?.cancel()
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.runAlbumBackup(albumId: albumId)
+            self.albumOperations[albumId] = nil
+        }
+        albumOperations[albumId] = task
+    }
+
+    /// Cancel the in-flight backup for `albumId`. Already-uploaded files stay
+    /// in the vault; this only stops new uploads from starting.
+    public func stopAlbumBackup(albumId: String) {
+        albumOperations[albumId]?.cancel()
+        albumOperations[albumId] = nil
+        logger.info("album backup cancelled: \(albumId, privacy: .public)")
+        dlog("album backup cancelled: \(albumId)", category: "photos", level: .info)
+    }
+
+    private func runAlbumBackup(albumId: String) async {
+        let coll = PHAssetCollection.fetchAssetCollections(
+            withLocalIdentifiers: [albumId], options: nil)
+        guard let collection = coll.firstObject else {
+            logger.error("album not found: \(albumId, privacy: .public)")
+            dlog("album not found: \(albumId)", category: "photos", level: .error)
+            return
+        }
+        let opts = PHFetchOptions()
+        opts.predicate = NSPredicate(
+            format: "mediaType = %d", PHAssetMediaType.image.rawValue)
+        let assetsResult = PHAsset.fetchAssets(in: collection, options: opts)
+
+        var assets: [PHAsset] = []
+        assetsResult.enumerateObjects { asset, _, _ in
+            if !self.backedUpIdentifiers.contains(asset.localIdentifier) {
+                assets.append(asset)
+            }
+        }
+        logger.info("album backup starting: \(albumId, privacy: .public) — \(assets.count, privacy: .public) unbacked asset(s)")
+        dlog("album backup starting: \(albumId) — \(assets.count) asset(s)", category: "photos", level: .info)
+
+        for asset in assets {
+            if Task.isCancelled {
+                logger.info("album backup interrupted: \(albumId, privacy: .public)")
+                return
+            }
+            do {
+                _ = try await enqueueAsset(asset)
+            } catch {
+                logger.error("album asset failed for \(asset.localIdentifier, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("album asset failed for \(asset.localIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
+            }
+        }
+        logger.info("album backup complete: \(albumId, privacy: .public)")
     }
 
     /// Write the original asset bytes to a temp URL the sync engine can read.
