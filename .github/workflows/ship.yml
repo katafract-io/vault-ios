@@ -203,20 +203,36 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           set +e
-          xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx \
-            -configuration Release -destination "generic/platform=iOS" \
-            -archivePath "$ARCHIVE_PATH" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            CURRENT_PROJECT_VERSION=$BUILD_NUM archive > /tmp/archive.log 2>&1
-          XCB_RC=$?
-          echo "::group::archive.log summary (errors + warnings)"
-          grep -E "error:|warning:|\*\* |Signing Identity" /tmp/archive.log | tail -50 || true
-          echo "::endgroup::"
-          if [ $XCB_RC -ne 0 ] || [ ! -f "$ARCHIVE_PATH/Info.plist" ]; then
-            echo "::error::archive failed (rc=$XCB_RC, info_plist=$([ -f "$ARCHIVE_PATH/Info.plist" ] && echo yes || echo no))"
+          ARCHIVE_OK=0
+          XCB_RC=0
+          for attempt in 1 2; do
+            if [ $attempt -gt 1 ]; then
+              echo "::warning::Archive attempt $attempt — clearing cached provisioning profiles + waiting 45s for Apple CDN"
+              rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision 2>/dev/null
+              rm -rf "$ARCHIVE_PATH"
+              sleep 45
+            fi
+            xcodebuild -project Vaultyx.xcodeproj -scheme Vaultyx \
+              -configuration Release -destination "generic/platform=iOS" \
+              -archivePath "$ARCHIVE_PATH" \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$ASC_KEY_PATH" \
+              -authenticationKeyID "$ASC_KEY_ID" \
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+              CURRENT_PROJECT_VERSION=$BUILD_NUM archive > /tmp/archive.log 2>&1
+            XCB_RC=$?
+            echo "::group::archive.log summary attempt $attempt (errors + warnings)"
+            grep -E "error:|warning:|\*\* |Signing Identity" /tmp/archive.log | tail -50 || true
+            echo "::endgroup::"
+            if [ $XCB_RC -eq 0 ] && [ -f "$ARCHIVE_PATH/Info.plist" ]; then
+              ARCHIVE_OK=1
+              [ $attempt -gt 1 ] && echo "::notice::Archive succeeded on retry (attempt $attempt)"
+              break
+            fi
+            echo "::warning::Archive attempt $attempt failed (rc=$XCB_RC, info_plist=$([ -f "$ARCHIVE_PATH/Info.plist" ] && echo yes || echo no))"
+          done
+          if [ $ARCHIVE_OK -ne 1 ]; then
+            echo "::error::archive failed after 2 attempts (final rc=$XCB_RC)"
             echo "::group::archive.log last 200 lines"
             tail -200 /tmp/archive.log
             echo "::endgroup::"
@@ -254,31 +270,44 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          set -eo pipefail
-          # Clean stale export dir so a failed export can NOT silently leak a prior run's IPA
-          rm -rf "$EXPORT_PATH"
-          mkdir -p "$EXPORT_PATH"
+          set +e
+          EXPORT_OK=0
+          for attempt in 1 2; do
+            # Clean stale export dir so a failed export can NOT silently leak a prior run's IPA
+            rm -rf "$EXPORT_PATH"
+            mkdir -p "$EXPORT_PATH"
 
-          # -allowProvisioningUpdates + ASC API keys lets xcodebuild auto-regenerate the
-          # provisioning profile (e.g. when an App Group entitlement was added to the App ID
-          # but the cached profile is stale).
-          xcodebuild -exportArchive \
-            -archivePath "$ARCHIVE_PATH" \
-            -exportOptionsPlist "$EXPORT_OPTIONS" \
-            -exportPath "$EXPORT_PATH" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee /tmp/export.log
-          # Fail loudly if export didn't produce an IPA or the log says EXPORT FAILED
-          if grep -q "EXPORT FAILED" /tmp/export.log; then
-            echo "::error::Export IPA failed — see log above"; exit 1
-          fi
+            if [ $attempt -gt 1 ]; then
+              echo "::warning::Export IPA attempt $attempt — clearing cached provisioning profiles + waiting 45s for Apple CDN"
+              rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision 2>/dev/null
+              sleep 45
+            fi
 
-          # Fail loudly if no fresh IPA was produced
-          if ! ls "$EXPORT_PATH"/*.ipa >/dev/null 2>&1; then
-            echo "::error::Export produced no .ipa — see /tmp/export.log"
-            tail -50 /tmp/export.log
+            # -allowProvisioningUpdates + ASC API keys lets xcodebuild auto-regenerate the
+            # provisioning profile (e.g. when an App Group entitlement was added to the App ID
+            # but the cached profile is stale).
+            xcodebuild -exportArchive \
+              -archivePath "$ARCHIVE_PATH" \
+              -exportOptionsPlist "$EXPORT_OPTIONS" \
+              -exportPath "$EXPORT_PATH" \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$ASC_KEY_PATH" \
+              -authenticationKeyID "$ASC_KEY_ID" \
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee /tmp/export.log
+            XCB_RC=${PIPESTATUS[0]}
+
+            if [ $XCB_RC -eq 0 ] && ! grep -q "EXPORT FAILED" /tmp/export.log && ls "$EXPORT_PATH"/*.ipa >/dev/null 2>&1; then
+              EXPORT_OK=1
+              [ $attempt -gt 1 ] && echo "::notice::Export IPA succeeded on retry (attempt $attempt)"
+              break
+            fi
+            echo "::warning::Export IPA attempt $attempt failed (rc=$XCB_RC)"
+          done
+          set -e
+
+          if [ $EXPORT_OK -ne 1 ]; then
+            echo "::error::Export IPA failed after 2 attempts — see /tmp/export.log"
+            tail -80 /tmp/export.log
             exit 1
           fi
 
@@ -323,9 +352,28 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          xcrun altool --upload-app -f "$EXPORT_PATH"/*.ipa -t ios \
-            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee /tmp/altool.log | tail -20
-          grep -q "UPLOAD SUCCEEDED" /tmp/altool.log
+          set +e
+          UPLOAD_OK=0
+          for attempt in 1 2; do
+            if [ $attempt -gt 1 ]; then
+              echo "::warning::TestFlight upload attempt $attempt — waiting 30s for ASC service"
+              sleep 30
+            fi
+            xcrun altool --upload-app -f "$EXPORT_PATH"/*.ipa -t ios \
+              --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee /tmp/altool.log | tail -20
+            if grep -q "UPLOAD SUCCEEDED" /tmp/altool.log; then
+              UPLOAD_OK=1
+              [ $attempt -gt 1 ] && echo "::notice::TestFlight upload succeeded on retry (attempt $attempt)"
+              break
+            fi
+            echo "::warning::TestFlight upload attempt $attempt failed"
+          done
+          set -e
+          if [ $UPLOAD_OK -ne 1 ]; then
+            echo "::error::TestFlight upload failed after 2 attempts"
+            tail -50 /tmp/altool.log
+            exit 1
+          fi
 
       - name: Distribute to Internal Testing
         if: success() && github.event.inputs.skip_upload != 'true'
