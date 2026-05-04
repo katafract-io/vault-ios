@@ -151,12 +151,17 @@ struct StuckItemsView: View {
         file.manifestAttempts = 0
         file.nextManifestRetryAt = .distantPast
 
-        // If in manifest_failed, reset to pending_upload so it retries
-        if file.syncState == "manifest_failed" {
+        // Anything terminal goes back to pending_upload so the drain re-runs
+        // (manifest_failed and conflict both qualify — the latter is what
+        // markFileTerminallyFailed sets when LocalCache plaintext is gone).
+        if file.syncState == "manifest_failed" || file.syncState == "conflict" {
             file.syncState = "pending_upload"
         }
 
-        // Clear in-flight markers on all associated chunks
+        // Clear in-flight markers and reset retry bookkeeping for all of
+        // this file's chunk rows. `nextRetryAt = .distantPast` undoes the
+        // distantFuture parking that markFileTerminallyFailed sets, so the
+        // drain re-queues the row immediately.
         let fileId = file.fileId
         let descriptor = FetchDescriptor<ChunkUploadQueue>(
             predicate: #Predicate { $0.fileId == fileId }
@@ -166,6 +171,7 @@ struct StuckItemsView: View {
             chunk.inFlightTaskIdentifier = nil
             chunk.lastDispatchedAt = nil
             chunk.nextRetryAt = .distantPast
+            chunk.attempts = 0
         }
 
         do {

@@ -425,6 +425,34 @@ public class VaultSyncEngine: ObservableObject {
 
     /// Update a chunk row after drainChunk completes. Re-fetches by predicate
     /// inside MainActor to avoid holding @Model references across actor hops.
+    /// Mark a file as terminally failed: recovery cannot succeed, will not
+    /// be retried automatically. Sets `LocalFile.syncState = "conflict"` so
+    /// the File Browser surfaces it with a triangle and Stuck Items can list
+    /// it. Pushes all of the file's still-pending chunk queue rows to
+    /// `nextRetryAt = .distantFuture` so the drain query (which filters
+    /// `nextRetryAt <= now`) skips them. `doneAt` is intentionally NOT
+    /// stamped — those rows haven't actually uploaded. Force-retry from
+    /// Stuck Items resets `nextRetryAt` and re-enters the drain.
+    private func markFileTerminallyFailed(fileId: String, reason: String) async {
+        await MainActor.run {
+            let fileDesc = FetchDescriptor<LocalFile>(
+                predicate: #Predicate { $0.fileId == fileId })
+            if let file = (try? modelContext.fetch(fileDesc))?.first {
+                file.syncState = "conflict"
+            }
+            let queueDesc = FetchDescriptor<ChunkUploadQueue>(
+                predicate: #Predicate { $0.fileId == fileId && $0.doneAt == nil })
+            let rows = (try? modelContext.fetch(queueDesc)) ?? []
+            for row in rows {
+                row.inFlightTaskIdentifier = nil
+                row.nextRetryAt = .distantFuture
+            }
+            try? modelContext.save()
+            self.logger.error("file \(fileId, privacy: .public) marked terminally failed: \(reason, privacy: .public); parked \(rows.count, privacy: .public) pending row(s)")
+            dlog("file \(fileId) marked terminally failed: \(reason); parked \(rows.count) pending row(s)", category: "sync", level: .error)
+        }
+    }
+
     private func updateChunkResult(fileId: String, chunkHash: String, success: Bool) async {
         await MainActor.run {
             let descriptor = FetchDescriptor<ChunkUploadQueue>(
@@ -476,18 +504,23 @@ public class VaultSyncEngine: ObservableObject {
         // at any point until completion). If the cache file went missing —
         // iOS storage purge, partial reinstall — re-chunk from LocalCache.
         if !ChunkCache.fileExists(hash: chunkHash) {
-            let recovered = await recoverChunkFromLocalCache(
+            let outcome = await recoverChunkFromLocalCache(
                 fileId: fileId, chunkHash: chunkHash)
-            if recovered != nil {
+            switch outcome {
+            case .recovered:
                 self.logger.info("recovered chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) from LocalCache")
                 dlog("recovered chunk \(chunkHash) for \(fileId) from LocalCache", category: "sync", level: .info)
-            }
-            // Recovery writes via ChunkCache.put as a side effect; if the
-            // chunk still isn't on disk afterwards, the file is unrecoverable.
-            if !ChunkCache.fileExists(hash: chunkHash) {
-                self.logger.error("chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) unrecoverable; backing off")
-                dlog("chunk \(chunkHash) for \(fileId) unrecoverable; backing off", category: "sync", level: .error)
+                // Re-encrypted bytes are now on disk via ChunkCache.put;
+                // fall through to the dispatch path below.
+            case .transientFailure:
+                self.logger.error("chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) transient recovery failure; backing off")
+                dlog("chunk \(chunkHash) for \(fileId) transient recovery failure; backing off", category: "sync", level: .error)
                 await updateChunkResult(fileId: fileId, chunkHash: chunkHash, success: false)
+                return
+            case .permanentFailure(let reason):
+                self.logger.error("chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) PERMANENTLY unrecoverable: \(reason, privacy: .public)")
+                dlog("chunk \(chunkHash) for \(fileId) permanently unrecoverable: \(reason)", category: "sync", level: .error)
+                await markFileTerminallyFailed(fileId: fileId, reason: "recovery: \(reason)")
                 return
             }
         }
@@ -527,54 +560,77 @@ public class VaultSyncEngine: ObservableObject {
             putURL: putURL)
     }
 
+    /// Result of an attempt to re-chunk from LocalCache.
+    enum RecoveryOutcome {
+        /// Re-encrypted bytes for the requested chunk are now on disk.
+        case recovered(Data)
+        /// Recovery failed but might succeed on retry — e.g. key manager not
+        /// yet attached, transient crypto/IO error. Caller backs off normally.
+        case transientFailure
+        /// Recovery cannot ever succeed for this file: no `LocalFile` row,
+        /// `localPath` is nil, or the plaintext at that path is gone. Caller
+        /// must mark the file terminally failed and stop draining its rows.
+        case permanentFailure(reason: String)
+    }
+
     /// Re-chunk a file from its plaintext copy in `LocalCache` and rebuild
     /// the missing entry in `ChunkCache`. Used as a fallback when the per-
     /// chunk encrypted cache disappears after import — typically caused by
     /// iOS storage pressure purging App Support, a `URLFileProtection`
     /// transition that left the file unreadable, or a partial reinstall.
-    ///
-    /// Returns the encrypted chunk bytes for `chunkHash` if recovery
-    /// succeeds, nil if the plaintext source is also gone (in which case
-    /// the file is unrecoverable and should be marked failed by the caller).
     private func recoverChunkFromLocalCache(
         fileId: String, chunkHash: String
-    ) async -> Data? {
+    ) async -> RecoveryOutcome {
         // Recovery requires the key manager to derive the folder key. If
         // it wasn't attached (legacy callers), no recovery — caller will
-        // mark the chunk failed and back off.
+        // mark the chunk failed and back off (transient: a future relaunch
+        // attaches the key manager and the next drain might recover).
         guard let keyManager = self.keyManager else {
             self.logger.error("recovery: keyManager not attached, cannot re-chunk \(fileId, privacy: .public)")
             dlog("recovery failed for \(fileId): keyManager not attached", category: "sync", level: .error)
-            return nil
+            return .transientFailure
         }
 
         // Look up LocalFile on MainActor (where modelContext lives) and
         // copy the scalars out so nothing non-Sendable crosses the boundary.
-        let lookup: (path: String, parentFolderId: String?)? = await MainActor.run { [modelContext] in
+        // Distinguish "no row" from "row with nil localPath" — both are
+        // permanent failures but the cause matters for the dlog.
+        enum LookupResult { case missing; case noPath; case ok(path: String, parentFolderId: String?) }
+        let lookup: LookupResult = await MainActor.run { [modelContext] in
             let desc = FetchDescriptor<LocalFile>(
                 predicate: #Predicate { $0.fileId == fileId })
-            guard let row = (try? modelContext.fetch(desc))?.first,
-                  let path = row.localPath else { return nil }
-            return (path, row.parentFolderId)
+            guard let row = (try? modelContext.fetch(desc))?.first else { return .missing }
+            guard let path = row.localPath else { return .noPath }
+            return .ok(path: path, parentFolderId: row.parentFolderId)
         }
-        guard let lookup else {
-            self.logger.error("recovery: no LocalFile or no localPath for \(fileId, privacy: .public)")
-            dlog("recovery failed for \(fileId): no LocalFile or localPath unset", category: "sync", level: .error)
-            return nil
+        let path: String
+        let parentFolderId: String?
+        switch lookup {
+        case .missing:
+            self.logger.error("recovery: no LocalFile for \(fileId, privacy: .public)")
+            dlog("recovery permanent: no LocalFile for \(fileId)", category: "sync", level: .error)
+            return .permanentFailure(reason: "no LocalFile row")
+        case .noPath:
+            self.logger.error("recovery: LocalFile.localPath unset for \(fileId, privacy: .public)")
+            dlog("recovery permanent: localPath unset for \(fileId)", category: "sync", level: .error)
+            return .permanentFailure(reason: "localPath unset")
+        case .ok(let p, let f):
+            path = p
+            parentFolderId = f
         }
-        guard FileManager.default.fileExists(atPath: lookup.path) else {
-            self.logger.error("recovery: LocalCache plaintext gone for \(fileId, privacy: .public) at \(lookup.path, privacy: .public)")
-            dlog("recovery failed for \(fileId): plaintext gone", category: "sync", level: .error)
-            return nil
+        guard FileManager.default.fileExists(atPath: path) else {
+            self.logger.error("recovery: LocalCache plaintext gone for \(fileId, privacy: .public) at \(path, privacy: .public)")
+            dlog("recovery permanent: plaintext gone at \(path)", category: "sync", level: .error)
+            return .permanentFailure(reason: "plaintext gone")
         }
-        let folderId = lookup.parentFolderId ?? "root"
+        let folderId = parentFolderId ?? "root"
         let folderKey: SymmetricKey
         do {
             folderKey = try await keyManager.getOrCreateFolderKey(folderId: folderId)
         } catch {
             self.logger.error("recovery: folder key fetch failed for \(folderId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            dlog("recovery failed for \(fileId): folder key fetch error: \(error.localizedDescription)", category: "sync", level: .error)
-            return nil
+            dlog("recovery transient: folder key fetch error for \(fileId): \(error.localizedDescription)", category: "sync", level: .error)
+            return .transientFailure
         }
 
         // Re-chunk + re-encrypt off main thread. We rebuild ALL chunks for
@@ -586,7 +642,7 @@ public class VaultSyncEngine: ObservableObject {
         // hashes), but is held in scope so future code that needs to wrap the
         // chunk key with the folder key can reach it.
         _ = folderKey
-        let url = URL(fileURLWithPath: lookup.path)
+        let url = URL(fileURLWithPath: path)
         let targetHash = chunkHash
         do {
             let target: Data? = try await Task.detached(priority: .userInitiated) { () -> Data? in
@@ -611,11 +667,15 @@ public class VaultSyncEngine: ObservableObject {
                 }
                 return found
             }.value
-            return target
+            if let target { return .recovered(target) }
+            // Plaintext exists but FastCDC didn't produce a chunk with the
+            // requested hash — the file changed since import or the recorded
+            // hash was wrong. No retry will fix that.
+            return .permanentFailure(reason: "target chunk hash not produced by re-chunk")
         } catch {
             self.logger.error("recovery: re-chunk failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            dlog("recovery failed for \(fileId): re-chunk error: \(error.localizedDescription)", category: "sync", level: .error)
-            return nil
+            dlog("recovery transient: re-chunk error for \(fileId): \(error.localizedDescription)", category: "sync", level: .error)
+            return .transientFailure
         }
     }
 
