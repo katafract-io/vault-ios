@@ -307,39 +307,59 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     }
 
     private func runAlbumBackup(albumId: String) async {
-        let coll = PHAssetCollection.fetchAssetCollections(
-            withLocalIdentifiers: [albumId], options: nil)
-        guard let collection = coll.firstObject else {
-            logger.error("album not found: \(albumId, privacy: .public)")
-            dlog("album not found: \(albumId)", category: "photos", level: .error)
+        // Bulk-enumerate the album off-main. PHAsset.fetchAssets +
+        // enumerateObjects sync-call Photos.sqlite via NSXPCStoreConnection;
+        // doing it on @MainActor (which this class is) blocks the runloop
+        // and trips the iOS watchdog (bug type 228 / "UIKit-runloop timeout"
+        // — see /tmp/vault.crash.ips from build 513). Only [String] (Sendable)
+        // crosses the actor boundary; PHAsset itself is non-Sendable.
+        let allIds: [String] = await Task.detached(priority: .userInitiated) {
+            let coll = PHAssetCollection.fetchAssetCollections(
+                withLocalIdentifiers: [albumId], options: nil)
+            guard let collection = coll.firstObject else { return [] }
+            let opts = PHFetchOptions()
+            opts.predicate = NSPredicate(
+                format: "mediaType = %d", PHAssetMediaType.image.rawValue)
+            let assetsResult = PHAsset.fetchAssets(in: collection, options: opts)
+            var ids: [String] = []
+            assetsResult.enumerateObjects { asset, _, _ in
+                ids.append(asset.localIdentifier)
+            }
+            return ids
+        }.value
+
+        if allIds.isEmpty {
+            logger.error("album not found or empty: \(albumId, privacy: .public)")
+            dlog("album not found or empty: \(albumId)", category: "photos", level: .error)
             return
         }
-        let opts = PHFetchOptions()
-        opts.predicate = NSPredicate(
-            format: "mediaType = %d", PHAssetMediaType.image.rawValue)
-        let assetsResult = PHAsset.fetchAssets(in: collection, options: opts)
 
         let excluded = excludedIdentifiers
-        var assets: [PHAsset] = []
-        assetsResult.enumerateObjects { asset, _, _ in
-            let id = asset.localIdentifier
-            if !self.backedUpIdentifiers.contains(id) && !excluded.contains(id) {
-                assets.append(asset)
-            }
-        }
-        logger.info("album backup starting: \(albumId, privacy: .public) — \(assets.count, privacy: .public) unbacked asset(s)")
-        dlog("album backup starting: \(albumId) — \(assets.count) asset(s)", category: "photos", level: .info)
+        let backedUp = backedUpIdentifiers
+        let toProcess = allIds.filter { !backedUp.contains($0) && !excluded.contains($0) }
 
-        for asset in assets {
+        logger.info("album backup starting: \(albumId, privacy: .public) — \(toProcess.count, privacy: .public) unbacked asset(s)")
+        dlog("album backup starting: \(albumId) — \(toProcess.count) asset(s)", category: "photos", level: .info)
+
+        for assetId in toProcess {
             if Task.isCancelled {
                 logger.info("album backup interrupted: \(albumId, privacy: .public)")
                 return
             }
+            // Single-asset lookup keyed on localId is fast (Photos.sqlite
+            // primary-key hit, ~ms). The expensive enumerate-all that was
+            // tripping the watchdog was the bulk fetch above; this point-
+            // lookup stays on @MainActor for simplicity. PHAsset is not
+            // Sendable so we cannot cleanly cross actor boundaries with it.
+            guard let asset = PHAsset.fetchAssets(
+                withLocalIdentifiers: [assetId], options: nil).firstObject else {
+                continue
+            }
             do {
                 _ = try await enqueueAsset(asset)
             } catch {
-                logger.error("album asset failed for \(asset.localIdentifier, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                dlog("album asset failed for \(asset.localIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
+                logger.error("album asset failed for \(assetId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("album asset failed for \(assetId): \(error.localizedDescription)", category: "photos", level: .error)
             }
         }
         logger.info("album backup complete: \(albumId, privacy: .public)")
