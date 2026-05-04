@@ -119,7 +119,8 @@ public class VaultSyncEngine: ObservableObject {
         parentFolderId: String?,
         folderKey: SymmetricKey,
         masterKey: SymmetricKey,
-        filename: String? = nil
+        filename: String? = nil,
+        sourceAssetIdentifier: String? = nil
     ) async throws -> String {
         let fileId = UUID().uuidString
             .replacingOccurrences(of: "-", with: "").lowercased()
@@ -233,7 +234,8 @@ public class VaultSyncEngine: ObservableObject {
                 modifiedAt: Date(),
                 syncState: "pending_upload",
                 isPinned: false,
-                thumbnailPath: nil
+                thumbnailPath: nil,
+                sourceAssetIdentifier: sourceAssetIdentifier
             )
             modelContext.insert(localFile)
 

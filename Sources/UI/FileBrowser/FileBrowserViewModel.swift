@@ -99,7 +99,8 @@ class FileBrowserViewModel: ObservableObject {
 
         let files = ((try? context.fetch(FetchDescriptor<LocalFile>())) ?? [])
             .filter { $0.parentFolderId == currentFolderId
-                && !photoFileIds.contains($0.fileId) }
+                && !photoFileIds.contains($0.fileId)
+                && $0.sourceAssetIdentifier == nil }
             .sorted { $0.modifiedAt > $1.modifiedAt }
 
         let folderItems = folders.map { folder in

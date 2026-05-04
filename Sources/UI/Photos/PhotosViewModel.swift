@@ -8,6 +8,7 @@ struct AlbumItem: Identifiable, Hashable {
     let name: String
     let count: Int
     var isEnabled: Bool
+    var backedUpCount: Int = 0
 }
 
 /// A photo from the user's local library. Thumbnails are fetched lazily
@@ -41,6 +42,13 @@ class PhotosViewModel: ObservableObject {
     @Published var allBackedUp = false
     @Published var selectedPhoto: BackedUpPhoto?
     @Published var isLoadingAlbums = false
+
+    var totalBackedUpCount: Int {
+        backedUpPhotos.filter { $0.backupState == .backedUp }.count
+    }
+    var totalBackedUpBytes: Int64 {
+        backedUpPhotos.filter { $0.backupState == .backedUp }.reduce(0) { $0 + $1.sizeBytes }
+    }
 
     private weak var services: VaultServices?
 
@@ -205,6 +213,10 @@ class PhotosViewModel: ObservableObject {
         let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
         let persistedEnabled = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
 
+        // Snapshot backed-up identifiers on MainActor before going off-thread.
+        // Set<String> is Sendable so it can cross the actor boundary safely.
+        let backedUpIds: Set<String> = services?.photoBackup.backedUpIdentifiers ?? []
+
         // Album toggles — smart albums with photo count > 0.
         // Run in a background task so it doesn't block the main thread.
         await Task.detached(priority: .userInitiated) {
@@ -217,11 +229,16 @@ class PhotosViewModel: ObservableObject {
                 let isEnabled: Bool = hasPersisted
                     ? persistedEnabled.contains(collection.localIdentifier)
                     : collection.localizedTitle == "Recents"
+                var backed = 0
+                assets.enumerateObjects { asset, _, _ in
+                    if backedUpIds.contains(asset.localIdentifier) { backed += 1 }
+                }
                 albumResult.append(AlbumItem(
                     id: collection.localIdentifier,
                     name: collection.localizedTitle ?? "Album",
                     count: assets.count,
-                    isEnabled: isEnabled
+                    isEnabled: isEnabled,
+                    backedUpCount: backed
                 ))
             }
             await MainActor.run {

@@ -11,55 +11,70 @@ struct PhotosView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Backup status banner
-                    if viewModel.backupInProgress {
-                        BackupProgressBanner(
-                            progress: viewModel.backupProgress,
-                            remaining: viewModel.remainingCount
-                        )
-                    } else if viewModel.allBackedUp {
-                        BackupCompleteBanner()
-                    }
-
-                    // Header with Albums button
-                    HStack {
-                        Text("RECENT PHOTOS")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            showAlbumsSheet = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("Albums")
-                                Image(systemName: "chevron.down")
+            VStack(spacing: 0) {
+                if viewModel.backupInProgress {
+                    BackupProgressBanner(
+                        progress: viewModel.backupProgress,
+                        remaining: viewModel.remainingCount
+                    )
+                } else if viewModel.allBackedUp {
+                    BackupCompleteBanner()
+                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Header with Albums button
+                        HStack {
+                            Text("RECENT PHOTOS")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                showAlbumsSheet = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("Albums")
+                                    Image(systemName: "chevron.down")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(Color.kataGold)
                             }
-                            .font(.caption)
-                            .foregroundStyle(Color.kataGold)
                         }
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 12)
+                        .padding(.horizontal)
+                        .padding(.top, 12)
+                        .padding(.bottom, viewModel.totalBackedUpCount > 0 ? 4 : 12)
 
-                    Divider().padding(.vertical, 8)
-
-                    // Photo grid OR sealed-album empty state
-                    if showEmptyState {
-                        PhotosEmptyStateView(onBackupTap: {
-                            if subscriptionStore.isSubscribed {
-                                viewModel.startBackupNow()
-                            } else {
-                                showPaywall = true
+                        if viewModel.totalBackedUpCount > 0 {
+                            HStack(spacing: 4) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Color.kataGold.opacity(0.75))
+                                Text("\(viewModel.totalBackedUpCount) \(viewModel.totalBackedUpCount == 1 ? "photo" : "photos") · \(ByteCountFormatter.string(fromByteCount: viewModel.totalBackedUpBytes, countStyle: .file)) secured")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
                             }
-                        })
-                        .padding(.top, 24)
-                    } else {
-                        PhotoGridSection(
-                            photos: viewModel.backedUpPhotos,
-                            onPhotoTap: { viewModel.selectedPhoto = $0 }
-                        )
+                            .padding(.horizontal)
+                            .padding(.bottom, 12)
+                        }
+
+                        Divider().padding(.vertical, 8)
+
+                        // Photo grid OR sealed-album empty state
+                        if showEmptyState {
+                            PhotosEmptyStateView(onBackupTap: {
+                                if subscriptionStore.isSubscribed {
+                                    viewModel.startBackupNow()
+                                } else {
+                                    showPaywall = true
+                                }
+                            })
+                            .padding(.top, 24)
+                        } else {
+                            PhotoGridSection(
+                                photos: viewModel.backedUpPhotos,
+                                onPhotoTap: { viewModel.selectedPhoto = $0 }
+                            )
+                        }
                     }
                 }
             }
@@ -155,7 +170,15 @@ struct AlbumDrawerSheet: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(album.name).font(.body)
-                                Text("\(album.count) photos").font(.caption).foregroundStyle(.secondary)
+                                if album.isEnabled && album.backedUpCount > 0 {
+                                    Text("\(album.backedUpCount) of \(album.count) backed up")
+                                        .font(.caption)
+                                        .foregroundStyle(album.backedUpCount == album.count ? Color.kataGold.opacity(0.85) : .secondary)
+                                } else {
+                                    Text("\(album.count) \(album.count == 1 ? "photo" : "photos")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
 
                             Spacer()

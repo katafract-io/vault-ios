@@ -139,8 +139,11 @@ class RecentsViewModel: ObservableObject {
 
         // Local cache rows — already have the plaintext filename and live
         // syncState. Sorted newest-first; capped at 20 to match the server.
+        // Photo-backed rows (sourceAssetIdentifier != nil) are excluded; they
+        // live in the Photos tab, not the file library.
         let context = ModelContext(services.modelContainer)
         let localRows = ((try? context.fetch(FetchDescriptor<LocalFile>())) ?? [])
+            .filter { $0.sourceAssetIdentifier == nil }
             .sorted { $0.modifiedAt > $1.modifiedAt }
             .prefix(20)
 
