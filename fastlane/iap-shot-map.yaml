@@ -1,0 +1,20 @@
+# IAP & Subscription screenshot mapping
+# Maps captured screenshot filenames (from UITests) to ASC productIds
+#
+# Used by iap-review-refresh.yml workflow to upload via asc_screenshot_upload service.
+# Path is relative to fastlane/screenshots/ output directory.
+
+iaps:
+  # Sovereign forever IAP (non-consumable)
+  sovereign.forever: "08-sovereign-forever.png"
+
+subs:
+  # Capacity tier subscriptions (monthly)
+  100gb.monthly: "06-paywall-100gb-monthly.png"
+  1tb.monthly: "07-paywall-1tb-monthly.png"
+  5tb.monthly: "09-paywall-5tb-monthly.png"
+
+  # Capacity tier subscriptions (yearly)
+  100gb.yearly: "10-paywall-100gb-yearly.png"
+  1tb.yearly: "11-paywall-1tb-yearly.png"
+  5tb.yearly: "12-paywall-5tb-yearly.png"
