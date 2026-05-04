@@ -20,6 +20,7 @@
 		19130481F0ED671B155F817F /* VaultShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3D0EFA9CC6E443C612546AFC /* VaultShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		1DF994B4ACF9ADAAD07B9D8D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7E32478B8C080D9B0A28A2 /* PaywallView.swift */; };
 		1EDF50F93C2B5940762630EA /* PhotoBackupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0EE9F01A1EB887A290504F /* PhotoBackupManager.swift */; };
+		223BAC90A5E031B2BD6F3964 /* NetworkReachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */; };
 		22677524649F4F01E48869FF /* VaultFileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA57DD1324F970B95130AE8 /* VaultFileProviderExtension.swift */; };
 		2472066A79D3D0D2308204DD /* VaultyxUploadAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEAD44FBB38C36294058F6E4 /* VaultyxUploadAttributes.swift */; };
 		2670E40A7A865D8B915F0B09 /* VaultyxUploadAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A503DDD9B693CC7EE70448F5 /* VaultyxUploadAttributes.swift */; };
@@ -185,6 +186,7 @@
 		9666910505BD37658AE382BF /* RecoveryPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseView.swift; sourceTree = "<group>"; };
 		97F57508EAEC5BECE0497A0D /* VaultChunk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultChunk.swift; sourceTree = "<group>"; };
 		9A95B7F2B96B712A555DDC10 /* VaultTreeSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultTreeSync.swift; sourceTree = "<group>"; };
+		9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NetworkReachability.swift; path = Sources/App/NetworkReachability.swift; sourceTree = "<group>"; };
 		9E7115C9F830F462012DA4EC /* SyncState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncState.swift; sourceTree = "<group>"; };
 		9F1566764DC491B12A635FF1 /* VaultyxUploadLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxUploadLiveActivity.swift; sourceTree = "<group>"; };
 		9F55995F7286672B4B213056 /* FileGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileGridView.swift; sourceTree = "<group>"; };
@@ -398,6 +400,7 @@
 				A6E36D091AF0E1C6BC0EFA1B /* Products */,
 				362426F4CD4D32467C01E4DA /* BackgroundUploadCoordinator.swift */,
 				E9D662A60B45581C824B4731 /* StuckItemsView.swift */,
+				9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -772,6 +775,7 @@
 				F29337BD12474B13C36EF0F1 /* CapacityPickerView.swift in Sources */,
 				856E4D1FB39D017DEEF19123 /* BackgroundUploadCoordinator.swift in Sources */,
 				7A3BBDA938D07032F6CA5DA0 /* StuckItemsView.swift in Sources */,
+				223BAC90A5E031B2BD6F3964 /* NetworkReachability.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
