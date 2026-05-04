@@ -382,6 +382,26 @@ struct SettingsView: View {
                 sectionHeader("Storage")
             }
 
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "wifi")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.kataSapphire)
+                        .frame(width: 28)
+                    Toggle("Upload over Wi-Fi only", isOn: $wifiOnly)
+                        .tint(.kataSapphire)
+                        .font(.kataBody(15))
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+
+                Text("Saves cellular data. Pauses uploads when off Wi-Fi.")
+                    .font(.kataCaption(12))
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.kataSapphire.opacity(0.04))
+            } header: {
+                sectionHeader("Uploads")
+            }
+
             // Pending uploads — only visible when there's something queued
             if pendingCount > 0 {
                 Section {
