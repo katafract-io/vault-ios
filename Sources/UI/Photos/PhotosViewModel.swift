@@ -67,20 +67,41 @@ class PhotosViewModel: ObservableObject {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return }
 
-        // Fetch recent image assets only, limited to 60.
-        let opts = PHFetchOptions()
-        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
-        opts.fetchLimit = 60
+        // Honor the user's album selection. The grid is a *preview of what
+        // will be backed up* — if the user disabled every album (including
+        // Recents, which is iOS's "all photos" view), they expect an empty
+        // grid. Reading the persisted set with `defaults.object(forKey:)`
+        // lets us distinguish "never set" (first launch → fall back to a
+        // recent-images preview) from "deliberately empty" (show nothing).
+        let defaults = UserDefaults.standard
+        let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
+        let enabledIds = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
 
-        let assets = PHAsset.fetchAssets(with: opts)
+        let assets: [PHAsset]
+        if hasPersisted {
+            if enabledIds.isEmpty {
+                backedUpPhotos = []
+                allBackedUp = false
+                return
+            }
+            assets = Self.fetchAssets(fromAlbums: enabledIds, limit: 60)
+        } else {
+            // First-launch preview before user has opened the album drawer.
+            let opts = PHFetchOptions()
+            opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
+            opts.fetchLimit = 60
+            let result = PHAsset.fetchAssets(with: opts)
+            var collected: [PHAsset] = []
+            result.enumerateObjects { a, _, _ in collected.append(a) }
+            assets = collected
+        }
 
-        // Per-asset backup state lookup — refreshed each time
         services?.photoBackup.refresh()
         let backedUp = services?.photoBackup.backedUpIdentifiers ?? []
 
         var photos: [BackedUpPhoto] = []
-        assets.enumerateObjects { asset, _, _ in
+        for asset in assets {
             let state: BackedUpPhoto.BackupState =
                 backedUp.contains(asset.localIdentifier) ? .backedUp : .pending
             photos.append(BackedUpPhoto(
@@ -93,6 +114,33 @@ class PhotosViewModel: ObservableObject {
         }
         backedUpPhotos = photos
         allBackedUp = !photos.isEmpty && photos.allSatisfy { $0.backupState == .backedUp }
+    }
+
+    /// Fetch image assets belonging to any of the given album local-ids.
+    /// Deduplicates across albums, sorts newest-first, caps at `limit`.
+    private static func fetchAssets(fromAlbums albumIds: Set<String>, limit: Int) -> [PHAsset] {
+        let collections = PHAssetCollection.fetchAssetCollections(
+            withLocalIdentifiers: Array(albumIds), options: nil)
+        let opts = PHFetchOptions()
+        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
+
+        var seen = Set<String>()
+        var collected: [PHAsset] = []
+        collections.enumerateObjects { collection, _, _ in
+            let result = PHAsset.fetchAssets(in: collection, options: opts)
+            result.enumerateObjects { asset, _, _ in
+                if !seen.contains(asset.localIdentifier) {
+                    seen.insert(asset.localIdentifier)
+                    collected.append(asset)
+                }
+            }
+        }
+        collected.sort {
+            ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast)
+        }
+        if collected.count > limit { collected = Array(collected.prefix(limit)) }
+        return collected
     }
 
     /// Load all albums. Deferred until user opens the AlbumDrawerSheet.
@@ -152,24 +200,15 @@ class PhotosViewModel: ObservableObject {
             services.photoBackup.startAlbumBackup(albumId: album.id)
         } else {
             services.photoBackup.stopAlbumBackup(albumId: album.id, apiClient: services.apiClient)
-            // Optimistic UI: mark grid cells back to .pending immediately so
-            // the user sees uncheck = uncheck without waiting for the network
-            // round-trip. The actual backup state refreshes again from
-            // SwiftData via the next loadRecentPhotos call.
             Task { @MainActor in
                 await services.photoBackup.unsyncAlbum(
                     albumId: album.id, apiClient: services.apiClient)
-                services.photoBackup.refresh()
-                let backedUp = services.photoBackup.backedUpIdentifiers
-                for idx in backedUpPhotos.indices {
-                    if !backedUp.contains(backedUpPhotos[idx].id) {
-                        backedUpPhotos[idx].backupState = .pending
-                    }
-                }
-                allBackedUp = !backedUpPhotos.isEmpty
-                    && backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
             }
         }
+        // Re-fetch the grid against the new album selection so the visible
+        // set reflects the toggle immediately. Disabling the last album
+        // empties the grid; enabling a new one expands the union.
+        Task { @MainActor in await loadRecentPhotos() }
     }
 
     /// Logger for the photo backup pipeline. Visible in Console.app on
