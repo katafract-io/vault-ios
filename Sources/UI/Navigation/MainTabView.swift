@@ -308,6 +308,7 @@ struct SettingsView: View {
     @State private var pendingBytes: Int64 = 0
     @State private var isDraining = false
     @State private var confirmClearQueue = false
+    @AppStorage("vaultyx.uploads.wifi_only") private var wifiOnly: Bool = true
 
     private let sovereignQuota: Int64 = 1_099_511_627_776  // 1 TiB
 
@@ -380,6 +381,26 @@ struct SettingsView: View {
                 .listRowBackground(Color.kataSapphire.opacity(0.04))
             } header: {
                 sectionHeader("Storage")
+            }
+
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "wifi")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.kataSapphire)
+                        .frame(width: 28)
+                    Toggle("Upload over Wi-Fi only", isOn: $wifiOnly)
+                        .tint(.kataSapphire)
+                        .font(.kataBody(15))
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+
+                Text("Saves cellular data. Pauses uploads when off Wi-Fi.")
+                    .font(.kataCaption(12))
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.kataSapphire.opacity(0.04))
+            } header: {
+                sectionHeader("Uploads")
             }
 
             // Pending uploads — only visible when there's something queued
@@ -481,6 +502,13 @@ struct SettingsView: View {
             }
 
             Section {
+                NavigationLink {
+                    StuckItemsView()
+                } label: {
+                    labeledRow(icon: "exclamationmark.circle.fill", title: "Stuck Items")
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+
                 NavigationLink {
                     DebugLogView()
                 } label: {

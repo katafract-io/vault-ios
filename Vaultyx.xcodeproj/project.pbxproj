@@ -20,6 +20,7 @@
 		19130481F0ED671B155F817F /* VaultShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3D0EFA9CC6E443C612546AFC /* VaultShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		1DF994B4ACF9ADAAD07B9D8D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7E32478B8C080D9B0A28A2 /* PaywallView.swift */; };
 		1EDF50F93C2B5940762630EA /* PhotoBackupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0EE9F01A1EB887A290504F /* PhotoBackupManager.swift */; };
+		223BAC90A5E031B2BD6F3964 /* NetworkReachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */; };
 		22677524649F4F01E48869FF /* VaultFileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA57DD1324F970B95130AE8 /* VaultFileProviderExtension.swift */; };
 		2472066A79D3D0D2308204DD /* VaultyxUploadAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEAD44FBB38C36294058F6E4 /* VaultyxUploadAttributes.swift */; };
 		2670E40A7A865D8B915F0B09 /* VaultyxUploadAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A503DDD9B693CC7EE70448F5 /* VaultyxUploadAttributes.swift */; };
@@ -45,6 +46,7 @@
 		781EDBA16BA48455306F69D9 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7EC3FB8141B0F4D7CC1960 /* FileBrowserView.swift */; };
 		794722FF3786E664549B4A65 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA84B36B69F5E4E05B2F6AD /* ShareViewController.swift */; };
 		7980FC2D27B6826C7B2E5E96 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C228B6C51D78AFA3F2DED89 /* Keychain.swift */; };
+		7A3BBDA938D07032F6CA5DA0 /* StuckItemsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D662A60B45581C824B4731 /* StuckItemsView.swift */; };
 		7CEB072609382D8E3D11256B /* VaultServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF366EE5FA273857E1DB4409 /* VaultServices.swift */; };
 		7FA737D88616FE6464506964 /* PerFolderLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5AB12DC5F0732E9AD18ACEF /* PerFolderLock.swift */; };
 		856E4D1FB39D017DEEF19123 /* BackgroundUploadCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362426F4CD4D32467C01E4DA /* BackgroundUploadCoordinator.swift */; };
@@ -184,6 +186,7 @@
 		9666910505BD37658AE382BF /* RecoveryPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseView.swift; sourceTree = "<group>"; };
 		97F57508EAEC5BECE0497A0D /* VaultChunk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultChunk.swift; sourceTree = "<group>"; };
 		9A95B7F2B96B712A555DDC10 /* VaultTreeSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultTreeSync.swift; sourceTree = "<group>"; };
+		9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NetworkReachability.swift; path = Sources/App/NetworkReachability.swift; sourceTree = "<group>"; };
 		9E7115C9F830F462012DA4EC /* SyncState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncState.swift; sourceTree = "<group>"; };
 		9F1566764DC491B12A635FF1 /* VaultyxUploadLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxUploadLiveActivity.swift; sourceTree = "<group>"; };
 		9F55995F7286672B4B213056 /* FileGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileGridView.swift; sourceTree = "<group>"; };
@@ -216,6 +219,7 @@
 		E6224F29A715A5E7D5B92110 /* VaultShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VaultShare.entitlements; sourceTree = "<group>"; };
 		E6689E73FC23CF8E1C76216D /* VaultFileProviderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileProviderItem.swift; sourceTree = "<group>"; };
 		E99F9D00876693B1D808BA2C /* VaultApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultApp.swift; sourceTree = "<group>"; };
+		E9D662A60B45581C824B4731 /* StuckItemsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StuckItemsView.swift; path = Sources/UI/Settings/StuckItemsView.swift; sourceTree = "<group>"; };
 		EA3AE803C9F313353B48A89C /* BIP39WordList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39WordList.swift; sourceTree = "<group>"; };
 		F830083E2B12A292C784C99C /* VaultEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultEnumerator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -395,6 +399,8 @@
 				3D3A1FD2183C857158A62230 /* VaultyxLiveActivity */,
 				A6E36D091AF0E1C6BC0EFA1B /* Products */,
 				362426F4CD4D32467C01E4DA /* BackgroundUploadCoordinator.swift */,
+				E9D662A60B45581C824B4731 /* StuckItemsView.swift */,
+				9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -491,8 +497,17 @@
 				CF48AA7F6A2D3D9364577FE1 /* RecycleBin */,
 				296B408CAFB54CF5848969AB /* Storage */,
 				51B6753A67C359F3A421D64C /* Versions */,
+				FF0799418A90247C8850E78E /* Settings */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		FF0799418A90247C8850E78E /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Settings;
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		FF40ECBC8C5048529843567F /* FileProvider */ = {
@@ -759,6 +774,8 @@
 				2670E40A7A865D8B915F0B09 /* VaultyxUploadAttributes.swift in Sources */,
 				F29337BD12474B13C36EF0F1 /* CapacityPickerView.swift in Sources */,
 				856E4D1FB39D017DEEF19123 /* BackgroundUploadCoordinator.swift in Sources */,
+				7A3BBDA938D07032F6CA5DA0 /* StuckItemsView.swift in Sources */,
+				223BAC90A5E031B2BD6F3964 /* NetworkReachability.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
