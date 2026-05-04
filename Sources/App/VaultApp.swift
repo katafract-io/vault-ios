@@ -72,6 +72,11 @@ struct VaultApp: App {
             await coordinator.reconcileOnLaunch()
         }
 
+        // Start network reachability monitoring.
+        Task { @MainActor in
+            NetworkReachability.shared.startMonitoring()
+        }
+
         // Wire drain notification → syncPending() on this services instance.
         // Using NotificationCenter because BGTaskScheduler's handler fires in a
         // static context that doesn't have access to the VaultServices instance.
@@ -90,6 +95,16 @@ struct VaultApp: App {
         ) { _ in
             // iOS is reclaiming time — nothing to cancel here since we use
             // URLSession.background which continues uploads OS-side.
+        }
+
+        // Wire Wi-Fi resume notification → syncPending() so deferred uploads
+        // automatically resume when Wi-Fi becomes available.
+        NotificationCenter.default.addObserver(
+            forName: .vaultyxWiFiResumed, object: nil, queue: nil
+        ) { _ in
+            Task {
+                await engine.syncPending()
+            }
         }
     }
 
