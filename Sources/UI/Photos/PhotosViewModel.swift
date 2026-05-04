@@ -77,7 +77,10 @@ class PhotosViewModel: ObservableObject {
         let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
         let enabledIds = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
 
+        dlog("loadRecentPhotos: hasPersisted=\(hasPersisted) enabledIds.count=\(enabledIds.count) ids=\(Array(enabledIds).map { String($0.prefix(12)) })", category: "photos", level: .info)
+
         if hasPersisted && enabledIds.isEmpty {
+            dlog("loadRecentPhotos: empty selection, showing empty grid", category: "photos", level: .info)
             backedUpPhotos = []
             allBackedUp = false
             return
@@ -92,6 +95,7 @@ class PhotosViewModel: ObservableObject {
         let summaries: [PhotoSummary] = await Task.detached(priority: .userInitiated) {
             Self.fetchPhotoSummaries(hasPersisted: hasPersisted, enabledIds: enabledIds, limit: 60)
         }.value
+        dlog("loadRecentPhotos: fetched \(summaries.count) photo summaries", category: "photos", level: .info)
 
         services?.photoBackup.refresh()
         let backedUp = services?.photoBackup.backedUpIdentifiers ?? []
@@ -134,9 +138,10 @@ class PhotosViewModel: ObservableObject {
         if hasPersisted {
             assets = fetchAssets(fromAlbums: enabledIds, limit: limit)
         } else {
+            // First-launch preview, no album selection yet — show recent media.
+            // No mediaType filter (see fetchAssets above).
             let opts = PHFetchOptions()
             opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
             opts.fetchLimit = limit
             let result = PHAsset.fetchAssets(with: opts)
             var collected: [PHAsset] = []
@@ -155,16 +160,22 @@ class PhotosViewModel: ObservableObject {
     /// Deduplicates across albums, sorts newest-first, caps at `limit`.
     /// MUST be called off-main — see `fetchPhotoSummaries`.
     nonisolated private static func fetchAssets(fromAlbums albumIds: Set<String>, limit: Int) -> [PHAsset] {
+        let idArray = Array(albumIds)
         let collections = PHAssetCollection.fetchAssetCollections(
-            withLocalIdentifiers: Array(albumIds), options: nil)
+            withLocalIdentifiers: idArray, options: nil)
+        dlog("fetchAssets: requested \(idArray.count) album id(s), resolved \(collections.count) collection(s)", category: "photos", level: .info)
+        // No mediaType predicate — Vaultyx backs up whatever the user has in
+        // an album. Filtering on PHAssetMediaType.image excluded videos
+        // (and some Live Photos / iCloud-shared content) and produced the
+        // empty-grid + silent-backup symptom Tek hit on build 520.
         let opts = PHFetchOptions()
         opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
 
         var seen = Set<String>()
         var collected: [PHAsset] = []
         collections.enumerateObjects { collection, _, _ in
             let result = PHAsset.fetchAssets(in: collection, options: opts)
+            dlog("fetchAssets: collection '\(collection.localizedTitle ?? "?")' (\(String(collection.localIdentifier.prefix(12)))) → \(result.count) image asset(s)", category: "photos", level: .info)
             result.enumerateObjects { asset, _, _ in
                 if !seen.contains(asset.localIdentifier) {
                     seen.insert(asset.localIdentifier)
@@ -227,6 +238,7 @@ class PhotosViewModel: ObservableObject {
         // writes an empty array (distinguishable from first-run via key presence).
         let enabledIDs = albums.filter(\.isEnabled).map(\.id)
         UserDefaults.standard.set(enabledIDs, forKey: enabledAlbumsKey)
+        dlog("toggleAlbum: '\(album.name)' (\(String(album.id.prefix(12)))) → enabled=\(enabled), persisted \(enabledIDs.count) id(s)", category: "photos", level: .info)
 
         guard let services = self.services else {
             logger.error("toggleAlbum called before VaultServices was wired")
