@@ -168,11 +168,14 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
         // detect (observed in build 522 on iOS 26.5 even after PR-E). Wrap
         // the call in an Obj-C @try/@catch shim so an internal validation
         // failure becomes a recoverable error instead of a SIGABRT.
-        var nsError: NSError?
-        guard let task = KTBackgroundUpload.safeUploadTask(
-            on: session, with: req, fromFile: fromFileURL, error: &nsError
-        ) else {
-            let reason = nsError?.localizedDescription ?? "uploadTask raised NSException"
+        // (Swift auto-bridges the trailing `NSError**` parameter to `throws`,
+        //  so the call signature drops `error:` and uses `try` instead.)
+        let task: URLSessionUploadTask
+        do {
+            task = try KTBackgroundUpload.safeUploadTask(
+                on: session, with: req, fromFile: fromFileURL)
+        } catch {
+            let reason = (error as NSError).localizedDescription
             logger.error("uploadTask threw NSException for \(fileId, privacy: .public)/\(chunkHash, privacy: .public): \(reason, privacy: .public)")
             dlog("uploadTask threw NSException \(fileId)/\(chunkHash): \(reason)", category: "sync", level: .error)
             await markRetryable(fileId: fileId, chunkHash: chunkHash)
