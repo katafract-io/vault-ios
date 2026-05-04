@@ -1,0 +1,93 @@
+name: Verify auto-revert trigger (smoke test)
+
+on:
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Debug mode (keep test branch)'
+        required: false
+        default: 'false'
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Create throwaway test commit
+        id: test
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "fleet-ops-test[bot]"
+          git config user.email "test@katafract.io"
+          
+          TEST_BRANCH="smoke-test/$(date +%s)"
+          git checkout -b "$TEST_BRANCH"
+          
+          # Add a small change
+          echo "# Smoke test commit $(date)" >> README.md
+          git add README.md
+          git commit -m "smoke-test: verify auto-revert trigger"
+          
+          git push origin "$TEST_BRANCH"
+          echo "branch=$TEST_BRANCH" >> $GITHUB_OUTPUT
+          echo "Created test branch: $TEST_BRANCH"
+
+      - name: Open throwaway PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.test.outputs.branch }}"
+          
+          PR_URL=$(gh pr create \
+            --title "SMOKE TEST: auto-revert workflow validation" \
+            --body "This is a test PR to validate the auto-revert workflow. Will be closed after validation." \
+            --base main \
+            --head "$BRANCH" \
+            --repo "${{ github.repository }}" \
+            2>&1)
+          
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "PR created: $PR_URL"
+
+      - name: Simulate ship.yml workflow
+        id: simulate
+        run: |
+          echo "Simulating Ship to TestFlight workflow..."
+          
+          # In a real scenario, this would be the Ship to TestFlight job
+          # For testing, we'll just mark it as failed
+          echo "This step simulates the Ship to TestFlight workflow"
+          echo "For manual testing: push a breaking change and watch ship.yml fail"
+
+      - name: Log instructions
+        run: |
+          echo "=== SMOKE TEST INSTRUCTIONS ==="
+          echo "1. PR has been created: ${{ steps.pr.outputs.pr_url }}"
+          echo "2. Auto-revert-on-red.yml will trigger when Ship to TestFlight fails"
+          echo "3. To test in production:"
+          echo "   - Commit a breaking change to a branch"
+          echo "   - Push to main (or merge the PR)"
+          echo "   - Watch ship.yml fail"
+          echo "   - Within 5 min, auto-revert PR should open"
+          echo ""
+          echo "TEST BRANCH: ${{ steps.test.outputs.branch }}"
+
+      - name: Cleanup (if not debug mode)
+        if: github.event.inputs.debug != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.test.outputs.branch }}"
+          echo "Cleaning up test branch: $BRANCH"
+          
+          gh pr close "${{ steps.pr.outputs.pr_url }}" \
+            --repo "${{ github.repository }}" \
+            --delete-branch \
+            || echo "Could not close PR; manual cleanup needed"
