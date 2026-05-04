@@ -482,6 +482,13 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
+                    StuckItemsView()
+                } label: {
+                    labeledRow(icon: "exclamationmark.circle.fill", title: "Stuck Items")
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+
+                NavigationLink {
                     DebugLogView()
                 } label: {
                     labeledRow(icon: "doc.text", title: "Debug Log")

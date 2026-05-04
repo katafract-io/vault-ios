@@ -29,6 +29,7 @@
 		41A3153ED942A7D314CE4A8F /* VaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E99F9D00876693B1D808BA2C /* VaultApp.swift */; };
 		4878D7A64BCDEDE6CE81C418 /* FileCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199098218699C686778C33E3 /* FileCategory.swift */; };
 		4AF8427238D557CB0235A132 /* FileUploadProgressBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896ACA5F82A229E1E822031F /* FileUploadProgressBanner.swift */; };
+		4E662CAFECCDCED91B9D464A /* StuckItemsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D03FE97EF105458EDD0D2CC /* StuckItemsView.swift */; };
 		4EE3E11259C8DEE40B2A1409 /* SyncState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E7115C9F830F462012DA4EC /* SyncState.swift */; };
 		5335A8A41F531B95DD25B633 /* BIP39WordList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA3AE803C9F313353B48A89C /* BIP39WordList.swift */; };
 		55EEDFA62DCAD6B8EB523420 /* VaultManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86771A820BF7FC05675B4272 /* VaultManifest.swift */; };
@@ -170,6 +171,7 @@
 		6E8E9F8455365798092C4DFB /* PhotosViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosViewModel.swift; sourceTree = "<group>"; };
 		707B03DB138F4BCB577609CF /* VaultyxUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VaultyxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7599892F6A4C813BA72A0119 /* FileIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIconView.swift; sourceTree = "<group>"; };
+		7D03FE97EF105458EDD0D2CC /* StuckItemsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StuckItemsView.swift; path = Sources/UI/Settings/StuckItemsView.swift; sourceTree = "<group>"; };
 		7D3A4CDF3CC4CDE16F7B08CA /* VaultyxLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxLiveActivity.swift; sourceTree = "<group>"; };
 		822D4EFE0CEE5C0D5965D1B5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		842697680013FF51CC00E52D /* FounderRedeemSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FounderRedeemSheet.swift; sourceTree = "<group>"; };
@@ -491,8 +493,18 @@
 				CF48AA7F6A2D3D9364577FE1 /* RecycleBin */,
 				296B408CAFB54CF5848969AB /* Storage */,
 				51B6753A67C359F3A421D64C /* Versions */,
+				FF0799418A90247C8850E78E /* Settings */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		FF0799418A90247C8850E78E /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				7D03FE97EF105458EDD0D2CC /* StuckItemsView.swift */,
+			);
+			name = Settings;
+			path = Sources/UI/Settings;
 			sourceTree = "<group>";
 		};
 		FF40ECBC8C5048529843567F /* FileProvider */ = {
@@ -673,6 +685,7 @@
 				D3CED8B7A7D1A54F51BB39A9 /* VaultEnumerator.swift in Sources */,
 				22677524649F4F01E48869FF /* VaultFileProviderExtension.swift in Sources */,
 				B44A5B4D6B617F83DEB21DF1 /* VaultFileProviderItem.swift in Sources */,
+				4E662CAFECCDCED91B9D464A /* StuckItemsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
