@@ -177,6 +177,18 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             throw PhotoBackupManagerError.excluded
         }
         dlog("photo enqueue start: \(asset.localIdentifier)", category: "photos", level: .info)
+
+        // Prevent duplicate imports: if a LocalFile already exists for this
+        // asset (from a prior failed batch that didn't reach markBackedUp),
+        // skip rather than creating a second set of chunk rows.
+        let assetId = asset.localIdentifier
+        let dupCheck = FetchDescriptor<LocalFile>(
+            predicate: #Predicate<LocalFile> { $0.sourceAssetIdentifier == assetId })
+        if (try? modelContext.fetch(dupCheck))?.isEmpty == false {
+            dlog("photo enqueue skipped (already queued): \(asset.localIdentifier)", category: "photos", level: .debug)
+            throw PhotoBackupManagerError.excluded
+        }
+
         let folderKey = try await keyManager.getOrCreateFolderKey(folderId: "root")
         let (tempURL, originalName, sizeBytes) = try await Self.exportAssetToTemp(asset: asset)
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -186,7 +198,8 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             parentFolderId: nil,                // root
             folderKey: folderKey,
             masterKey: masterKey,
-            filename: originalName)
+            filename: originalName,
+            sourceAssetIdentifier: asset.localIdentifier)
 
         markBackedUp(
             assetIdentifier: asset.localIdentifier,
@@ -283,27 +296,43 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         excludeFromBackup(assetIdentifier)
         let descriptor = FetchDescriptor<BackedUpAsset>(
             predicate: #Predicate { $0.assetIdentifier == assetIdentifier })
-        guard let row = (try? modelContext.fetch(descriptor))?.first else { return }
-        let fileId = row.fileId
-        do {
-            try await apiClient.softDeleteFile(fileId: fileId)
-        } catch {
-            logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            dlog("vault soft-delete failed for \(assetIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
-            // Continue — also drop the local LocalFile + BackedUpAsset rows
-            // so the UI doesn't keep showing a phantom backup. The recycle bin
-            // sweep on the server will reconcile if the file actually exists.
+        if let row = (try? modelContext.fetch(descriptor))?.first {
+            let fileId = row.fileId
+            do {
+                try await apiClient.softDeleteFile(fileId: fileId)
+            } catch {
+                logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("vault soft-delete failed for \(assetIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
+            }
+            let lfDescriptor = FetchDescriptor<LocalFile>(
+                predicate: #Predicate { $0.fileId == fileId })
+            if let localRows = try? modelContext.fetch(lfDescriptor) {
+                for r in localRows { modelContext.delete(r) }
+            }
+            modelContext.delete(row)
+            backedUpIdentifiers.remove(assetIdentifier)
         }
-        // Drop the matching LocalFile cache row too so refreshFromCache stops
-        // surfacing the file in any browser the user opens next.
-        let lfDescriptor = FetchDescriptor<LocalFile>(
-            predicate: #Predicate { $0.fileId == fileId })
-        if let localRows = try? modelContext.fetch(lfDescriptor) {
-            for r in localRows { modelContext.delete(r) }
+
+        // Sweep any orphan LocalFile rows for this asset: rows created by
+        // importFile during a failed/cancelled backup that never reached
+        // markBackedUp. Without this, disabling an album leaves ghost chunks
+        // retrying forever in the upload queue.
+        let orphanDesc = FetchDescriptor<LocalFile>(
+            predicate: #Predicate<LocalFile> { $0.sourceAssetIdentifier == assetIdentifier })
+        if let orphans = try? modelContext.fetch(orphanDesc) {
+            for orphan in orphans {
+                let orphanId = orphan.fileId
+                let chunkDesc = FetchDescriptor<ChunkUploadQueue>(
+                    predicate: #Predicate<ChunkUploadQueue> { $0.fileId == orphanId })
+                if let chunks = try? modelContext.fetch(chunkDesc) {
+                    for c in chunks { modelContext.delete(c) }
+                }
+                ChunkCache.delete(hash: "__manifest__\(orphanId)")
+                ChunkCache.delete(hash: "__sidecar__\(orphanId)")
+                modelContext.delete(orphan)
+            }
         }
-        modelContext.delete(row)
         try? modelContext.save()
-        backedUpIdentifiers.remove(assetIdentifier)
     }
 
     private func runAlbumBackup(albumId: String) async {
