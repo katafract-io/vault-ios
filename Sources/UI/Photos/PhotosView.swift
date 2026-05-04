@@ -45,8 +45,11 @@ struct PhotosView: View {
 
                     Divider().padding(.vertical, 8)
 
-                    // Photo grid OR sealed-album empty state
-                    if showEmptyState {
+                    // Photo grid OR empty state
+                    if showChooseAlbumsState {
+                        ChooseAlbumsEmptyStateView(onChooseTap: { showAlbumsSheet = true })
+                            .padding(.top, 24)
+                    } else if showEmptyState {
                         PhotosEmptyStateView(onBackupTap: {
                             if subscriptionStore.isSubscribed {
                                 viewModel.startBackupNow()
@@ -102,9 +105,17 @@ struct PhotosView: View {
         }
     }
 
+    /// True when the user has deselected every album — "Choose albums" CTA takes priority.
+    private var showChooseAlbumsState: Bool {
+        !viewModel.backupInProgress && viewModel.isAlbumSelectionEmpty
+    }
+
+    /// True when albums are (or may be) selected but no photos have been fetched yet.
+    /// Drives the "sealed album" empty state with a Backup Now CTA.
     private var showEmptyState: Bool {
         !viewModel.backupInProgress &&
-        !viewModel.backedUpPhotos.contains(where: { $0.backupState == .backedUp })
+        !viewModel.isAlbumSelectionEmpty &&
+        viewModel.backedUpPhotos.isEmpty
     }
 }
 
@@ -285,6 +296,46 @@ struct PhotosEmptyStateView: View {
         .frame(width: 180, height: 240)
         .scaleEffect(cardScale)
         .opacity(cardOpacity)
+    }
+}
+
+// MARK: - "Choose albums" empty state (all albums deselected)
+
+struct ChooseAlbumsEmptyStateView: View {
+    var onChooseTap: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "photo.stack")
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(Color.kataSapphire.opacity(0.6))
+
+            VStack(spacing: 8) {
+                Text("Choose albums to back up")
+                    .font(.kataHeadline(22, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+
+                Text("Select which albums Vaultyx should encrypt and back up.")
+                    .font(.kataBody(14))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            Button(action: onChooseTap) {
+                Label("Choose albums", systemImage: "photo.on.rectangle.angled")
+                    .font(.kataHeadline(15, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .frame(maxWidth: 240)
+                    .frame(height: 48)
+                    .background(Color.kataPremiumGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .padding(.top, 4)
+        }
+        .padding(.bottom, 40)
+        .frame(maxWidth: .infinity)
     }
 }
 
