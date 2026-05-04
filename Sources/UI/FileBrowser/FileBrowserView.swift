@@ -118,40 +118,42 @@ struct FileBrowserView: View {
     }
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            // Single banner instance — hoisting outside the branch selector
+            // prevents the spring transition from re-firing when items.isEmpty
+            // or viewMode flips (which would swap branches, animating the
+            // banner out and back in on every state change).
+            if viewModel.uploadInProgress {
+                FileUploadProgressBanner(
+                    fileIndex: viewModel.batchFileIndex,
+                    totalFiles: viewModel.batchTotalFiles,
+                    bytesUploaded: viewModel.batchBytesUploaded,
+                    totalBytes: viewModel.batchTotalBytes,
+                    onCancel: viewModel.cancelUpload
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if viewModel.downloadInProgress {
+                FileDownloadProgressBanner(
+                    filename: viewModel.downloadFilename,
+                    progress: viewModel.downloadProgress,
+                    onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
             if viewModel.items.isEmpty && !viewModel.isLoading {
-                VStack(spacing: 0) {
-                    if viewModel.uploadInProgress {
-                        FileUploadProgressBanner(
-                            fileIndex: viewModel.batchFileIndex,
-                            totalFiles: viewModel.batchTotalFiles,
-                            bytesUploaded: viewModel.batchBytesUploaded,
-                            totalBytes: viewModel.batchTotalBytes,
-                            onCancel: viewModel.cancelUpload
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    if viewModel.downloadInProgress {
-                        FileDownloadProgressBanner(
-                            filename: viewModel.downloadFilename,
-                            progress: viewModel.downloadProgress,
-                            onCancel: { viewModel.cancelDownload(); selectedFile = nil }
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    EmptyFolderView(
-                        onUpload: { gate { uploadSource = .files } },
-                        onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
-                    )
-                }
-                .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
-                .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
+                EmptyFolderView(
+                    onUpload: { gate { uploadSource = .files } },
+                    onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
+                )
             } else if viewMode == .list {
-                listViewWithBanner
+                listContent
             } else {
-                gridViewWithBanner
+                gridContent
             }
         }
+        .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
+        .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
         .safeAreaInset(edge: .bottom) {
             if isEditing && !selectedIds.isEmpty {
                 HStack(spacing: 16) {
@@ -430,31 +432,11 @@ struct FileBrowserView: View {
     }
 
     @ViewBuilder
-    private var listViewWithBanner: some View {
+    private var listContent: some View {
         VStack(spacing: 0) {
-            if viewModel.uploadInProgress {
-                FileUploadProgressBanner(
-                    fileIndex: viewModel.batchFileIndex,
-                    totalFiles: viewModel.batchTotalFiles,
-                    bytesUploaded: viewModel.batchBytesUploaded,
-                    totalBytes: viewModel.batchTotalBytes,
-                    onCancel: viewModel.cancelUpload
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-            if viewModel.downloadInProgress {
-                FileDownloadProgressBanner(
-                    filename: viewModel.downloadFilename,
-                    progress: viewModel.downloadProgress,
-                    onCancel: { viewModel.cancelDownload(); selectedFile = nil }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
             CategoryFilterBar(selected: $selectedCategory)
             listView
         }
-        .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
-        .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
     }
 
     @ViewBuilder
@@ -475,15 +457,6 @@ struct FileBrowserView: View {
                         } else if !fileLoadingStates.contains(item.id) {
                             // Guard: prevent re-entry while materialize is in
                             // flight. Without this, an impatient user tapping
-                            // multiple times starts parallel downloads of the
-                            // same file and the cell flashes repeatedly.
-                            fileLoadingStates.insert(item.id)
-                            selectedFile = item
-                        }
-                    },
-                    onLongPress: {
-                        if !isEditing {
-                            isEditing = true
                             selectedIds.insert(item.id)
                         }
                     },
@@ -498,31 +471,11 @@ struct FileBrowserView: View {
     }
 
     @ViewBuilder
-    private var gridViewWithBanner: some View {
+    private var gridContent: some View {
         VStack(spacing: 0) {
-            if viewModel.uploadInProgress {
-                FileUploadProgressBanner(
-                    fileIndex: viewModel.batchFileIndex,
-                    totalFiles: viewModel.batchTotalFiles,
-                    bytesUploaded: viewModel.batchBytesUploaded,
-                    totalBytes: viewModel.batchTotalBytes,
-                    onCancel: viewModel.cancelUpload
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-            if viewModel.downloadInProgress {
-                FileDownloadProgressBanner(
-                    filename: viewModel.downloadFilename,
-                    progress: viewModel.downloadProgress,
-                    onCancel: { viewModel.cancelDownload(); selectedFile = nil }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
             CategoryFilterBar(selected: $selectedCategory)
             gridView
         }
-        .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
-        .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
     }
 
     @ViewBuilder
