@@ -32,6 +32,10 @@ class PhotosViewModel: ObservableObject {
     @Published var remainingCount = 0
     @Published var allBackedUp = false
     @Published var selectedPhoto: BackedUpPhoto?
+    @Published var isLoadingAlbums = false
+    /// True when the user has made at least one toggle choice and the current
+    /// selection is empty (all albums off). Drives the "Choose albums" empty state.
+    @Published var isAlbumSelectionEmpty = false
 
     private weak var services: VaultServices?
 
@@ -50,6 +54,28 @@ class PhotosViewModel: ObservableObject {
         if ScreenshotMode.isActive { return }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return }
+
+        // Honor the user's album selection. The grid is a *preview of what
+        // will be backed up* — if the user disabled every album (including
+        // Recents, which is iOS's "all photos" view), they expect an empty
+        // grid. Reading the persisted set with `defaults.object(forKey:)`
+        // lets us distinguish "never set" (first launch → fall back to a
+        // recent-images preview) from "deliberately empty" (show nothing).
+        let defaults = UserDefaults.standard
+        let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
+        let enabledIds = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
+
+        dlog("loadRecentPhotos: hasPersisted=\(hasPersisted) enabledIds.count=\(enabledIds.count) ids=\(Array(enabledIds).map { String($0.prefix(12)) })", category: "photos", level: .info)
+
+        if hasPersisted && enabledIds.isEmpty {
+            dlog("loadRecentPhotos: empty selection, showing empty grid", category: "photos", level: .info)
+            backedUpPhotos = []
+            allBackedUp = false
+            isAlbumSelectionEmpty = true
+            return
+        }
+        isAlbumSelectionEmpty = false
+
 
         // PhotoKit's PHAsset.fetchAssets / enumerateObjects are synchronous
         // calls into Photos.sqlite via NSXPCStoreConnection. On main, they
