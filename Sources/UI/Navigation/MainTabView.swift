@@ -308,6 +308,7 @@ struct SettingsView: View {
     @State private var pendingBytes: Int64 = 0
     @State private var isDraining = false
     @State private var confirmClearQueue = false
+    @AppStorage("vaultyx.uploads.wifi_only") private var wifiOnly: Bool = true
 
     private let sovereignQuota: Int64 = 1_099_511_627_776  // 1 TiB
 
