@@ -1,0 +1,203 @@
+name: IAP Review Screenshot Refresh
+
+# Slim on-demand workflow to re-capture + upload IAP/subscription review screenshots
+# for Vaultyx. Targets iPhone 16 Pro only, IAP/paywall frames only (~10-15 min).
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: 'Device to test on (iPhone 16 Pro / iPhone 15 / iPhone 14)'
+        required: false
+        default: 'iPhone 16 Pro'
+      test_methods:
+        description: 'Space-separated test method names to run (empty = defaults to paywall tests)'
+        required: false
+        default: ''
+      probe_asc_state:
+        description: 'Probe ASC state to verify all SKUs have review screenshots'
+        required: false
+        default: 'true'
+
+concurrency:
+  group: iap-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh-iap-screenshots:
+    name: Capture + upload IAP screenshots
+    runs-on: [ self-hosted, macOS, ios-build, ARM64 ]
+    timeout-minutes: 30
+
+    env:
+      APP_NAME: vaultyx
+      BUNDLE_ID: com.katafract.vault
+      SCHEME: Vaultyx
+      RBENV_RUBY: /Users/christianflores/.rbenv/versions/3.3.11
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Resolve test methods
+        id: test_methods
+        run: |
+          METHODS="${{ inputs.test_methods }}"
+          # Default to paywall tests (current IAP frames) if none specified
+          if [ -z "$METHODS" ]; then
+            METHODS="testCapturePaywallYearly testCapturePaywallMonthly"
+          fi
+          echo "methods=$METHODS" >> "$GITHUB_OUTPUT"
+          echo "Selected test methods: $METHODS"
+
+      - name: Unlock keychain
+        run: |
+          security unlock-keychain -p "" "$KEYCHAIN" || true
+          security set-keychain-settings -lut 7200 "$KEYCHAIN" || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN" >/dev/null 2>&1 || true
+
+      - name: Regenerate Xcode project (if xcodegen)
+        run: |
+          if [ -f "project.yml" ] && command -v xcodegen >/dev/null 2>&1; then
+            xcodegen generate 2>&1 | tail -10
+          else
+            echo "no xcodegen needed"
+          fi
+
+      - name: Install Ruby deps
+        run: |
+          export PATH="${RBENV_RUBY}/bin:$PATH"
+          which ruby && ruby --version
+          ${RBENV_RUBY}/bin/bundle --version || ${RBENV_RUBY}/bin/gem install bundler
+          ${RBENV_RUBY}/bin/bundle config set --local path 'vendor/bundle'
+          ${RBENV_RUBY}/bin/bundle install --jobs 4 --retry 3 2>&1 | tail -10
+
+      - name: Resolve SPM
+        run: |
+          xcodebuild -project ${SCHEME}.xcodeproj -scheme ${SCHEME} \
+            -resolvePackageDependencies 2>&1 | tail -3
+
+      - name: Capture IAP screenshots
+        id: capture
+        env:
+          FASTLANE_HIDE_CHANGELOG: 1
+          FASTLANE_SKIP_UPDATE_CHECK: 1
+          FASTLANE_DISABLE_COLORS: 1
+        run: |
+          set -o pipefail
+          rm -rf fastlane/screenshots
+          mkdir -p fastlane/screenshots
+
+          # Build -only-testing flags from space-separated method names
+          METHODS="${{ steps.test_methods.outputs.methods }}"
+          ONLY_TESTING=""
+          for METHOD in $METHODS; do
+            ONLY_TESTING="$ONLY_TESTING -only-testing VaultyxUITests/$METHOD"
+          done
+
+          # Run UITest on specified device
+          xcodebuild test \
+            -project ${SCHEME}.xcodeproj \
+            -scheme VaultyxUITests \
+            -destination "generic/platform=iOS Simulator,name=${{ inputs.device }},OS=18.0" \
+            $ONLY_TESTING \
+            -derivedDataPath /tmp/vaultyx-iap-build \
+            -resultBundlePath /tmp/vaultyx-iap-results.xcresult \
+            2>&1 | tee /tmp/xcodebuild-iap.log | tail -50
+
+          SHOT_COUNT=$(find fastlane/screenshots -name "*.png" 2>/dev/null | wc -l | tr -d ' ')
+          echo "shot_count=$SHOT_COUNT" >> "$GITHUB_OUTPUT"
+          echo "✓ Captured $SHOT_COUNT screenshots"
+
+      - name: Ensure artemis SSH key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          if [ -n "${{ secrets.FLEET_SSH_KEY }}" ]; then
+            echo "${{ secrets.FLEET_SSH_KEY }}" > ~/.ssh/fleet_id_ed25519
+            chmod 600 ~/.ssh/fleet_id_ed25519
+            ssh-keyscan -t ed25519 artemis.katafract.io >> ~/.ssh/known_hosts 2>/dev/null || true
+          else
+            echo "::warning::FLEET_SSH_KEY not set; ASC upload will be skipped"
+          fi
+
+      - name: Upload IAP screenshots to ASC
+        if: hashFiles('~/.ssh/fleet_id_ed25519') != ''
+        run: |
+          # Map captured screenshots to ASC productIds and upload
+          # Currently: frames 06-07 (paywall yearly/monthly) map to capacity tiers
+          # Format: --map {productIdSuffix}:{path/to/png}
+
+          MAPS=""
+          if [ -f fastlane/screenshots/06-paywall-yearly.png ]; then
+            # For now, use frame 06 for all monthly/yearly variants
+            # In PR #48 when capacity tier tests are added, this will be more granular
+            MAPS="$MAPS --map 100gb.monthly:fastlane/screenshots/06-paywall-yearly.png"
+            MAPS="$MAPS --map 100gb.yearly:fastlane/screenshots/06-paywall-yearly.png"
+            MAPS="$MAPS --map 1tb.monthly:fastlane/screenshots/06-paywall-yearly.png"
+            MAPS="$MAPS --map 1tb.yearly:fastlane/screenshots/06-paywall-yearly.png"
+            MAPS="$MAPS --map 5tb.monthly:fastlane/screenshots/06-paywall-yearly.png"
+            MAPS="$MAPS --map 5tb.yearly:fastlane/screenshots/06-paywall-yearly.png"
+          fi
+
+          if [ -n "$MAPS" ]; then
+            ssh -i ~/.ssh/fleet_id_ed25519 -o StrictHostKeyChecking=accept-new \
+              artemis@artemis.katafract.io \
+              "cd /var/lib/fleet-ops && python -m services.asc_screenshot_upload sub \
+                --app vaultyx $MAPS" 2>&1 | tee /tmp/asc-upload-sub.log
+            echo "✓ Uploaded subscription review screenshots"
+          fi
+
+          # Upload IAP (if frame 08 exists, otherwise skip for now)
+          if [ -f fastlane/screenshots/08-sovereign-forever.png ]; then
+            ssh -i ~/.ssh/fleet_id_ed25519 -o StrictHostKeyChecking=accept-new \
+              artemis@artemis.katafract.io \
+              "cd /var/lib/fleet-ops && python -m services.asc_screenshot_upload iap \
+                --app vaultyx --map sovereign.forever:fastlane/screenshots/08-sovereign-forever.png" \
+              2>&1 | tee /tmp/asc-upload-iap.log
+            echo "✓ Uploaded IAP review screenshot"
+          else
+            echo "::note::Frame 08 (sovereign.forever) not captured; skipping IAP upload"
+          fi
+
+      - name: Probe ASC state
+        if: inputs.probe_asc_state == 'true' && hashFiles('~/.ssh/fleet_id_ed25519') != ''
+        continue-on-error: true
+        run: |
+          echo "Probing ASC for vaultyx capacity tier + sovereign.forever..."
+          ssh -i ~/.ssh/fleet_id_ed25519 -o StrictHostKeyChecking=accept-new \
+            artemis@artemis.katafract.io \
+            "cd /opt/katafract-platform && python -m services.asc_screenshot_upload audit --app vaultyx" \
+            2>&1 | tee /tmp/asc-audit.log
+
+          # Summarize the audit output
+          echo ""
+          echo "=== ASC state summary ==="
+          grep -E "(100gb|1tb|5tb|sovereign)" /tmp/asc-audit.log || echo "(no capacity tier SKUs found in audit output)"
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          mkdir -p /tmp/iap-artifacts
+          cp -r fastlane/screenshots /tmp/iap-artifacts/ 2>/dev/null || true
+          cp /tmp/xcodebuild-iap.log /tmp/iap-artifacts/xcodebuild.log 2>/dev/null || true
+          tail -100 /tmp/asc-upload-sub.log > /tmp/iap-artifacts/asc-upload-sub.tail.log 2>/dev/null || true
+          tail -100 /tmp/asc-audit.log > /tmp/iap-artifacts/asc-audit.tail.log 2>/dev/null || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap-screenshots-${{ github.run_number }}
+          path: /tmp/iap-artifacts/
+          retention-days: 14
+
+      - name: Report status
+        run: |
+          echo "✅ IAP screenshot refresh completed"
+          echo "  Captured: ${{ steps.capture.outputs.shot_count }} screenshots"
+          echo "  Device: ${{ inputs.device }}"
+          echo "  Test methods: ${{ steps.test_methods.outputs.methods }}"

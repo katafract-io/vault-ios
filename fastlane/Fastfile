@@ -49,8 +49,19 @@ platform :ios do
     )
   end
 
+  desc "Capture IAP/subscription review screenshots (slim matrix: iPhone only, paywall frames)"
+  lane :iap_review_refresh do
+    # Note: Most of the upload+audit logic lives in the GitHub Actions workflow.
+    # This lane captures locally for manual testing. The workflow automates
+    # SSH to artemis + asc_screenshot_upload calls.
+    capture_ios_screenshots
+    UI.success("✓ Captured IAP screenshots to fastlane/screenshots/")
+    UI.important("Workflow will upload to ASC via artemis when run in CI")
+  end
+
   # Subscription + IAP review screenshots are uploaded via the shared CLI on
   # artemis: `python -m services.asc_screenshot_upload sub|iap ...`. fastlane
-  # deliver does NOT handle those well. See SCREENSHOT_PIPELINE.md for the
-  # commands.
+  # deliver does NOT handle those well. GitHub Actions workflow handles the
+  # orchestration. See .github/workflows/iap-review-refresh.yml and
+  # docs/IAP_REVIEW_SCREENSHOT_WORKFLOW.md for details.
 end
