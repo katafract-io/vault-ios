@@ -167,7 +167,10 @@ public class VaultSyncEngine: ObservableObject {
                     let encrypted = try VaultCrypto.encrypt(plaintext, key: chunkKey)
                     let encKeyBlob = try VaultCrypto.encryptChunkKey(chunkKey, with: folderKey)
 
-                    // Write to local encrypted cache with NSFileProtection.complete
+                    // Write to local encrypted cache. ChunkCache uses
+                    // URLFileProtection.none so the OS background uploader
+                    // can read it while the device is locked; the bytes are
+                    // already AES-256-GCM-encrypted above.
                     try ChunkCache.put(hash: chunk.hash, data: encrypted)
 
                     descriptors.append(VaultManifest.ChunkDescriptor(
@@ -1096,10 +1099,13 @@ enum ImportInbox {
 /// Files live at:
 ///   `<Application Support>/VaultyxChunkCache/<chunkHash>`
 ///
-/// Every file written here carries NSFileProtection.complete so iOS encrypts
-/// it at rest using the device passcode key and wipes the decryption key
-/// when the device is locked.  The data stored here is *already* encrypted
-/// with the per-chunk AES-256-GCM key, so this is defence-in-depth.
+/// Files are written with `URLFileProtection.none`. The chunks are already
+/// AES-256-GCM-encrypted before they hit disk, so iOS file-protection adds
+/// nothing — and a stricter class blocks the OS background daemon
+/// (`nsurlsessiond`) from reading the file when the device is locked, which
+/// makes `URLSession.background.uploadTask(with:fromFile:)` throw an
+/// Obj-C exception inside `_uploadTaskWithTaskForClass:` and crash the app
+/// (observed Vaultyx 1.0.5 build 521 on iOS 26.5).
 ///
 /// Thread-safety: all methods are nonisolated and safe to call from any
 /// concurrency context because they use atomic FileManager operations.
@@ -1116,13 +1122,14 @@ enum ChunkCache {
     }()
 
     /// Write encrypted chunk data to the local cache.
-    /// Sets NSFileProtection.complete on the written file.
+    /// Writes with `URLFileProtection.none` so the OS background URLSession
+    /// daemon can read the file regardless of device-lock state.
     /// Overwrites silently if the file already exists (idempotent on retry).
     static func put(hash: String, data: Data) throws {
         let url = fileURL(for: hash)
         try data.write(to: url, options: [.atomic])
         try (url as NSURL).setResourceValue(
-            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
+            URLFileProtection.none, forKey: .fileProtectionKey)
     }
 
     /// Read an encrypted chunk from the local cache. Returns nil if absent.

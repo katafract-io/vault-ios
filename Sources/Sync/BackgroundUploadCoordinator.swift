@@ -129,6 +129,36 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
         fromFileURL: URL,
         putURL: URL
     ) async {
+        // Pre-flight. -[__NSURLBackgroundSession _uploadTaskWithTaskForClass:]
+        // raises an Obj-C exception (-> __cxa_throw -> abort) when the
+        // fromFile URL doesn't exist, isn't a file URL, or has zero bytes
+        // — observed crash in build 521 (iOS 26.5). Swift can't catch
+        // Obj-C exceptions without a bridging shim, so we deterministically
+        // refuse to dispatch when the file isn't usable.
+        let fm = FileManager.default
+        guard fromFileURL.isFileURL else {
+            logger.error("dispatch aborted: not a file URL \(fromFileURL.absoluteString, privacy: .public)")
+            dlog("dispatch aborted: not a file URL \(fromFileURL.absoluteString)", category: "sync", level: .error)
+            await markRetryable(fileId: fileId, chunkHash: chunkHash)
+            return
+        }
+        guard fm.fileExists(atPath: fromFileURL.path) else {
+            logger.error("dispatch aborted: file missing at \(fromFileURL.path, privacy: .public) for \(fileId, privacy: .public)/\(chunkHash, privacy: .public)")
+            dlog("dispatch aborted: file missing \(fileId)/\(chunkHash) at \(fromFileURL.path)", category: "sync", level: .error)
+            await markRetryable(fileId: fileId, chunkHash: chunkHash)
+            return
+        }
+        let size: Int = {
+            let attrs = (try? fm.attributesOfItem(atPath: fromFileURL.path)) ?? [:]
+            return (attrs[.size] as? NSNumber)?.intValue ?? 0
+        }()
+        guard size > 0 else {
+            logger.error("dispatch aborted: zero-byte file \(fromFileURL.path, privacy: .public) for \(fileId, privacy: .public)/\(chunkHash, privacy: .public)")
+            dlog("dispatch aborted: zero-byte file \(fileId)/\(chunkHash)", category: "sync", level: .error)
+            await markRetryable(fileId: fileId, chunkHash: chunkHash)
+            return
+        }
+
         var req = URLRequest(url: putURL)
         req.httpMethod = "PUT"
         req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
@@ -202,6 +232,27 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
     }
 
     // MARK: - Internal
+
+    /// Mark the chunk row as not-in-flight and schedule a near-term retry.
+    /// Used when pre-flight validation refuses to call `uploadTask(...)`
+    /// because the on-disk chunk is missing/zero-bytes/unreadable. The row
+    /// stays claimable so the next drain cycle can recover via re-chunk.
+    private func markRetryable(fileId: String, chunkHash: String) async {
+        let container = modelContainer
+        await MainActor.run {
+            let context = ModelContext(container)
+            let descriptor = FetchDescriptor<ChunkUploadQueue>(
+                predicate: #Predicate { $0.fileId == fileId && $0.chunkHash == chunkHash }
+            )
+            guard let row = (try? context.fetch(descriptor))?.first else { return }
+            row.inFlightTaskIdentifier = nil
+            row.lastDispatchedAt = nil
+            // Short backoff — the drain loop will re-attempt and trigger
+            // recovery from LocalCache in `drainChunk`.
+            row.nextRetryAt = Date().addingTimeInterval(5)
+            try? context.save()
+        }
+    }
 
     /// Compare-and-set claim: writes `taskIdentifier` to the row only if
     /// `inFlightTaskIdentifier` is currently nil. Returns true on success,
