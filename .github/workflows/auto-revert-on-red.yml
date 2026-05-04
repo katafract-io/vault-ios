@@ -57,43 +57,24 @@ jobs:
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           
           # Create PR with gh
-          PR_BODY="**Auto-revert of failed commit on main.**
-
-- Failed commit: \`$FAILED_SHA\` ($FAILED_MSG)
-- Triggered by: ship.yml failure (run #${{ github.event.workflow_run.run_number }})
-- Doctrine: verification-framework requires auto-revert within 5 min
-
-**Status:** This PR will auto-merge once CI passes. If revert CI fails, an incident will be created.
-
----
-
-*Automated by fleet-ops verification framework.*"
-          
           PR_URL=$(gh pr create \
             --title "auto-revert: $BRANCH_SHORT — ship.yml failed on main" \
-            --body "$PR_BODY" \
+            --body "Auto-revert of failed commit on main. Failed commit: $FAILED_SHA. Triggered by: ship.yml failure. Doctrine: verification-framework requires auto-revert within 5 min. This PR will auto-merge once CI passes. If revert CI fails, an incident will be created. Automated by fleet-ops verification framework." \
             --base main \
             --head "$BRANCH" \
             --repo "${{ github.repository }}" \
             2>&1)
           
-          # Extract PR number from URL
-          PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$' || echo "")
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
-          echo "pr_num=$PR_NUM" >> $GITHUB_OUTPUT
           echo "PR created: $PR_URL"
 
       - name: Notify Matrix - Auto-revert opened
         if: success()
         run: |
-          PAYLOAD='{
-            "text": "⏪ **AUTO-REVERTED** '"'"'${{ github.repository }}'"'"' main\n\n**Failed commit:** `${{ steps.failed.outputs.sha }}`\n**Revert PR:** ${{ steps.revert.outputs.pr_url }}\n**Next:** Auto-merge when CI passes (5 min timeout)\n**Doctrine:** verification-framework\n\n→ Monitoring in #fleet-ops"
-          }'
-          
           curl -s -X POST https://webhooks.katafract.io/webhook/github \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
-            -d "$PAYLOAD" || true
+            -d '{"text":"⏪ AUTO-REVERTED ${{ github.repository }} main | Failed: ${{ steps.failed.outputs.sha }} | PR: ${{ steps.revert.outputs.pr_url }} | Status: Auto-merge when CI passes (5m timeout)"}' || true
 
       - name: Wait for PR checks to pass (5 min timeout)
         id: wait
@@ -108,7 +89,6 @@ jobs:
           echo "Polling for check suite completion..."
           
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            # Get check runs status
             STATUS=$(gh pr checks "$BRANCH" \
               --repo "${{ github.repository }}" \
               2>&1 || echo "PENDING")
@@ -135,14 +115,13 @@ jobs:
           echo "auto_merge=false" >> $GITHUB_OUTPUT
           exit 0
 
-      - name: Auto-merge revert PR with app bypass
+      - name: Auto-merge revert PR
         if: steps.wait.outputs.auto_merge == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="${{ steps.revert.outputs.branch }}"
           
-          # Enable auto-merge (will merge when checks pass)
           gh pr merge "$BRANCH" \
             --repo "${{ github.repository }}" \
             --squash \
@@ -150,26 +129,18 @@ jobs:
             --auto \
             || echo "::warning::Could not enable auto-merge; PR left open for manual action"
 
-      - name: Notify Matrix - Check timeout
-        if: steps.wait.outputs.auto_merge == 'false'
+      - name: Notify Matrix - Check timeout or failure
+        if: always() && steps.wait.outputs.auto_merge == 'false'
         run: |
-          PAYLOAD='{
-            "text": "⚠️ **CHECK TIMEOUT** — auto-revert PR on '"'"'${{ github.repository }}'"'"'\n\n**Revert PR:** ${{ steps.revert.outputs.pr_url }}\n**Status:** CI checks did not pass within 5 min timeout\n**Action:** PR left open; manual merge required\n\n→ Escalating to #fleet-ops"
-          }'
-          
           curl -s -X POST https://webhooks.katafract.io/webhook/github \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
-            -d "$PAYLOAD" || true
+            -d '{"text":"⚠️ Auto-revert check timeout on ${{ github.repository }} | PR: ${{ steps.revert.outputs.pr_url }} | Action: PR left open, manual merge required"}' || true
 
-      - name: Notify Matrix - Revert CI failure
+      - name: Notify Matrix - Incident on revert failure
         if: failure()
         run: |
-          PAYLOAD='{
-            "text": "🚨 **INCIDENT** — auto-revert PR CI failed on '"'"'${{ github.repository }}'"'"'\n\n**Failed commit:** `${{ steps.failed.outputs.sha }}`\n**Revert PR:** ${{ steps.revert.outputs.pr_url }}\n**Status:** Human blocked — manual intervention required\n\n→ Creating OP Incident WP in #fleet-ops"
-          }'
-          
           curl -s -X POST https://webhooks.katafract.io/webhook/github \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
-            -d "$PAYLOAD" || true
+            -d '{"text":"🚨 INCIDENT - Auto-revert PR CI failed on ${{ github.repository }} | Failed commit: ${{ steps.failed.outputs.sha }} | PR: ${{ steps.revert.outputs.pr_url }} | Status: Human blocked, manual intervention required"}' || true
