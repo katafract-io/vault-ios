@@ -57,6 +57,15 @@ public class VaultSyncEngine: ObservableObject {
     /// engine still functions but uploads stop happening — that's a hard
     /// configuration error in production builds, logged on every drain.
     private var uploadCoordinator: BackgroundUploadCoordinator?
+    /// fileIds with a manifest POST currently in flight. Mutated only on the
+    /// main actor. The OS bg upload coordinator fires `onChunkCompleted` per
+    /// chunk; on the last chunk of a file all the previous callbacks have
+    /// already passed the `allDone` check and would race to POST the same
+    /// manifest. Guard with a single-claim set so only one POST per fileId
+    /// runs at a time. (Observed Vaultyx 1.0.5 build 523: a 48-chunk file
+    /// produced 48 concurrent manifest POSTs that collapsed the connection
+    /// pool with -1005 and stranded the file in `manifest_failed`.)
+    private var manifestInFlight: Set<String> = []
     private let logger = Logger(subsystem: "com.katafract.vault", category: "sync")
 
     @Published public var syncState: EngineState = .idle
@@ -616,6 +625,25 @@ public class VaultSyncEngine: ObservableObject {
     /// can be finalized within seconds of its last chunk landing, even when
     /// no foreground drain is running.
     func checkAndFinalizeFile(fileId: String) async {
+        // Single-claim: if another caller (typically a sibling chunk-completion
+        // callback) is already POSTing the manifest for this file, bail. The
+        // first claimant runs the POST to completion; subsequent ones are
+        // redundant and would just hammer the server with duplicate POSTs.
+        let claimed: Bool = await MainActor.run {
+            if self.manifestInFlight.contains(fileId) { return false }
+            self.manifestInFlight.insert(fileId)
+            return true
+        }
+        guard claimed else { return }
+        // Always release the claim, regardless of outcome.
+        await self.runFinalize(fileId: fileId)
+        await MainActor.run { self.manifestInFlight.remove(fileId) }
+    }
+
+    /// The actual finalize work, separated so `checkAndFinalizeFile` can wrap
+    /// it with the in-flight claim/release. Do not call this directly from
+    /// outside — go through `checkAndFinalizeFile`.
+    private func runFinalize(fileId: String) async {
         // Re-fetch to check current done state (rows may have been updated by concurrent drains)
         let allDone: Bool = await MainActor.run {
             let desc = FetchDescriptor<ChunkUploadQueue>(
