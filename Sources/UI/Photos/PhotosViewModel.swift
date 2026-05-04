@@ -41,6 +41,9 @@ class PhotosViewModel: ObservableObject {
     @Published var allBackedUp = false
     @Published var selectedPhoto: BackedUpPhoto?
     @Published var isLoadingAlbums = false
+    /// True when the user has made at least one toggle choice and the current
+    /// selection is empty (all albums off). Drives the "Choose albums" empty state.
+    @Published var isAlbumSelectionEmpty = false
 
     private weak var services: VaultServices?
 
@@ -83,8 +86,10 @@ class PhotosViewModel: ObservableObject {
             dlog("loadRecentPhotos: empty selection, showing empty grid", category: "photos", level: .info)
             backedUpPhotos = []
             allBackedUp = false
+            isAlbumSelectionEmpty = true
             return
         }
+        isAlbumSelectionEmpty = false
 
         // PhotoKit's PHAsset.fetchAssets / enumerateObjects are synchronous
         // calls into Photos.sqlite via NSXPCStoreConnection. On main, they
