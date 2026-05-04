@@ -40,7 +40,22 @@ struct PhotosView: View {
                             }
                         }
                         .padding(.horizontal)
-                        .padding(.vertical, 12)
+                        .padding(.top, 12)
+                        .padding(.bottom, viewModel.totalBackedUpCount > 0 ? 4 : 12)
+
+                        if viewModel.totalBackedUpCount > 0 {
+                            HStack(spacing: 4) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Color.kataGold.opacity(0.75))
+                                Text("\(viewModel.totalBackedUpCount) \(viewModel.totalBackedUpCount == 1 ? "photo" : "photos") · \(ByteCountFormatter.string(fromByteCount: viewModel.totalBackedUpBytes, countStyle: .file)) secured")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+                            .padding(.bottom, 12)
+                        }
 
                         Divider().padding(.vertical, 8)
 
@@ -155,7 +170,15 @@ struct AlbumDrawerSheet: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(album.name).font(.body)
-                                Text("\(album.count) photos").font(.caption).foregroundStyle(.secondary)
+                                if album.isEnabled && album.backedUpCount > 0 {
+                                    Text("\(album.backedUpCount) of \(album.count) backed up")
+                                        .font(.caption)
+                                        .foregroundStyle(album.backedUpCount == album.count ? Color.kataGold.opacity(0.85) : .secondary)
+                                } else {
+                                    Text("\(album.count) \(album.count == 1 ? "photo" : "photos")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
 
                             Spacer()
