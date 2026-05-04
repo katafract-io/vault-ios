@@ -115,7 +115,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             folderId: folderId,
             sizeBytes: sizeBytes)
         modelContext.insert(record)
-        saveOrLog(modelContext)
+        try? modelContext.save()
         backedUpIdentifiers.insert(assetIdentifier)
     }
 
@@ -177,6 +177,18 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             throw PhotoBackupManagerError.excluded
         }
         dlog("photo enqueue start: \(asset.localIdentifier)", category: "photos", level: .info)
+
+        // Prevent duplicate imports: if a LocalFile already exists for this
+        // asset (from a prior failed batch that didn't reach markBackedUp),
+        // skip rather than creating a second set of chunk rows.
+        let assetId = asset.localIdentifier
+        let dupCheck = FetchDescriptor<LocalFile>(
+            predicate: #Predicate<LocalFile> { $0.sourceAssetIdentifier == assetId })
+        if (try? modelContext.fetch(dupCheck))?.isEmpty == false {
+            dlog("photo enqueue skipped (already queued): \(asset.localIdentifier)", category: "photos", level: .debug)
+            throw PhotoBackupManagerError.excluded
+        }
+
         let folderKey = try await keyManager.getOrCreateFolderKey(folderId: "root")
         let (tempURL, originalName, sizeBytes) = try await Self.exportAssetToTemp(asset: asset)
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -186,7 +198,8 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             parentFolderId: nil,                // root
             folderKey: folderKey,
             masterKey: masterKey,
-            filename: originalName)
+            filename: originalName,
+            sourceAssetIdentifier: asset.localIdentifier)
 
         markBackedUp(
             assetIdentifier: asset.localIdentifier,
@@ -283,27 +296,43 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         excludeFromBackup(assetIdentifier)
         let descriptor = FetchDescriptor<BackedUpAsset>(
             predicate: #Predicate { $0.assetIdentifier == assetIdentifier })
-        guard let row = (try? modelContext.fetch(descriptor))?.first else { return }
-        let fileId = row.fileId
-        do {
-            try await apiClient.softDeleteFile(fileId: fileId)
-        } catch {
-            logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            dlog("vault soft-delete failed for \(assetIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
-            // Continue — also drop the local LocalFile + BackedUpAsset rows
-            // so the UI doesn't keep showing a phantom backup. The recycle bin
-            // sweep on the server will reconcile if the file actually exists.
+        if let row = (try? modelContext.fetch(descriptor))?.first {
+            let fileId = row.fileId
+            do {
+                try await apiClient.softDeleteFile(fileId: fileId)
+            } catch {
+                logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("vault soft-delete failed for \(assetIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
+            }
+            let lfDescriptor = FetchDescriptor<LocalFile>(
+                predicate: #Predicate { $0.fileId == fileId })
+            if let localRows = try? modelContext.fetch(lfDescriptor) {
+                for r in localRows { modelContext.delete(r) }
+            }
+            modelContext.delete(row)
+            backedUpIdentifiers.remove(assetIdentifier)
         }
-        // Drop the matching LocalFile cache row too so refreshFromCache stops
-        // surfacing the file in any browser the user opens next.
-        let lfDescriptor = FetchDescriptor<LocalFile>(
-            predicate: #Predicate { $0.fileId == fileId })
-        if let localRows = try? modelContext.fetch(lfDescriptor) {
-            for r in localRows { modelContext.delete(r) }
+
+        // Sweep any orphan LocalFile rows for this asset: rows created by
+        // importFile during a failed/cancelled backup that never reached
+        // markBackedUp. Without this, disabling an album leaves ghost chunks
+        // retrying forever in the upload queue.
+        let orphanDesc = FetchDescriptor<LocalFile>(
+            predicate: #Predicate<LocalFile> { $0.sourceAssetIdentifier == assetIdentifier })
+        if let orphans = try? modelContext.fetch(orphanDesc) {
+            for orphan in orphans {
+                let orphanId = orphan.fileId
+                let chunkDesc = FetchDescriptor<ChunkUploadQueue>(
+                    predicate: #Predicate<ChunkUploadQueue> { $0.fileId == orphanId })
+                if let chunks = try? modelContext.fetch(chunkDesc) {
+                    for c in chunks { modelContext.delete(c) }
+                }
+                ChunkCache.delete(hash: "__manifest__\(orphanId)")
+                ChunkCache.delete(hash: "__sidecar__\(orphanId)")
+                modelContext.delete(orphan)
+            }
         }
-        modelContext.delete(row)
-        saveOrLog(modelContext)
-        backedUpIdentifiers.remove(assetIdentifier)
+        try? modelContext.save()
     }
 
     private func runAlbumBackup(albumId: String) async {
@@ -380,40 +409,17 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
     /// Write the original asset bytes to a temp URL the sync engine can read.
     /// Uses `PHAssetResourceManager` so we get the unmodified original (no
-    /// re-encode), preserving HEIC / RAW / Live Photo / spatial video metadata.
-    ///
-    /// Resource-type priority:
-    ///   - Images (HEIC, JPEG, RAW): `.photo` > `.fullSizePhoto`
-    ///   - Videos / spatial videos (MV-HEIC stored as video): `.video` > `.fullSizeVideo`
-    ///   - Fallback: first available resource (catches edge-case asset types)
-    ///
+    /// re-encode), preserving HEIC / RAW / Live Photo metadata.
     /// Mirrors the helper in PhotosViewModel (WP 71); WP 73 will extract a
     /// single shared implementation.
     static func exportAssetToTemp(
         asset: PHAsset
     ) async throws -> (url: URL, originalName: String, sizeBytes: Int64) {
         let resources = PHAssetResource.assetResources(for: asset)
-        let primary: PHAssetResource
-        switch asset.mediaType {
-        case .video:
-            // Spatial video and regular video: prefer .video, fall back to
-            // .fullSizeVideo. Using a photo resource for a video asset silently
-            // writes a thumbnail HEIC instead of the actual video file.
-            guard let r = resources.first(where: { $0.type == .video })
-                       ?? resources.first(where: { $0.type == .fullSizeVideo })
-                       ?? resources.first else {
-                throw PhotoBackupManagerError.noResource
-            }
-            primary = r
-        default:
-            // Images (HEIC, JPEG, Live Photo stills, RAW): prefer .photo, fall
-            // back to .fullSizePhoto, then any resource.
-            guard let r = resources.first(where: { $0.type == .photo })
-                       ?? resources.first(where: { $0.type == .fullSizePhoto })
-                       ?? resources.first else {
-                throw PhotoBackupManagerError.noResource
-            }
-            primary = r
+        guard let primary = resources.first(where: { $0.type == .photo })
+                ?? resources.first(where: { $0.type == .fullSizePhoto })
+                ?? resources.first else {
+            throw PhotoBackupManagerError.noResource
         }
         let originalName = primary.originalFilename
         let tempURL = FileManager.default.temporaryDirectory
