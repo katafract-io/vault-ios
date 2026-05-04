@@ -77,38 +77,35 @@ class PhotosViewModel: ObservableObject {
         let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
         let enabledIds = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
 
-        let assets: [PHAsset]
-        if hasPersisted {
-            if enabledIds.isEmpty {
-                backedUpPhotos = []
-                allBackedUp = false
-                return
-            }
-            assets = Self.fetchAssets(fromAlbums: enabledIds, limit: 60)
-        } else {
-            // First-launch preview before user has opened the album drawer.
-            let opts = PHFetchOptions()
-            opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
-            opts.fetchLimit = 60
-            let result = PHAsset.fetchAssets(with: opts)
-            var collected: [PHAsset] = []
-            result.enumerateObjects { a, _, _ in collected.append(a) }
-            assets = collected
+        if hasPersisted && enabledIds.isEmpty {
+            backedUpPhotos = []
+            allBackedUp = false
+            return
         }
+
+        // PhotoKit's PHAsset.fetchAssets / enumerateObjects are synchronous
+        // calls into Photos.sqlite via NSXPCStoreConnection. On main, they
+        // hang the runloop and trip the iOS watchdog (bug type 228 / "UIKit-
+        // runloop timeout"). Move all PhotoKit work to a detached priority
+        // task and only return the lightweight summary back to the main
+        // actor for state mutation.
+        let summaries: [PhotoSummary] = await Task.detached(priority: .userInitiated) {
+            Self.fetchPhotoSummaries(hasPersisted: hasPersisted, enabledIds: enabledIds, limit: 60)
+        }.value
 
         services?.photoBackup.refresh()
         let backedUp = services?.photoBackup.backedUpIdentifiers ?? []
 
         var photos: [BackedUpPhoto] = []
-        for asset in assets {
+        photos.reserveCapacity(summaries.count)
+        for s in summaries {
             let state: BackedUpPhoto.BackupState =
-                backedUp.contains(asset.localIdentifier) ? .backedUp : .pending
+                backedUp.contains(s.localId) ? .backedUp : .pending
             photos.append(BackedUpPhoto(
-                id: asset.localIdentifier,
-                filename: asset.value(forKey: "filename") as? String ?? "IMG.HEIC",
+                id: s.localId,
+                filename: s.filename,
                 sizeBytes: 0,
-                takenAt: asset.creationDate ?? .distantPast,
+                takenAt: s.takenAt,
                 backupState: state
             ))
         }
@@ -116,8 +113,45 @@ class PhotosViewModel: ObservableObject {
         allBackedUp = !photos.isEmpty && photos.allSatisfy { $0.backupState == .backedUp }
     }
 
+    /// Sendable summary of a PHAsset suitable for crossing isolation
+    /// boundaries — the PHAsset object itself is bound to its fetch
+    /// context, so we extract scalars eagerly while still off-main.
+    private struct PhotoSummary: Sendable {
+        let localId: String
+        let filename: String
+        let takenAt: Date
+    }
+
+    /// Fetch + summarize image assets. Pure PhotoKit work; runs off-main.
+    /// `hasPersisted` distinguishes first-launch (recent-images preview)
+    /// from a deliberate album selection.
+    private static func fetchPhotoSummaries(
+        hasPersisted: Bool, enabledIds: Set<String>, limit: Int
+    ) -> [PhotoSummary] {
+        let assets: [PHAsset]
+        if hasPersisted {
+            assets = fetchAssets(fromAlbums: enabledIds, limit: limit)
+        } else {
+            let opts = PHFetchOptions()
+            opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
+            opts.fetchLimit = limit
+            let result = PHAsset.fetchAssets(with: opts)
+            var collected: [PHAsset] = []
+            result.enumerateObjects { a, _, _ in collected.append(a) }
+            assets = collected
+        }
+        return assets.map { asset in
+            PhotoSummary(
+                localId: asset.localIdentifier,
+                filename: (asset.value(forKey: "filename") as? String) ?? "IMG.HEIC",
+                takenAt: asset.creationDate ?? .distantPast)
+        }
+    }
+
     /// Fetch image assets belonging to any of the given album local-ids.
     /// Deduplicates across albums, sorts newest-first, caps at `limit`.
+    /// MUST be called off-main — see `fetchPhotoSummaries`.
     private static func fetchAssets(fromAlbums albumIds: Set<String>, limit: Int) -> [PHAsset] {
         let collections = PHAssetCollection.fetchAssetCollections(
             withLocalIdentifiers: Array(albumIds), options: nil)
