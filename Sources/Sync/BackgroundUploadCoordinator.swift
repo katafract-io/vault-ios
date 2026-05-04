@@ -163,12 +163,24 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
         req.httpMethod = "PUT"
         req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
 
-        // URLSession.background REQUIRES the file path form. Passing Data via
-        // upload(for:from:) raises an Obj-C exception in
-        // -[__NSURLBackgroundSession _uploadTaskWithTaskForClass:] which
-        // crashes the app via __cxa_throw → abort() (observed Vaultyx 1.0.2
-        // build 482 on iOS 26.5). Always use uploadTask(with:fromFile:).
-        let task = session.uploadTask(with: req, fromFile: fromFileURL)
+        // -[__NSURLBackgroundSession _uploadTaskWithTaskForClass:] still
+        // raises an Obj-C exception in cases the Swift pre-flight can't
+        // detect (observed in build 522 on iOS 26.5 even after PR-E). Wrap
+        // the call in an Obj-C @try/@catch shim so an internal validation
+        // failure becomes a recoverable error instead of a SIGABRT.
+        // (Swift auto-bridges the trailing `NSError**` parameter to `throws`,
+        //  so the call signature drops `error:` and uses `try` instead.)
+        let task: URLSessionUploadTask
+        do {
+            task = try KTBackgroundUpload.safeUploadTask(
+                on: session, with: req, fromFile: fromFileURL)
+        } catch {
+            let reason = (error as NSError).localizedDescription
+            logger.error("uploadTask threw NSException for \(fileId, privacy: .public)/\(chunkHash, privacy: .public): \(reason, privacy: .public)")
+            dlog("uploadTask threw NSException \(fileId)/\(chunkHash): \(reason)", category: "sync", level: .error)
+            await markRetryable(fileId: fileId, chunkHash: chunkHash)
+            return
+        }
         let taskIdentifier = task.taskIdentifier
 
         // Atomic claim: only persist the identifier if the row currently has

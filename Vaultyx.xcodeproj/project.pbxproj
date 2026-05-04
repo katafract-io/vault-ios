@@ -44,6 +44,7 @@
 		6CFC3F3E28AEE9B5D26D6884 /* SnapshotHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CFF3976A29D6C52E0BB18B0 /* SnapshotHelper.swift */; };
 		721108FC19B9F0974EF7568B /* FolderPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3B86B15A9A6ECF514C534E /* FolderPickerSheet.swift */; };
 		781EDBA16BA48455306F69D9 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7EC3FB8141B0F4D7CC1960 /* FileBrowserView.swift */; };
+		78B4FFFEEE270F78A4148163 /* SyncObjCBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = C2D66E95F20F2967887C22F1 /* SyncObjCBridge.m */; };
 		794722FF3786E664549B4A65 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA84B36B69F5E4E05B2F6AD /* ShareViewController.swift */; };
 		7980FC2D27B6826C7B2E5E96 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C228B6C51D78AFA3F2DED89 /* Keychain.swift */; };
 		7A3BBDA938D07032F6CA5DA0 /* StuckItemsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D662A60B45581C824B4731 /* StuckItemsView.swift */; };
@@ -156,6 +157,7 @@
 		39481199B6CB3F3482004760 /* VaultAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAPIClient.swift; sourceTree = "<group>"; };
 		3C42BCDD24AE3DCEA9C6E315 /* FileBrowserListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserListRow.swift; sourceTree = "<group>"; };
 		3D0EFA9CC6E443C612546AFC /* VaultShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VaultShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3DE5B99C093F924FDD931EC1 /* SyncObjCBridge.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = SyncObjCBridge.h; path = Sources/Sync/SyncObjCBridge.h; sourceTree = "<group>"; };
 		3E845B566D3BF6AC839915C0 /* StorageQuotaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageQuotaView.swift; sourceTree = "<group>"; };
 		42209600639B9C22079E9670 /* VaultFileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileItem.swift; sourceTree = "<group>"; };
 		4D6EB55A307D831805926CED /* VaultyxScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxScreenshotTests.swift; sourceTree = "<group>"; };
@@ -203,11 +205,13 @@
 		BAE93C79B5A93F77289A14A2 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		BC99130FB3DFEE8DB5125AA1 /* FileVersionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileVersionsView.swift; sourceTree = "<group>"; };
 		C0DEB895BEA790DBE779D5B7 /* PhotoThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoThumbnailView.swift; sourceTree = "<group>"; };
+		C2D66E95F20F2967887C22F1 /* SyncObjCBridge.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = SyncObjCBridge.m; path = Sources/Sync/SyncObjCBridge.m; sourceTree = "<group>"; };
 		C5AB12DC5F0732E9AD18ACEF /* PerFolderLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerFolderLock.swift; sourceTree = "<group>"; };
 		C754348E7C222A87AEFB8E9B /* BiometricLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricLock.swift; sourceTree = "<group>"; };
 		C8A1424DE4DC3454E083764A /* DocArmorBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocArmorBridge.swift; sourceTree = "<group>"; };
 		CEAD44FBB38C36294058F6E4 /* VaultyxUploadAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxUploadAttributes.swift; sourceTree = "<group>"; };
 		CEE91C06CE40E3712B8898B6 /* VaultFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFile.swift; sourceTree = "<group>"; };
+		D085DDBACAECBA55A05F4DC3 /* Vaultyx-Bridging-Header.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "Vaultyx-Bridging-Header.h"; path = "Sources/Vaultyx-Bridging-Header.h"; sourceTree = "<group>"; };
 		D088B5DC02E6D99790A3EC67 /* VaultyxLiveActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VaultyxLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D1E2F3A4B5C6D7E8F9A0B1C2 /* DebugLog+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DebugLog+UI.swift"; sourceTree = "<group>"; };
 		D5906A8BF8BC26BD6FFA7E98 /* DocArmorFolderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocArmorFolderView.swift; sourceTree = "<group>"; };
@@ -401,6 +405,9 @@
 				362426F4CD4D32467C01E4DA /* BackgroundUploadCoordinator.swift */,
 				E9D662A60B45581C824B4731 /* StuckItemsView.swift */,
 				9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */,
+				3DE5B99C093F924FDD931EC1 /* SyncObjCBridge.h */,
+				C2D66E95F20F2967887C22F1 /* SyncObjCBridge.m */,
+				D085DDBACAECBA55A05F4DC3 /* Vaultyx-Bridging-Header.h */,
 			);
 			sourceTree = "<group>";
 		};
@@ -776,6 +783,7 @@
 				856E4D1FB39D017DEEF19123 /* BackgroundUploadCoordinator.swift in Sources */,
 				7A3BBDA938D07032F6CA5DA0 /* StuckItemsView.swift in Sources */,
 				223BAC90A5E031B2BD6F3964 /* NetworkReachability.swift in Sources */,
+				78B4FFFEEE270F78A4148163 /* SyncObjCBridge.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -885,6 +893,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault;
 				PRODUCT_NAME = Vaultyx;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Vaultyx-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -999,6 +1008,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault;
 				PRODUCT_NAME = Vaultyx;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Vaultyx-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
