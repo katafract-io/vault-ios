@@ -157,8 +157,9 @@ struct StuckItemsView: View {
         }
 
         // Clear in-flight markers on all associated chunks
+        let fileId = file.fileId
         let descriptor = FetchDescriptor<ChunkUploadQueue>(
-            predicate: #Predicate { $0.fileId == file.fileId }
+            predicate: #Predicate { $0.fileId == fileId }
         )
         let chunks = (try? modelContext.fetch(descriptor)) ?? []
         for chunk in chunks {
