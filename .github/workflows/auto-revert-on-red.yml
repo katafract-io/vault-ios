@@ -1,0 +1,146 @@
+name: Auto-revert on red main
+
+on:
+  workflow_run:
+    workflows: ["Ship to TestFlight"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-revert:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'failure'
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Get failed commit details
+        id: failed
+        run: |
+          FAILED_SHA="${{ github.event.workflow_run.head_commit.id }}"
+          FAILED_MSG="${{ github.event.workflow_run.head_commit.message }}"
+          
+          echo "sha=$FAILED_SHA" >> $GITHUB_OUTPUT
+          echo "msg=$(echo '$FAILED_MSG' | head -1)" >> $GITHUB_OUTPUT
+          echo "Failed commit: $FAILED_SHA"
+
+      - name: Create revert branch and PR
+        id: revert
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAILED_SHA: ${{ steps.failed.outputs.sha }}
+          FAILED_MSG: ${{ steps.failed.outputs.msg }}
+        run: |
+          git config user.name "katafract-autofix[bot]"
+          git config user.email "bot@katafract.io"
+          
+          BRANCH="auto-revert/$FAILED_SHA"
+          BRANCH_SHORT=$(echo $FAILED_SHA | cut -c1-7)
+          
+          # Create revert branch
+          git checkout -b "$BRANCH"
+          
+          # Attempt revert
+          if ! git revert -m 1 "$FAILED_SHA" --no-edit; then
+            echo "::error::Failed to revert $FAILED_SHA — possible merge conflict. Manual intervention required."
+            exit 1
+          fi
+          
+          git push origin "$BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          
+          # Create PR with gh
+          PR_URL=$(gh pr create \
+            --title "auto-revert: $BRANCH_SHORT — ship.yml failed on main" \
+            --body "Auto-revert of failed commit on main. Failed commit: $FAILED_SHA. Triggered by: ship.yml failure. Doctrine: verification-framework requires auto-revert within 5 min. This PR will auto-merge once CI passes. If revert CI fails, an incident will be created. Automated by fleet-ops verification framework." \
+            --base main \
+            --head "$BRANCH" \
+            --repo "${{ github.repository }}" \
+            2>&1)
+          
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "PR created: $PR_URL"
+
+      - name: Notify Matrix - Auto-revert opened
+        if: success()
+        run: |
+          curl -s -X POST https://webhooks.katafract.io/webhook/github \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d '{"text":"⏪ AUTO-REVERTED ${{ github.repository }} main | Failed: ${{ steps.failed.outputs.sha }} | PR: ${{ steps.revert.outputs.pr_url }} | Status: Auto-merge when CI passes (5m timeout)"}' || true
+
+      - name: Wait for PR checks to pass (5 min timeout)
+        id: wait
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.revert.outputs.branch }}"
+          TIMEOUT=300
+          POLL_INTERVAL=10
+          ELAPSED=0
+          
+          echo "Polling for check suite completion..."
+          
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATUS=$(gh pr checks "$BRANCH" \
+              --repo "${{ github.repository }}" \
+              2>&1 || echo "PENDING")
+            
+            if echo "$STATUS" | grep -q "All checks passed"; then
+              echo "✓ All checks passed"
+              echo "auto_merge=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            if echo "$STATUS" | grep -q "Some checks failed"; then
+              echo "✗ Some checks failed"
+              echo "auto_merge=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            
+            ELAPSED=$((ELAPSED + POLL_INTERVAL))
+            REMAINING=$((TIMEOUT - ELAPSED))
+            echo "Waiting for checks... ($REMAINING sec remaining)"
+            sleep $POLL_INTERVAL
+          done
+          
+          echo "⚠ Timeout waiting for checks (5 min)"
+          echo "auto_merge=false" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Auto-merge revert PR
+        if: steps.wait.outputs.auto_merge == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.revert.outputs.branch }}"
+          
+          gh pr merge "$BRANCH" \
+            --repo "${{ github.repository }}" \
+            --squash \
+            --delete-branch \
+            --auto \
+            || echo "::warning::Could not enable auto-merge; PR left open for manual action"
+
+      - name: Notify Matrix - Check timeout or failure
+        if: always() && steps.wait.outputs.auto_merge == 'false'
+        run: |
+          curl -s -X POST https://webhooks.katafract.io/webhook/github \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d '{"text":"⚠️ Auto-revert check timeout on ${{ github.repository }} | PR: ${{ steps.revert.outputs.pr_url }} | Action: PR left open, manual merge required"}' || true
+
+      - name: Notify Matrix - Incident on revert failure
+        if: failure()
+        run: |
+          curl -s -X POST https://webhooks.katafract.io/webhook/github \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ secrets.MATRIX_WEBHOOK_SECRET }}" \
+            -d '{"text":"🚨 INCIDENT - Auto-revert PR CI failed on ${{ github.repository }} | Failed commit: ${{ steps.failed.outputs.sha }} | PR: ${{ steps.revert.outputs.pr_url }} | Status: Human blocked, manual intervention required"}' || true
