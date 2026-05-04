@@ -25,6 +25,12 @@ import Foundation
     var manifestAttempts: Int = 0
     var nextManifestRetryAt: Date = Date()
 
+    /// PHAsset local identifier — populated when this file was imported via photo
+    /// backup. Used by `removeBackup` to find and clean up orphan rows that were
+    /// created by a failed or cancelled album-backup attempt before `BackedUpAsset`
+    /// was written. Nil for files imported manually.
+    var sourceAssetIdentifier: String? = nil
+
     init(
         fileId: String,
         filename: String = "File",
@@ -38,7 +44,8 @@ import Foundation
         isPinned: Bool = false,
         thumbnailPath: String? = nil,
         manifestAttempts: Int = 0,
-        nextManifestRetryAt: Date = Date()
+        nextManifestRetryAt: Date = Date(),
+        sourceAssetIdentifier: String? = nil
     ) {
         self.fileId = fileId
         self.filename = filename
@@ -53,6 +60,7 @@ import Foundation
         self.thumbnailPath = thumbnailPath
         self.manifestAttempts = manifestAttempts
         self.nextManifestRetryAt = nextManifestRetryAt
+        self.sourceAssetIdentifier = sourceAssetIdentifier
     }
 }
 
