@@ -77,20 +77,21 @@ struct RecentsView: View {
             previewURL = nil
             previewError = nil
         }) { file in
-            if let url = previewURL {
-                FilePreviewSheet(fileURL: url, displayName: file.name)
-            } else {
-                FilePreviewLoadingSheet(displayName: file.name, errorMessage: previewError)
-                    .task {
-                        let url = await viewModel.materializeLocalURL(for: file)
-                        if let url {
-                            previewURL = url
-                        } else {
-                            previewError = viewModel.error
-                                ?? "The file isn't available right now."
-                            viewModel.error = nil
-                        }
-                    }
+            FilePreviewSheet(
+                displayName: file.name,
+                fileURL: previewURL,
+                errorMessage: previewError
+            )
+            .task(id: file.id) {
+                guard previewURL == nil, previewError == nil else { return }
+                let url = await viewModel.materializeLocalURL(for: file)
+                if let url {
+                    previewURL = url
+                } else {
+                    previewError = viewModel.error
+                        ?? "The file isn't available right now."
+                    viewModel.error = nil
+                }
             }
         }
         .task {

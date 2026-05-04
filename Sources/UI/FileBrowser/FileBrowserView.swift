@@ -272,20 +272,12 @@ struct FileBrowserView: View {
             // during an in-flight materialize, but on dismiss we're done.
             fileLoadingStates.removeAll()
         }) { file in
-            // Kick off the materialize task immediately on sheet present, but show
-            // loading until URL is ready. Using a separate @State flag ensures the
-            // task stays alive even if parent re-renders — the sheet itself owns the
-            // async work and is only dismissed when selectedFile becomes nil.
-            Group {
-                if let url = previewURL {
-                    FilePreviewSheet(fileURL: url, displayName: file.name)
-                } else {
-                    FilePreviewLoadingSheet(displayName: file.name, errorMessage: previewError)
-                }
-            }
+            FilePreviewSheet(
+                displayName: file.name,
+                fileURL: previewURL,
+                errorMessage: previewError
+            )
             .onAppear {
-                // onAppear fires once when sheet is first presented, even if parent
-                // redraws later. Async task is guaranteed to run until sheet dismisses.
                 guard !previewIsLoading else { return }
                 previewIsLoading = true
                 previewError = nil
@@ -295,9 +287,6 @@ struct FileBrowserView: View {
                     if let url {
                         previewURL = url
                     } else {
-                        // Surface the error inside the loading sheet itself
-                        // instead of dismissing — the dismiss-then-alert
-                        // transition can swallow the alert on iOS.
                         previewError = viewModel.error
                             ?? "The file isn't available right now."
                         viewModel.error = nil

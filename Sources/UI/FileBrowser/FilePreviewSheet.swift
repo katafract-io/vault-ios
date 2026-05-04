@@ -4,26 +4,60 @@ import KatafractStyle
 
 /// Sheet that hosts QLPreviewController for a single decrypted, on-disk file.
 ///
-/// The URL must point to a real file that QuickLook can read directly —
-/// this is the caller's responsibility (download chunks, decrypt, write to a
-/// tmp path, then present this sheet with that URL). QLPreviewController
-/// handles PDF, Office docs, images, video, audio, text, and more natively.
+/// Loading + ready + error states live inside a single NavigationStack so the
+/// content swap doesn't tear down the navigation chrome (that tear-down was
+/// the source of the flicker/loop the user saw on tap → preview). The
+/// `.animation(nil, value:)` modifier suppresses the implicit transition on
+/// the inner body switch so the appearance change feels instantaneous.
 struct FilePreviewSheet: View {
-    let fileURL: URL
     let displayName: String
+    let fileURL: URL?
+    let errorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            QuickLookPreview(url: fileURL)
-                .ignoresSafeArea()
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationTitle(displayName)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Done") { dismiss() }
+                        Button(fileURL == nil && errorMessage != nil ? "Dismiss" : (fileURL == nil ? "Cancel" : "Done")) {
+                            dismiss()
+                        }
                     }
                 }
+                .animation(nil, value: fileURL)
+                .animation(nil, value: errorMessage)
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let fileURL {
+            QuickLookPreview(url: fileURL)
+                .ignoresSafeArea()
+        } else if let errorMessage {
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 36, weight: .regular))
+                    .foregroundStyle(.tertiary)
+                Text("Couldn't open \(displayName)")
+                    .font(.headline)
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+        } else {
+            VStack(spacing: 16) {
+                KataProgressRing(size: 40)
+                Text("Preparing \(displayName)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
