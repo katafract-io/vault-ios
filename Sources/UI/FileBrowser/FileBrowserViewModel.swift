@@ -88,8 +88,18 @@ class FileBrowserViewModel: ObservableObject {
             .filter { $0.parentFolderId == currentFolderId }
             .sorted { $0.name.lowercased() < $1.name.lowercased() }
 
+        // Photos backed up via the Photos tab live as LocalFile rows at the
+        // vault root (same storage path), but the user's mental model is
+        // that they belong to the Photos grid and shouldn't clutter the File
+        // Browser. Build the exclusion set from BackedUpAsset → fileId so
+        // the browser only shows files the user explicitly added.
+        let photoFileIds: Set<String> = Set(
+            ((try? context.fetch(FetchDescriptor<BackedUpAsset>())) ?? [])
+                .map(\.fileId))
+
         let files = ((try? context.fetch(FetchDescriptor<LocalFile>())) ?? [])
-            .filter { $0.parentFolderId == currentFolderId }
+            .filter { $0.parentFolderId == currentFolderId
+                && !photoFileIds.contains($0.fileId) }
             .sorted { $0.modifiedAt > $1.modifiedAt }
 
         let folderItems = folders.map { folder in
