@@ -124,8 +124,10 @@ class PhotosViewModel: ObservableObject {
 
     /// Fetch + summarize image assets. Pure PhotoKit work; runs off-main.
     /// `hasPersisted` distinguishes first-launch (recent-images preview)
-    /// from a deliberate album selection.
-    private static func fetchPhotoSummaries(
+    /// from a deliberate album selection. `nonisolated` so it can be called
+    /// from a `Task.detached` block — without this, the @MainActor on the
+    /// enclosing class would prevent off-main invocation.
+    nonisolated private static func fetchPhotoSummaries(
         hasPersisted: Bool, enabledIds: Set<String>, limit: Int
     ) -> [PhotoSummary] {
         let assets: [PHAsset]
@@ -152,7 +154,7 @@ class PhotosViewModel: ObservableObject {
     /// Fetch image assets belonging to any of the given album local-ids.
     /// Deduplicates across albums, sorts newest-first, caps at `limit`.
     /// MUST be called off-main — see `fetchPhotoSummaries`.
-    private static func fetchAssets(fromAlbums albumIds: Set<String>, limit: Int) -> [PHAsset] {
+    nonisolated private static func fetchAssets(fromAlbums albumIds: Set<String>, limit: Int) -> [PHAsset] {
         let collections = PHAssetCollection.fetchAssetCollections(
             withLocalIdentifiers: Array(albumIds), options: nil)
         let opts = PHFetchOptions()
