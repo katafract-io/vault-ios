@@ -313,20 +313,33 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         // and trips the iOS watchdog (bug type 228 / "UIKit-runloop timeout"
         // — see /tmp/vault.crash.ips from build 513). Only [String] (Sendable)
         // crosses the actor boundary; PHAsset itself is non-Sendable.
-        let allIds: [String] = await Task.detached(priority: .userInitiated) {
+        struct AlbumLookup: Sendable { let collectionResolved: Bool; let assetIds: [String] }
+        let lookup: AlbumLookup = await Task.detached(priority: .userInitiated) {
             let coll = PHAssetCollection.fetchAssetCollections(
                 withLocalIdentifiers: [albumId], options: nil)
-            guard let collection = coll.firstObject else { return [] }
-            let opts = PHFetchOptions()
-            opts.predicate = NSPredicate(
-                format: "mediaType = %d", PHAssetMediaType.image.rawValue)
-            let assetsResult = PHAsset.fetchAssets(in: collection, options: opts)
+            guard let collection = coll.firstObject else {
+                return AlbumLookup(collectionResolved: false, assetIds: [])
+            }
+            // No mediaType predicate — Vaultyx backs up videos + photos +
+            // Live Photos + iCloud-shared assets equally. Filtering on
+            // PHAssetMediaType.image was excluding everything in albums
+            // that contained videos/mixed media (Tek smoke 520, log line:
+            // "album not found or empty: <smart-album-id>").
+            let assetsResult = PHAsset.fetchAssets(in: collection, options: nil)
             var ids: [String] = []
             assetsResult.enumerateObjects { asset, _, _ in
                 ids.append(asset.localIdentifier)
             }
-            return ids
+            return AlbumLookup(collectionResolved: true, assetIds: ids)
         }.value
+        let allIds = lookup.assetIds
+        if !lookup.collectionResolved {
+            dlog("album LID did not resolve to any PHAssetCollection: \(albumId) — likely stale identifier or unsupported smart-album type", category: "photos", level: .error)
+        } else if allIds.isEmpty {
+            dlog("album resolved but contains 0 assets: \(albumId)", category: "photos", level: .warn)
+        } else {
+            dlog("album resolved with \(allIds.count) asset(s): \(albumId)", category: "photos", level: .info)
+        }
 
         if allIds.isEmpty {
             logger.error("album not found or empty: \(albumId, privacy: .public)")

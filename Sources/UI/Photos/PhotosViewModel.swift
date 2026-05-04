@@ -138,9 +138,10 @@ class PhotosViewModel: ObservableObject {
         if hasPersisted {
             assets = fetchAssets(fromAlbums: enabledIds, limit: limit)
         } else {
+            // First-launch preview, no album selection yet — show recent media.
+            // No mediaType filter (see fetchAssets above).
             let opts = PHFetchOptions()
             opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
             opts.fetchLimit = limit
             let result = PHAsset.fetchAssets(with: opts)
             var collected: [PHAsset] = []
@@ -163,9 +164,12 @@ class PhotosViewModel: ObservableObject {
         let collections = PHAssetCollection.fetchAssetCollections(
             withLocalIdentifiers: idArray, options: nil)
         dlog("fetchAssets: requested \(idArray.count) album id(s), resolved \(collections.count) collection(s)", category: "photos", level: .info)
+        // No mediaType predicate — Vaultyx backs up whatever the user has in
+        // an album. Filtering on PHAssetMediaType.image excluded videos
+        // (and some Live Photos / iCloud-shared content) and produced the
+        // empty-grid + silent-backup symptom Tek hit on build 520.
         let opts = PHFetchOptions()
         opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        opts.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
 
         var seen = Set<String>()
         var collected: [PHAsset] = []
