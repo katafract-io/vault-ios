@@ -1,0 +1,13 @@
+# IAP screenshot mapping — frame → ASC product ID
+# Used by iap-review-refresh.yml to map captured frames to SKU uploads
+
+subs:
+  100gb.monthly: shots/100gb-monthly.png
+  100gb.yearly: shots/100gb-yearly.png
+  1tb.monthly: shots/1tb-monthly.png
+  1tb.yearly: shots/1tb-yearly.png
+  5tb.monthly: shots/5tb-monthly.png
+  5tb.yearly: shots/5tb-yearly.png
+
+iaps:
+  sovereign.forever: shots/sovereign-forever.png

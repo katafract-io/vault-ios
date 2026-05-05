@@ -49,8 +49,30 @@ platform :ios do
     )
   end
 
+  desc "Capture IAP review frames (capacity tier subscriptions only)"
+  lane :iap_review_refresh do
+    # Capacity tier tests only — frames 08-13, iPhone 16 Pro
+    # Maps to SKUs: 100gb.monthly, 100gb.yearly, 1tb.monthly, 1tb.yearly, 5tb.monthly, 5tb.yearly
+    # Upload handled by iap-review-refresh.yml workflow via artemis SSH
+
+    test_methods = [
+      "VaultyxScreenshotTests/testCaptureCapacity100gbMonthly",
+      "VaultyxScreenshotTests/testCaptureCapacity100gbYearly",
+      "VaultyxScreenshotTests/testCaptureCapacity1tbMonthly",
+      "VaultyxScreenshotTests/testCaptureCapacity1tbYearly",
+      "VaultyxScreenshotTests/testCaptureCapacity5tbMonthly",
+      "VaultyxScreenshotTests/testCaptureCapacity5tbYearly",
+    ]
+
+    test_filter = test_methods.map { |m| "-only-testing=#{m}" }.join(" ")
+    scheme = ENV["SCHEME"] || "Vaultyx"
+    destination = ENV["SIMULATOR_DESTINATION"] || "generic/platform=iOS Simulator,name=iPhone 16 Pro"
+
+    sh("xcodebuild test -project #{scheme}.xcodeproj -scheme #{scheme} -destination '#{destination}' -derivedDataPath /tmp/xcodebuild #{test_filter}")
+  end
+
   # Subscription + IAP review screenshots are uploaded via the shared CLI on
   # artemis: `python -m services.asc_screenshot_upload sub|iap ...`. fastlane
-  # deliver does NOT handle those well. See SCREENSHOT_PIPELINE.md for the
-  # commands.
+  # deliver does NOT handle those well. See iap-review-refresh.yml for the
+  # workflow implementation.
 end
