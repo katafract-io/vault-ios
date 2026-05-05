@@ -73,14 +73,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_URL=$(gh pr create \
+          gh pr create \
             --base main \
             --head auto-revert/${{ steps.sha.outputs.sha_short }} \
             --title "auto-revert: ${{ steps.sha.outputs.sha_short }}" \
-            --body "ship.yml failed on main HEAD (${{ steps.sha.outputs.sha_short }}); auto-reverting per verification-framework doctrine.
-
-**Automation:** If this PR's own CI passes, it will auto-merge via GitHub App. If it fails, the PR will be left open for manual review as a P0 incident." \
-            --label "automated" 2>&1)
+            --body "ship.yml failed on main HEAD (${{ steps.sha.outputs.sha_short }}); auto-reverting per verification-framework doctrine." \
+            --label "automated" 2>&1 | tee /tmp/pr_output.txt
+          PR_URL=$(cat /tmp/pr_output.txt | grep 'https://github.com')
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
           echo "PR opened: $PR_URL"
 
