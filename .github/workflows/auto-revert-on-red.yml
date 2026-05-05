@@ -1,0 +1,194 @@
+name: Auto-revert on ship failure (main only)
+
+on:
+  workflow_run:
+    workflows: ["Ship to TestFlight"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      bad_sha:
+        description: 'SHA to revert (test mode) — if empty, tries to find failed main HEAD'
+        required: false
+
+jobs:
+  auto-revert:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      github.event_name == 'workflow_dispatch'
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 10
+
+      - name: Determine SHA to revert
+        id: sha
+        env:
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_commit.id }}
+          INPUT_SHA: ${{ github.event.inputs.bad_sha }}
+        run: |
+          if [ -n "$INPUT_SHA" ]; then
+            SHA=$INPUT_SHA
+          elif [ -n "$WORKFLOW_SHA" ]; then
+            SHA=$WORKFLOW_SHA
+          else
+            SHA=$(git rev-parse HEAD)
+          fi
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "sha_short=${SHA:0:7}" >> $GITHUB_OUTPUT
+
+      - name: Create revert commit
+        id: revert
+        run: |
+          git config user.name "fleet-ops[bot]"
+          git config user.email "ops@katafract.com"
+          git revert --no-edit ${{ steps.sha.outputs.sha }} || {
+            echo "status=revert_failed" >> $GITHUB_OUTPUT
+            exit 0
+          }
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Create auto-revert branch
+        if: steps.revert.outputs.status == 'success'
+        run: |
+          git checkout -b auto-revert/${{ steps.sha.outputs.sha_short }}
+
+      - name: Push branch
+        if: steps.revert.outputs.status == 'success'
+        run: |
+          git push -u origin auto-revert/${{ steps.sha.outputs.sha_short }}
+
+      - name: Create auto-revert PR
+        if: steps.revert.outputs.status == 'success'
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL=$(gh pr create \
+            --base main \
+            --head auto-revert/${{ steps.sha.outputs.sha_short }} \
+            --title "auto-revert: ${{ steps.sha.outputs.sha_short }}" \
+            --body "ship.yml failed on main HEAD (${{ steps.sha.outputs.sha_short }}); auto-reverting per verification-framework doctrine.
+
+**Automation:** If this PR's own CI passes, it will auto-merge via GitHub App. If it fails, the PR will be left open for manual review as a P0 incident." \
+            --label "automated" 2>&1)
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          echo "PR opened: $PR_URL"
+
+      - name: Wait for PR checks
+        if: steps.revert.outputs.status == 'success'
+        id: checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_url && fromJSON(steps.pr.outputs.pr_url).number || '' }}
+        run: |
+          # Extract PR number from URL
+          PR_NUM=$(echo "${{ steps.pr.outputs.pr_url }}" | grep -oP '(?<=/pull/)\d+')
+          echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+
+          # Wait up to 5 minutes for checks to complete
+          max_wait=300
+          elapsed=0
+          while [ $elapsed -lt $max_wait ]; do
+            STATUS=$(gh pr checks $PR_NUM --json conclusion --jq '.[].conclusion' | sort -u)
+            if [[ ! "$STATUS" =~ "PENDING" ]] && [[ ! "$STATUS" =~ "IN_PROGRESS" ]]; then
+              echo "Checks complete: $STATUS"
+              echo "checks_complete=true" >> $GITHUB_OUTPUT
+              break
+            fi
+            echo "Waiting for checks... ($elapsed/$max_wait seconds)"
+            sleep 10
+            elapsed=$((elapsed + 10))
+          done
+
+      - name: Check if all checks passed
+        if: steps.checks.outputs.checks_complete == 'true' && steps.revert.outputs.status == 'success'
+        id: checks_status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.checks.outputs.pr_number }}
+        run: |
+          FAILURES=$(gh pr checks $PR_NUMBER --json conclusion --jq 'map(select(.conclusion != "SUCCESS")) | length')
+          if [ "$FAILURES" == "0" ]; then
+            echo "checks_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "checks_passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Revert PR checks failed ($FAILURES failures)"
+          fi
+
+      - name: Enable auto-merge on revert PR
+        if: steps.checks_status.outputs.checks_passed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.FLEET_OPS_GH_APP_TOKEN }}
+          PR_NUMBER: ${{ steps.checks.outputs.pr_number }}
+        run: |
+          gh pr merge $PR_NUMBER --squash --auto || {
+            echo "⚠️ Auto-merge not enabled; will merge manually"
+            gh pr merge $PR_NUMBER --squash
+          }
+          echo "✅ Revert PR auto-merged"
+
+      - name: Notify Matrix on success
+        if: steps.checks_status.outputs.checks_passed == 'true'
+        env:
+          MATRIX_WEBHOOK: ${{ secrets.MATRIX_WEBHOOK_FLEET_OPS }}
+        run: |
+          if [ -n "$MATRIX_WEBHOOK" ]; then
+            curl -X POST "$MATRIX_WEBHOOK" \
+              -H 'Content-Type: application/json' \
+              -d @- <<EOF
+            {
+              "msgtype": "m.text",
+              "body": "⏪ AUTO-REVERTED vault-ios main: ${{ steps.sha.outputs.sha_short }}. Ship to TestFlight failed. Original work can be re-opened as clean PR. Revert PR: ${{ steps.pr.outputs.pr_url }}"
+            }
+            EOF
+          fi
+
+      - name: Create incident on revert-PR CI failure
+        if: steps.checks_status.outputs.checks_passed == 'false' && steps.revert.outputs.status == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.checks.outputs.pr_number }}
+        run: |
+          # This would create an incident WP in OP
+          # For now, notify Matrix of the failure
+          MATRIX_WEBHOOK="${{ secrets.MATRIX_WEBHOOK_FLEET_OPS }}"
+          if [ -n "$MATRIX_WEBHOOK" ]; then
+            curl -X POST "$MATRIX_WEBHOOK" \
+              -H 'Content-Type: application/json' \
+              -d @- <<EOF
+            {
+              "msgtype": "m.text",
+              "body": "🚨 P0 ALERT: vault-ios revert PR CI FAILED (PR #${{ steps.checks.outputs.pr_number }}). The revert of ${{ steps.sha.outputs.sha_short }} has build issues. Manual investigation required. PR: ${{ steps.pr.outputs.pr_url }}"
+            }
+            EOF
+          fi
+          echo "::error::Revert PR CI failed — incident escalation needed"
+          exit 1
+
+      - name: Notify revert failure
+        if: steps.revert.outputs.status == 'revert_failed'
+        env:
+          MATRIX_WEBHOOK: ${{ secrets.MATRIX_WEBHOOK_FLEET_OPS }}
+        run: |
+          if [ -n "$MATRIX_WEBHOOK" ]; then
+            curl -X POST "$MATRIX_WEBHOOK" \
+              -H 'Content-Type: application/json' \
+              -d @- <<EOF
+            {
+              "msgtype": "m.text",
+              "body": "⚠️ vault-ios auto-revert FAILED: Could not revert ${{ steps.sha.outputs.sha_short }} (likely merge conflict). Manual intervention required."
+            }
+            EOF
+          fi
+          echo "::error::Could not revert — merge conflict or other issue"
+          exit 1
