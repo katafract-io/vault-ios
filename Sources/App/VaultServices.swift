@@ -58,9 +58,11 @@ public final class VaultServices: ObservableObject {
             masterKey: self.masterKey)
 
         // Seed screenshot demo data if requested
+        #if DEBUG
         if let seedPreset = ScreenshotMode.seedData {
             seedDemoData(preset: seedPreset, into: container)
         }
+        #endif
 
         // Seed the key manager's master key so getFolderKey works immediately
         // without requiring a user-entered password. Runs in a detached Task
@@ -79,6 +81,7 @@ public final class VaultServices: ObservableObject {
 
     /// Populate demo seed data for screenshot capture.
     /// Preset "sovereign-demo" creates a folder hierarchy with realistic document files.
+    #if DEBUG
     private func seedDemoData(preset: String, into container: ModelContainer) {
         guard preset == "sovereign-demo" else { return }
 
@@ -138,6 +141,7 @@ public final class VaultServices: ObservableObject {
             print("Warning: failed to seed screenshot data: \(error)")
         }
     }
+    #endif
 
     /// Drain the App-Group import inbox: each (file, sidecar) pair is run
     /// through `syncEngine.importFile` which encrypts + queues for upload,
