@@ -3,6 +3,8 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var services: VaultServices
     @AppStorage("vaultyx.onboarding.phrase_confirmed") private var phraseConfirmed = false
+    @State private var showPhraseVerify = false
+    @State private var phraseToVerify: [String] = []
 
     private var onboardingComplete: Bool {
         if ScreenshotMode.forceOnboarding { return false }
@@ -23,9 +25,19 @@ struct ContentView: View {
             set: { if !$0 { phraseConfirmed = true } })) {
             RecoveryPhraseView(
                 phrase: RecoveryPhrase.phrase(for: services.masterKey),
-                mode: .onboarding(onConfirmed: { phraseConfirmed = true })
+                mode: .onboarding(onConfirmed: {
+                    phraseToVerify = RecoveryPhrase.phrase(for: services.masterKey)
+                    showPhraseVerify = true
+                })
             )
             .interactiveDismissDisabled(true)
+        }
+        .sheet(isPresented: $showPhraseVerify) {
+            RecoveryPhraseVerifyView(
+                phrase: phraseToVerify,
+                onVerified: { phraseConfirmed = true }
+            )
+            .interactiveDismissDisabled()
         }
     }
 }
