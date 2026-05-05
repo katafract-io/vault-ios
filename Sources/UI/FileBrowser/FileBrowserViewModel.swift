@@ -237,6 +237,18 @@ class FileBrowserViewModel: ObservableObject {
                 uploadInProgress = false
                 uploadTask = nil
                 _ = file  // suppress unused-var warning
+            } catch VaultSyncEngineError.quotaExceeded(let used, let quota, _) {
+                let fmt = ByteCountFormatter()
+                fmt.countStyle = .file
+                self.error = "Storage full: \(fmt.string(fromByteCount: used)) of \(fmt.string(fromByteCount: quota)) used. Upgrade your plan to add more files."
+                showPaywall = true
+                activityMgr.failBatch(
+                    bytesUploaded: bytesUploaded,
+                    totalBytes: totalBytes,
+                    filesRemaining: filesRemaining
+                )
+                uploadInProgress = false
+                uploadTask = nil
             } catch is CancellationError {
                 // User-initiated cancel — end LiveActivity cleanly, no error alert.
                 activityMgr.failBatch(

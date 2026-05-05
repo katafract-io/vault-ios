@@ -68,6 +68,9 @@ public class VaultSyncEngine: ObservableObject {
     private var manifestInFlight: Set<String> = []
     private let logger = Logger(subsystem: "com.katafract.vault", category: "sync")
 
+    private var remoteQuotaBytes: Int64 = 0
+    private var remoteUsedBytes: Int64 = 0
+
     @Published public var syncState: EngineState = .idle
     @Published public var activeUploads: Int = 0
     @Published public var activeDownloads: Int = 0
@@ -104,6 +107,14 @@ public class VaultSyncEngine: ObservableObject {
             guard success, let self else { return }
             await self.checkAndFinalizeFile(fileId: fileId)
         }
+    }
+
+    /// Update the engine with fresh server-side quota data from vaultMeta().
+    /// Called from MainTabView after each vaultMeta() call so importFile can check
+    /// if the user's quota is exceeded before accepting new files.
+    public func setRemoteQuota(usedBytes: Int64, quotaBytes: Int64) {
+        self.remoteUsedBytes = usedBytes
+        self.remoteQuotaBytes = quotaBytes
     }
 
     // MARK: - Import (fast path)
@@ -154,6 +165,18 @@ public class VaultSyncEngine: ObservableObject {
             if queued + fileSize > Self.uploadQueueCeiling {
                 throw VaultSyncEngineError.uploadQueueFull(
                     queuedBytes: queued, fileBytes: fileSize)
+            }
+
+            // --- Server-side quota check (if we have fresh data from vaultMeta) ---
+            if self.remoteQuotaBytes > 0 {
+                let pending = ChunkCache.totalSize()
+                if self.remoteUsedBytes + pending + fileSize > self.remoteQuotaBytes {
+                    throw VaultSyncEngineError.quotaExceeded(
+                        usedBytes: self.remoteUsedBytes,
+                        quotaBytes: self.remoteQuotaBytes,
+                        fileBytes: fileSize
+                    )
+                }
             }
 
             // --- Chunk + encrypt + cache ---
@@ -1295,4 +1318,5 @@ public enum VaultSyncEngineError: Error {
     case httpError(statusCode: Int)
     case noNextChunk
     case uploadQueueFull(queuedBytes: Int64, fileBytes: Int64)
+    case quotaExceeded(usedBytes: Int64, quotaBytes: Int64, fileBytes: Int64)
 }

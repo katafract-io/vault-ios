@@ -736,9 +736,17 @@ struct SettingsView: View {
                 quota_bytes: 1024 * 1024 * 1024 * 1024,  // 1 TB
                 quota_exceeded: false
             )
+            if let meta = vaultMeta {
+                services.syncEngine.setRemoteQuota(usedBytes: meta.usage_bytes, quotaBytes: meta.quota_bytes)
+            }
             return
         }
-        do { vaultMeta = try await services.apiClient.vaultMeta() }
+        do {
+            vaultMeta = try await services.apiClient.vaultMeta()
+            if let meta = vaultMeta {
+                services.syncEngine.setRemoteQuota(usedBytes: meta.usage_bytes, quotaBytes: meta.quota_bytes)
+            }
+        }
         catch { print("vaultMeta fetch failed: \(error)") }
     }
 
