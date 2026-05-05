@@ -102,9 +102,15 @@ struct PhotosView: View {
                 await viewModel.loadRecentPhotos()
             }
             .sheet(item: $viewModel.selectedPhoto) { photo in
-                PhotoDetailView(photo: photo, onDelete: {
-                    viewModel.removeFromBackup(photo)
-                })
+                PhotoDetailView(
+                    photo: photo,
+                    onDelete: {
+                        viewModel.removeFromBackup(photo)
+                    },
+                    onRestore: {
+                        await viewModel.restorePhoto(photo)
+                    }
+                )
             }
             .sheet(isPresented: $showPaywall) {
                 CapacityPickerView()
@@ -401,25 +407,64 @@ struct PhotoDetailView: View {
     /// Invoked when the user taps Delete. Caller is responsible for the
     /// soft-delete + BackedUpAsset removal; this view only requests it.
     var onDelete: (() -> Void)? = nil
+    /// Invoked when user taps Restore. Caller is responsible for the
+    /// restore flow and updating the photo state.
+    var onRestore: (() async -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete = false
+    @State private var isRestoring = false
+    @State private var restoreError: Error?
+    @State private var showRestoreError = false
 
     var body: some View {
         NavigationStack {
-            PhotoThumbnailView(
-                assetLocalIdentifier: photo.id,
-                targetSize: UIScreen.main.bounds.size,
-                contentMode: .aspectFit
-            )
-            .ignoresSafeArea()
+            ZStack {
+                PhotoThumbnailView(
+                    assetLocalIdentifier: photo.id,
+                    targetSize: UIScreen.main.bounds.size,
+                    contentMode: .aspectFit
+                )
+                .ignoresSafeArea()
+
+                // Restore progress overlay
+                if isRestoring {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Restoring photo...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.5))
+                }
+            }
             .navigationTitle(photo.filename)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") { dismiss() }
                 }
-                if photo.backupState == .backedUp, onDelete != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if photo.backupState == .cloudOnly {
+                        Button {
+                            Task {
+                                isRestoring = true
+                                do {
+                                    await onRestore?()
+                                    dismiss()
+                                } catch {
+                                    restoreError = error
+                                    showRestoreError = true
+                                    isRestoring = false
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "arrow.down.circle")
+                        }
+                        .accessibilityLabel("Restore to Photos")
+                        .disabled(isRestoring)
+                    } else if photo.backupState == .syncedAndLocal, onDelete != nil {
                         Button(role: .destructive) {
                             confirmDelete = true
                         } label: {
@@ -442,6 +487,30 @@ struct PhotoDetailView: View {
             } message: {
                 Text("The encrypted backup will be moved to the recycle bin. The photo on this device is not affected.")
             }
+            .alert("Restore Failed", isPresented: $showRestoreError, presenting: restoreError) { _ in
+                Button("OK") {
+                    showRestoreError = false
+                    if let photoRestoreError = restoreError as? PhotoRestoreError,
+                       case .photoLibraryAccessDenied = photoRestoreError {
+                        openSettings()
+                    }
+                }
+                if let photoRestoreError = restoreError as? PhotoRestoreError,
+                   case .photoLibraryAccessDenied = photoRestoreError {
+                    Button("Open Settings") {
+                        openSettings()
+                        showRestoreError = false
+                    }
+                }
+            } message: { error in
+                Text(error.localizedDescription)
+            }
+        }
+    }
+
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 }

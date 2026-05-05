@@ -23,15 +23,20 @@ import SwiftData
     /// Last observed byte size. Informational; the Vault manifest is authoritative.
     var sizeBytes: Int64
 
+    /// Original filename at upload time, used for cloud-only thumbnails + restore.
+    var originalFilename: String
+
     init(assetIdentifier: String,
          fileId: String,
          folderId: String,
          backedUpAt: Date = Date(),
-         sizeBytes: Int64 = 0) {
+         sizeBytes: Int64 = 0,
+         originalFilename: String = "IMG") {
         self.assetIdentifier = assetIdentifier
         self.fileId = fileId
         self.folderId = folderId
         self.backedUpAt = backedUpAt
         self.sizeBytes = sizeBytes
+        self.originalFilename = originalFilename
     }
 }
