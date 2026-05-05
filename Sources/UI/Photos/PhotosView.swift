@@ -13,11 +13,18 @@ struct PhotosView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Backup status banner
-                    if viewModel.backupInProgress {
+                    // Backup status banners — show bulk backup first if active
+                    if viewModel.bulkBackupActive {
+                        BackupProgressBanner(
+                            progress: viewModel.bulkBackupProgress,
+                            remaining: viewModel.bulkBackupRemaining,
+                            isBulkBackup: true
+                        )
+                    } else if viewModel.backupInProgress {
                         BackupProgressBanner(
                             progress: viewModel.backupProgress,
-                            remaining: viewModel.remainingCount
+                            remaining: viewModel.remainingCount,
+                            isBulkBackup: false
                         )
                     } else if viewModel.allBackedUp {
                         BackupCompleteBanner()
@@ -59,16 +66,35 @@ struct PhotosView: View {
             .navigationTitle("Photos")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        if subscriptionStore.isSubscribed {
-                            viewModel.startBackupNow()
-                        } else {
-                            showPaywall = true
+                    HStack(spacing: 12) {
+                        // Bulk backup toggle
+                        Button {
+                            if viewModel.bulkBackupActive {
+                                viewModel.stopFullLibraryBackup()
+                            } else {
+                                if subscriptionStore.isSubscribed {
+                                    viewModel.startFullLibraryBackup()
+                                } else {
+                                    showPaywall = true
+                                }
+                            }
+                        } label: {
+                            Image(systemName: viewModel.bulkBackupActive ? "bolt.fill" : "bolt")
                         }
-                    } label: {
-                        Label("Backup Now", systemImage: "arrow.clockwise.icloud")
+                        .tint(viewModel.bulkBackupActive ? .orange : .primary)
+
+                        // Backup Now button
+                        Button {
+                            if subscriptionStore.isSubscribed {
+                                viewModel.startBackupNow()
+                            } else {
+                                showPaywall = true
+                            }
+                        } label: {
+                            Label("Backup Now", systemImage: "arrow.clockwise.icloud")
+                        }
+                        .disabled(viewModel.backupInProgress || viewModel.bulkBackupActive)
                     }
-                    .disabled(viewModel.backupInProgress)
                 }
             }
             .task {
@@ -261,17 +287,25 @@ struct ChooseAlbumsEmptyStateView: View {
 struct BackupProgressBanner: View {
     let progress: Double
     let remaining: Int
+    var isBulkBackup: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
             KataProgressRing(progress: progress, size: 24)
                 .frame(maxWidth: .infinity)
-            Text("\(remaining) remaining")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                if isBulkBackup {
+                    Text("Backing up entire library")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                }
+                Text("\(remaining) remaining")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding()
-        .background(Color(.systemBlue).opacity(0.1))
+        .background(isBulkBackup ? Color(.systemOrange).opacity(0.1) : Color(.systemBlue).opacity(0.1))
     }
 }
 

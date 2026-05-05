@@ -39,6 +39,9 @@ class PhotosViewModel: ObservableObject {
     /// Non-nil when one or more photos failed to upload during the last backup
     /// run. Cleared when the user dismisses the error alert.
     @Published var uploadErrorMessage: String? = nil
+    @Published var bulkBackupActive = false
+    @Published var bulkBackupProgress: Double = 0
+    @Published var bulkBackupRemaining = 0
 
     private static let enabledAlbumsKey = "vaultyx.photos.enabled_albums"
     private weak var services: VaultServices?
@@ -268,6 +271,56 @@ class PhotosViewModel: ObservableObject {
     private func advanceProgress(done: Int, total: Int) {
         backupProgress = total > 0 ? Double(done) / Double(total) : 1.0
         remainingCount = max(0, total - done)
+    }
+
+    /// Start backing up the entire photo library with progress tracking.
+    func startFullLibraryBackup() {
+        guard let services = self.services else {
+            logger.error("startFullLibraryBackup called before VaultServices was wired")
+            return
+        }
+        services.photoBackup.startFullLibraryBackup()
+        bulkBackupActive = true
+        setupBulkBackupMonitoring()
+    }
+
+    /// Stop the full library bulk backup.
+    func stopFullLibraryBackup() {
+        guard let services = self.services else {
+            logger.error("stopFullLibraryBackup called before VaultServices was wired")
+            return
+        }
+        services.photoBackup.stopFullLibraryBackup()
+        bulkBackupActive = false
+        bulkBackupProgress = 0
+        bulkBackupRemaining = 0
+    }
+
+    /// Monitor bulk backup state changes and update progress UI.
+    private func setupBulkBackupMonitoring() {
+        Task { [weak self] in
+            while true {
+                guard let self else { break }
+                guard let state = self.services?.photoBackup.bulkBackupState else {
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+                    continue
+                }
+
+                await MainActor.run {
+                    self.bulkBackupActive = state.isActive
+                    if state.totalToBackup > 0 {
+                        self.bulkBackupProgress = Double(state.completedCount) / Double(state.totalToBackup)
+                        self.bulkBackupRemaining = state.totalToBackup - state.completedCount
+                    }
+                }
+
+                if !state.isActive {
+                    break
+                }
+
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+            }
+        }
     }
 
     /// Injects synthetic seed photos for XCUITest screenshot runs.
