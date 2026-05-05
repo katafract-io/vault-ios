@@ -9,7 +9,7 @@ struct FileBrowserView: View {
     @StateObject private var undo = UndoToastModel()
     @State private var viewMode: ViewMode = .list
     @State private var sortOrder: SortOrder = .name
-    @State private var showUploadPicker = false
+    @State private var showUploadMenu = false
     @State private var showNewFolder = false
     @State private var showPaywall = false
     @State private var selectedFile: VaultFileItem?
@@ -135,7 +135,7 @@ struct FileBrowserView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                     EmptyFolderView(
-                        onUpload: { gate { showUploadPicker = true } },
+                        onUpload: { gate { showUploadMenu = true } },
                         onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
                     )
                 }
@@ -217,7 +217,7 @@ struct FileBrowserView: View {
                     Button(action: { gate { showNewFolder = true } }) {
                         Image(systemName: "folder.badge.plus")
                     }
-                    Button(action: { gate { showUploadPicker = true } }) {
+                    Button(action: { gate { showUploadMenu = true } }) {
                         Image(systemName: "plus")
                     }
                     Button(action: { isEditing = true }) {
@@ -241,8 +241,8 @@ struct FileBrowserView: View {
                 }
             }
         }
-        .sheet(isPresented: $showUploadPicker) {
-            DocumentPickerView(onPick: viewModel.uploadFiles)
+        .sheet(isPresented: $showUploadMenu) {
+            UploadSourceMenuSheet(onUpload: viewModel.uploadFiles)
         }
         .sheet(item: $moveTarget) { target in
             FolderPickerSheet(excludeFolderId: target.isFolder ? target.id : nil) { newParentId in

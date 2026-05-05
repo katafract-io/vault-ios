@@ -43,6 +43,8 @@
 	<string>Vaultyx needs access to your photos for backup.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Vaultyx needs permission to save files to your photo library.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Vaultyx needs access to your camera to take photos for upload.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
