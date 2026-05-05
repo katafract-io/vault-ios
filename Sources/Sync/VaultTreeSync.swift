@@ -98,7 +98,7 @@ public final class VaultTreeSync {
             dlog("tree-sync reconcile: deleted=\(deletedCount) skipped=\(skippedCount)", category: "sync", level: .info)
         }
 
-        try? context.save()
+        saveOrLog(context)
     }
 
     // MARK: - Upsert
