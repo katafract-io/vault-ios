@@ -30,6 +30,28 @@ final class VaultAppDelegate: NSObject, UIApplicationDelegate {
         services.uploadCoordinator.setBackgroundEventsCompletionHandler(completionHandler)
         dlog("handleEventsForBackgroundURLSession \(identifier)", category: "app", level: .info)
     }
+
+    func application(
+        _ application: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        guard let services = Self.sharedServices else { return false }
+
+        Task {
+            do {
+                // Copy file to app group inbox for processing
+                let filename = url.lastPathComponent
+                try ImportInbox.drop(originalName: filename, parentFolderId: nil, from: url)
+                // Process the inbox immediately
+                await services.drainShareExtensionInbox()
+                dlog("Imported file: \(filename)", category: "app", level: .info)
+            } catch {
+                dlog("Failed to import file: \(error)", category: "app", level: .error)
+            }
+        }
+        return true
+    }
 }
 
 @main
