@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct UploadSourceMenuSheet: View {
     var onUpload: ([URL]) -> Void
