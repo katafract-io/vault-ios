@@ -115,7 +115,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             folderId: folderId,
             sizeBytes: sizeBytes)
         modelContext.insert(record)
-        try? modelContext.save()
+        saveOrLog(modelContext)
         backedUpIdentifiers.insert(assetIdentifier)
     }
 
@@ -302,7 +302,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             for r in localRows { modelContext.delete(r) }
         }
         modelContext.delete(row)
-        try? modelContext.save()
+        saveOrLog(modelContext)
         backedUpIdentifiers.remove(assetIdentifier)
     }
 

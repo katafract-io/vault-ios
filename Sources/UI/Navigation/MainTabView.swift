@@ -218,7 +218,7 @@ class RecentsViewModel: ObservableObject {
                     for row in rows where row.fileId == item.id {
                         context.delete(row)
                     }
-                    try? context.save()
+                    saveOrLog(context)
                 }
             } catch {
                 self.error = "Delete failed: \(error.localizedDescription)"
@@ -286,7 +286,7 @@ class RecentsViewModel: ObservableObject {
             for row in rows where row.fileId == item.id {
                 row.isPinned.toggle()
             }
-            try? context.save()
+            saveOrLog(context)
         }
     }
 }
@@ -715,7 +715,7 @@ struct SettingsView: View {
             predicate: #Predicate { $0.syncState == "manifest_pending" }
         ))) ?? []
         for f in pendingFiles { f.nextManifestRetryAt = now }
-        try? modelContext.save()
+        saveOrLog(modelContext)
         dlog("force retry: reset \(queueRows.count) chunk(s) + \(pendingFiles.count) manifest-pending file(s)", category: "ui", level: .info)
     }
 
@@ -746,7 +746,7 @@ struct SettingsView: View {
             ChunkCache.delete(hash: "__sidecar__\(f.fileId)")
             modelContext.delete(f)
         }
-        try? modelContext.save()
+        saveOrLog(modelContext)
         for hash in orphanHashes { ChunkCache.delete(hash: hash) }
         loadPendingStats()
         usedBytes = StorageUsageCalculator.compute(from: modelContext)

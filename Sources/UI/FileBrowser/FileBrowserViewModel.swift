@@ -307,7 +307,7 @@ class FileBrowserViewModel: ObservableObject {
                     folderId: newFolderId,
                     parentFolderId: parentId,
                     name: trimmed))
-                try? context.save()
+                saveOrLog(context)
                 refreshFromCache()
             } catch {
                 self.error = "Couldn't create folder: \(error.localizedDescription)"
@@ -348,7 +348,7 @@ class FileBrowserViewModel: ObservableObject {
                     touched = true
                 }
                 if touched {
-                    try? context.save()
+                    saveOrLog(context)
                     services.photoBackup.refresh()
                 }
             }
@@ -369,7 +369,7 @@ class FileBrowserViewModel: ObservableObject {
                         for row in rows where row.fileId == itemId {
                             context.delete(row)
                         }
-                        try? context.save()
+                        saveOrLog(context)
                     }
                 }
             } catch {
@@ -422,7 +422,7 @@ class FileBrowserViewModel: ObservableObject {
                     for row in rows where row.fileId == item.id {
                         row.filename = newName
                     }
-                    try? context.save()
+                    saveOrLog(context)
                 }
                 if let idx = items.firstIndex(where: { $0.id == item.id }) {
                     let updated = items[idx]
@@ -457,14 +457,14 @@ class FileBrowserViewModel: ObservableObject {
                         for row in rows where row.folderId == item.id {
                             row.parentFolderId = newParentFolderId
                         }
-                        try? context.save()
+                        saveOrLog(context)
                     }
                 } else {
                     if let rows = try? context.fetch(FetchDescriptor<LocalFile>()) {
                         for row in rows where row.fileId == item.id {
                             row.parentFolderId = newParentFolderId
                         }
-                        try? context.save()
+                        saveOrLog(context)
                     }
                 }
                 items.removeAll { $0.id == item.id }
@@ -525,7 +525,7 @@ class FileBrowserViewModel: ObservableObject {
             // Persist the path so future opens skip the download.
             if let row {
                 row.localPath = cached.path
-                try? context.save()
+                saveOrLog(context)
             }
             return cached
         } catch is CancellationError {
@@ -544,7 +544,7 @@ class FileBrowserViewModel: ObservableObject {
             for row in rows where row.fileId == item.id {
                 row.isPinned.toggle()
             }
-            try? context.save()
+            saveOrLog(context)
         }
         if let idx = items.firstIndex(where: { $0.id == item.id }) {
             let updated = items[idx]
