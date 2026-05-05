@@ -62,24 +62,10 @@
 	<array>
 		<string>com.katafract.vault.drain</string>
 	</array>
-	<key>CFBundleDocumentTypes</key>
+	<key>UIBackgroundModes</key>
 	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>Document</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>public.item</string>
-				<string>public.content</string>
-				<string>public.image</string>
-				<string>public.movie</string>
-				<string>com.adobe.pdf</string>
-			</array>
-		</dict>
+		<string>processing</string>
+		<string>fetch</string>
 	</array>
 </dict>
 </plist>
