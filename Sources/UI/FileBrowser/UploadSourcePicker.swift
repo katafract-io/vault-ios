@@ -72,20 +72,23 @@ struct PhotoPickerView: UIViewControllerRepresentable {
 
             for result in results {
                 group.enter()
-                if result.itemProvider.hasItemConformingToTypeIdentifier("public.movie") {
-                    result.itemProvider.loadFileRepresentation(forTypeIdentifier: "public.movie") { url, error in
-                        if let url = url {
-                            urls.append(url)
+                let isVideo = result.itemProvider.hasItemConformingToTypeIdentifier("public.movie")
+                let typeId = isVideo ? "public.movie" : "public.image"
+
+                result.itemProvider.loadFileRepresentation(forTypeIdentifier: typeId) { url, error in
+                    if let url = url {
+                        // Copy to temp location since PHPicker gives us a temporary URL
+                        let tempURL = FileManager.default.temporaryDirectory
+                            .appendingPathComponent(UUID().uuidString)
+                            .appendingPathExtension(url.pathExtension)
+                        do {
+                            try FileManager.default.copyItem(at: url, to: tempURL)
+                            urls.append(tempURL)
+                        } catch {
+                            urls.append(url)  // Fallback to original
                         }
-                        group.leave()
                     }
-                } else {
-                    result.itemProvider.loadFileRepresentation(forTypeIdentifier: "public.image") { url, error in
-                        if let url = url {
-                            urls.append(url)
-                        }
-                        group.leave()
-                    }
+                    group.leave()
                 }
             }
 

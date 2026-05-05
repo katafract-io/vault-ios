@@ -247,8 +247,70 @@ struct FileBrowserView: View {
                 }
             }
         }
-        .sheet(isPresented: $showUploadMenu) {
-            UploadSourceMenuSheet(onUpload: viewModel.uploadFiles)
+        .confirmationDialog(
+            "Add Files",
+            isPresented: Binding(
+                get: { uploadSource != nil },
+                set: { if !$0 { uploadSource = nil } }),
+            presenting: uploadSource) { source in
+            Button(action: {
+                showScanStub = true
+                uploadSource = nil
+            }) {
+                Label("Scan Document", systemImage: "doc.viewfinder")
+            }
+            Button(action: {
+                showCameraPicker = true
+                uploadSource = nil
+            }) {
+                Label("Take Photo", systemImage: "camera")
+            }
+            Button(action: {
+                showPhotoPicker = true
+                uploadSource = nil
+            }) {
+                Label("Choose Photos", systemImage: "photo.on.rectangle")
+            }
+            Button(action: {
+                showDocumentPicker = true
+                uploadSource = nil
+            }) {
+                Label("Choose Files", systemImage: "folder")
+            }
+            Button("Cancel", role: .cancel) {
+                uploadSource = nil
+            }
+        }
+        .sheet(isPresented: $showDocumentPicker) {
+            DocumentPickerView(onPick: viewModel.uploadFiles)
+        }
+        .sheet(isPresented: $showPhotoPicker) {
+            PhotoPickerView(onPick: viewModel.uploadFiles)
+        }
+        .sheet(isPresented: $showCameraPicker) {
+            CameraPickerView(onPick: viewModel.uploadFiles)
+        }
+        .sheet(isPresented: $showScanStub) {
+            VStack(spacing: 16) {
+                Image(systemName: "doc.viewfinder")
+                    .font(.system(size: 48))
+                    .foregroundColor(.kataSapphire)
+                Text("Coming Soon")
+                    .font(.headline)
+                Text("Document scanning will be available soon.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Button("OK") {
+                    showScanStub = false
+                    uploadSource = nil
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.kataSapphire)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+            }
+            .padding()
         }
         .sheet(item: $moveTarget) { target in
             FolderPickerSheet(excludeFolderId: target.isFolder ? target.id : nil) { newParentId in

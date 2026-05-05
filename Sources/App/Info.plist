@@ -40,7 +40,7 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Vaultyx uses Face ID to protect your encrypted files.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Vaultyx scans documents using the camera. Scanned PDFs are encrypted on this device before being saved to your vault.</string>
+	<string>Vaultyx needs access to your camera to take photos for backup.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Vaultyx reads photos and videos from your library so you can back them up to your encrypted vault. Backup is off by default — you choose what to upload.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
