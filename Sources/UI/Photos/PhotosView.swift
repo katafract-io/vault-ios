@@ -7,7 +7,6 @@ struct PhotosView: View {
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @StateObject private var viewModel = PhotosViewModel()
     @State private var showPaywall = false
-    @State private var showAlbumsSheet = false
 
     var body: some View {
         NavigationStack {
@@ -23,22 +22,12 @@ struct PhotosView: View {
                         BackupCompleteBanner()
                     }
 
-                    // Header with Albums button
+                    // Header
                     HStack {
                         Text("RECENT PHOTOS")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button {
-                            showAlbumsSheet = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("Albums")
-                                Image(systemName: "chevron.down")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(Color.kataGold)
-                        }
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 12)
@@ -87,15 +76,6 @@ struct PhotosView: View {
                     viewModel.removeFromBackup(photo)
                 })
             }
-            .sheet(isPresented: $showAlbumsSheet) {
-                AlbumDrawerSheet(
-                    isPresented: $showAlbumsSheet,
-                    albums: viewModel.albums,
-                    isLoading: viewModel.isLoadingAlbums,
-                    onToggle: viewModel.toggleAlbum,
-                    onAppear: { await viewModel.loadAlbums() }
-                )
-            }
             .sheet(isPresented: $showPaywall) {
                 CapacityPickerView()
             }
@@ -105,83 +85,6 @@ struct PhotosView: View {
     private var showEmptyState: Bool {
         !viewModel.backupInProgress &&
         !viewModel.backedUpPhotos.contains(where: { $0.backupState == .backedUp })
-    }
-}
-
-// MARK: - Album Drawer Sheet
-
-struct AlbumDrawerSheet: View {
-    @Binding var isPresented: Bool
-    let albums: [AlbumItem]
-    let isLoading: Bool
-    var onToggle: (AlbumItem, Bool) -> Void
-    var onAppear: () async -> Void
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if isLoading {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 12) {
-                            ProgressView()
-                            Text("Loading albums...")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .frame(height: 100)
-                } else if albums.isEmpty {
-                    HStack {
-                        Spacer()
-                        Text("No albums")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .frame(height: 60)
-                } else {
-                    ForEach(albums) { album in
-                        HStack {
-                            // Album thumbnail
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(.systemGray5))
-                                .frame(width: 44, height: 44)
-                                .overlay(
-                                    Image(systemName: "photo.on.rectangle")
-                                        .foregroundStyle(.secondary)
-                                )
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(album.name).font(.body)
-                                Text("\(album.count) photos").font(.caption).foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Toggle("", isOn: Binding(
-                                get: { album.isEnabled },
-                                set: { onToggle(album, $0) }
-                            ))
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-            .listStyle(.plain)
-            .navigationTitle("Albums")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { isPresented = false }
-                }
-            }
-            .task {
-                await onAppear()
-            }
-        }
-        .presentationDetents([.medium, .large])
     }
 }
 
