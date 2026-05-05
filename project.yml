@@ -48,6 +48,9 @@ targets:
       - target: VaultyxLiveActivity
       - package: KatafractStyle
         product: KatafractStyle
+    frameworks:
+      - VisionKit
+      - PDFKit
 
   VaultyxLiveActivity:
     type: app-extension
