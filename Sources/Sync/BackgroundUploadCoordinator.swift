@@ -236,7 +236,7 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
                 clearedCount += 1
             }
             if clearedCount > 0 {
-                try? context.save()
+                saveOrLog(context)
                 self.logger.info("reconcile cleared \(clearedCount, privacy: .public) orphan in-flight rows")
                 dlog("reconcile cleared \(clearedCount) orphan in-flight rows", category: "sync", level: .warn)
             }
@@ -262,7 +262,7 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
             // Short backoff — the drain loop will re-attempt and trigger
             // recovery from LocalCache in `drainChunk`.
             row.nextRetryAt = Date().addingTimeInterval(5)
-            try? context.save()
+            saveOrLog(context)
         }
     }
 
@@ -282,7 +282,7 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
             if row.inFlightTaskIdentifier != nil { return false }
             row.inFlightTaskIdentifier = taskIdentifier
             row.lastDispatchedAt = Date()
-            try? context.save()
+            saveOrLog(context)
             return true
         }
     }
@@ -322,7 +322,7 @@ public final class BackgroundUploadCoordinator: NSObject, @unchecked Sendable {
                 let delay = min(pow(2.0, Double(row.attempts)), 3600.0)
                 row.nextRetryAt = Date().addingTimeInterval(delay)
             }
-            try? context.save()
+            saveOrLog(context)
 
             return LookupResult(
                 fileId: fileId, chunkHash: chunkHash, success: success, chunkPath: chunkPath)

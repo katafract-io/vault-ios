@@ -470,7 +470,7 @@ public class VaultSyncEngine: ObservableObject {
                 row.inFlightTaskIdentifier = nil
                 row.nextRetryAt = .distantFuture
             }
-            try? modelContext.save()
+            saveOrLog(modelContext)
             self.logger.error("file \(fileId, privacy: .public) marked terminally failed: \(reason, privacy: .public); parked \(rows.count, privacy: .public) pending row(s)")
             dlog("file \(fileId) marked terminally failed: \(reason); parked \(rows.count) pending row(s)", category: "sync", level: .error)
         }
@@ -489,7 +489,7 @@ public class VaultSyncEngine: ObservableObject {
                 let delay = min(pow(2.0, Double(row.attempts)), 3600.0)
                 row.nextRetryAt = Date().addingTimeInterval(delay)
             }
-            try? modelContext.save()
+            saveOrLog(modelContext)
         }
     }
 
