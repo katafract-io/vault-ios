@@ -5,6 +5,7 @@ preReleaseVersion already in App Store Connect.  Exit 1 if stale, 0 if OK.
 Non-blocking (exit 0) when ASC credentials are missing or the call fails.
 """
 import argparse, json, os, sys, time, urllib.request, subprocess, tempfile
+from typing import Optional
 
 ASC_BASE = "https://api.appstoreconnect.apple.com"
 
@@ -55,7 +56,7 @@ def mint_jwt(key_id: str, issuer: str, key_pem: str) -> str:
     return signing_input + "." + _b64url(_der_to_jose(sig_der))
 
 
-def load_key() -> str | None:
+def load_key() -> Optional[str]:
     if "ASC_KEY_PATH" in os.environ and os.path.isfile(os.environ["ASC_KEY_PATH"]):
         return open(os.environ["ASC_KEY_PATH"]).read()
     for var in ("ASC_KEY_CONTENT", "ASC_PRIVATE_KEY"):
