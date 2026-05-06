@@ -4,7 +4,7 @@
 
 # Devices: pick the device class(es) Apple requires for App Store Version submission.
 # - iPhone 6.7": iPhone 16 Pro Max / iPhone 17 Pro Max  → ASC: APP_IPHONE_67 (1320×2868)
-# - iPad Pro 13": iPad Pro 13-inch (M4 / M5)            → ASC: APP_IPAD_PRO_3GEN_129 (2064×2752)
+# - iPad Pro 13": iPad Pro 13-inch (M4 / M5)            → ASC: APP_IPD_PRX_3GEN_129 (2064×2752)
 # Add iPhone 6.5", 5.5", iPad Pro 12.9" only if your minOsVersion supports the older device classes.
 
 project("./Vaultyx.xcodeproj")
@@ -14,7 +14,7 @@ devices([
   "iPad Pro 13-inch (M5)",
 ])
 
-ios_version("26.4")
+ios_version("26.4.1")
 
 languages(["en-US"])
 
@@ -24,7 +24,7 @@ scheme("VaultyxUITests")
 
 output_directory("./fastlane/screenshots")
 clear_previous_screenshots(true)
-override_status_bar(true)        # Set status bar to 9:41 / Wifi / 100%
+override_status_bar(true)       # Set status bar to 9:41 / Wifi / 100%
 override_status_bar_arguments("--time 9:41 --batteryState charged --batteryLevel 100")
 
 # Master launch args — keep ScreenshotMode flags here.
