@@ -21,6 +21,8 @@
 		1DF994B4ACF9ADAAD07B9D8D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7E32478B8C080D9B0A28A2 /* PaywallView.swift */; };
 		1EDF50F93C2B5940762630EA /* PhotoBackupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F0EE9F01A1EB887A290504F /* PhotoBackupManager.swift */; };
 		223BAC90A5E031B2BD6F3964 /* NetworkReachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */; };
+				820A5D7975C62807A1A60A7D /* ModelContextExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBC4C1E4CF49A96A54339761 /* ModelContextExtensions.swift */; };
+				BBC4C1E4CF49A96A54339761 /* ModelContextExtensions.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ModelContextExtensions.swift; path = Sources/App/ModelContextExtensions.swift; sourceTree = "<group>"; };
 		22677524649F4F01E48869FF /* VaultFileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA57DD1324F970B95130AE8 /* VaultFileProviderExtension.swift */; };
 		2472066A79D3D0D2308204DD /* VaultyxUploadAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEAD44FBB38C36294058F6E4 /* VaultyxUploadAttributes.swift */; };
 		2670E40A7A865D8B915F0B09 /* VaultyxUploadAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A503DDD9B693CC7EE70448F5 /* VaultyxUploadAttributes.swift */; };
@@ -787,6 +789,7 @@
 				856E4D1FB39D017DEEF19123 /* BackgroundUploadCoordinator.swift in Sources */,
 				7A3BBDA938D07032F6CA5DA0 /* StuckItemsView.swift in Sources */,
 				223BAC90A5E031B2BD6F3964 /* NetworkReachability.swift in Sources */,
+				820A5D7975C62807A1A60A7D /* ModelContextExtensions.swift in Sources */,
 				78B4FFFEEE270F78A4148163 /* SyncObjCBridge.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
