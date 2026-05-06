@@ -246,7 +246,6 @@ class FileBrowserViewModel: ObservableObject {
                 )
                 uploadInProgress = false
                 uploadTask = nil
-            } catch is CancellationError {
                 // User-initiated cancel — end LiveActivity cleanly, no error alert.
                 activityMgr.failBatch(
                     bytesUploaded: bytesUploaded,
