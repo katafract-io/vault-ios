@@ -155,6 +155,12 @@ private struct ChallengeCard: View {
                         if selected { return Color.kataGold.opacity(0.25) }
                         return Color.kataSapphire.opacity(0.12)
                     }()
+                    let fgColor: Color = selected
+                        ? (showError ? Color.red.opacity(0.9) : Color.kataGold)
+                        : Color.white.opacity(0.7)
+                    let strokeColor: Color = selected
+                        ? (showError ? Color.red.opacity(0.6) : Color.kataGold.opacity(0.5))
+                        : Color.kataSapphire.opacity(0.3)
 
                     Button {
                         selection = option
@@ -166,20 +172,11 @@ private struct ChallengeCard: View {
                             .minimumScaleFactor(0.8)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
-                            .background { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(bgColor) }
-                            .foregroundStyle(
-                                selected
-                                    ? (showError ? Color.red.opacity(0.9) : Color.kataGold)
-                                    : Color.white.opacity(0.7)
-                            )
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(bgColor))
+                            .foregroundStyle(fgColor)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(
-                                        selected
-                                            ? (showError ? Color.red.opacity(0.6) : Color.kataGold.opacity(0.5))
-                                            : Color.kataSapphire.opacity(0.3),
-                                        lineWidth: 1
-                                    )
+                                    .stroke(strokeColor, lineWidth: 1)
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
