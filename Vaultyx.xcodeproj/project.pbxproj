@@ -229,7 +229,7 @@
 		E9D662A60B45581C824B4731 /* StuckItemsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StuckItemsView.swift; path = Sources/UI/Settings/StuckItemsView.swift; sourceTree = "<group>"; };
 		EA3AE803C9F313353B48A89C /* BIP39WordList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39WordList.swift; sourceTree = "<group>"; };
 		F830083E2B12A292C784C99C /* VaultEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultEnumerator.swift; sourceTree = "<group>"; };
-		D2F8CB1AACA746F6AE1A82E1 /* ModelContextExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelContextExtensions.swift; sourceTree = "<group>"; };
+		D2F8CB1AACA746F6AE1A82E1 /* ModelContextExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/App/ModelContextExtensions.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
