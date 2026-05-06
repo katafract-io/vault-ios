@@ -129,7 +129,7 @@ struct RecoveryPhraseVerifyView: View {
             onVerified()
             dismiss()
         } else {
-            KataHaptic.error.fire()
+            KataHaptic.tap.fire()
         }
     }
 }
@@ -150,6 +150,11 @@ private struct ChallengeCard: View {
                 ForEach(challenge.options, id: \.self) { option in
                     let selected = selection == option
                     let showError = isWrong && selected
+                    let bgColor: Color = {
+                        if selected && showError { return Color.red.opacity(0.3) }
+                        if selected { return Color.kataGold.opacity(0.25) }
+                        return Color.kataSapphire.opacity(0.12)
+                    }()
 
                     Button {
                         selection = option
@@ -161,17 +166,7 @@ private struct ChallengeCard: View {
                             .minimumScaleFactor(0.8)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
-                            .background {
-                                if selected {
-                                    if showError {
-                                        Color.red.opacity(0.3)
-                                    } else {
-                                        Color.kataGold.opacity(0.25)
-                                    }
-                                } else {
-                                    Color.kataSapphire.opacity(0.12)
-                                }
-                            }
+                            .background { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(bgColor) }
                             .foregroundStyle(
                                 selected
                                     ? (showError ? Color.red.opacity(0.9) : Color.kataGold)
