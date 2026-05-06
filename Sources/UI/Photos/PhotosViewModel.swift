@@ -68,8 +68,8 @@ class PhotosViewModel: ObservableObject {
         // lets us distinguish "never set" (first launch → fall back to a
         // recent-images preview) from "deliberately empty" (show nothing).
         let defaults = UserDefaults.standard
-        let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
-        let enabledIds = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
+        let hasPersisted = defaults.object(forKey: Self.enabledAlbumsKey) != nil
+        let enabledIds = Set(defaults.stringArray(forKey: Self.enabledAlbumsKey) ?? [])
 
         dlog("loadRecentPhotos: hasPersisted=\(hasPersisted) enabledIds.count=\(enabledIds.count) ids=\(Array(enabledIds).map { String($0.prefix(12)) })", category: "photos", level: .info)
 
