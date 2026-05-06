@@ -17,6 +17,7 @@ public actor VaultKeyManager {
 
     public func configure(apiClient: VaultAPIClient) {
         self.apiClient = apiClient
+        migrateKeychainAccessibility()
     }
 
     /// Derive and cache master key from password + salt
@@ -149,7 +150,7 @@ public actor VaultKeyManager {
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: folderId,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
 
         SecItemDelete(query as CFDictionary)
@@ -190,6 +191,33 @@ public actor VaultKeyManager {
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw VaultKeyManagerError.keychainDeleteFailed
+        }
+    }
+
+    /// Re-write existing folder keys with AfterFirstUnlock accessibility.
+    /// Safe to call multiple times — skips keys already using the correct accessibility.
+    private func migrateKeychainAccessibility() {
+        // Query all existing folder-key items
+        let queryAll: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecReturnAttributes as String: true,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(queryAll as CFDictionary, &result)
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else { return }
+
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String,
+                  let data = item[kSecValueData as String] as? Data,
+                  let accessibility = item[kSecAttrAccessible as String] as? String,
+                  accessibility != kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
+            else { continue }
+
+            // Re-write with correct accessibility
+            try? storeInKeychain(data, for: account)
         }
     }
 }

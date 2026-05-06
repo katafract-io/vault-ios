@@ -9,6 +9,8 @@ struct PaywallView: View {
     @EnvironmentObject private var store: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
 
+    let capacity: SubscriptionStore.Capacity
+
     @State private var selectedProductID: String = SubscriptionStore.ProductID.sovereignYearly
     @State private var isPurchasing = false
     @State private var showRedemption = false
@@ -70,7 +72,7 @@ struct PaywallView: View {
 
     private var benefits: some View {
         VStack(alignment: .leading, spacing: 12) {
-            benefit("1 TB encrypted storage", icon: "internaldrive")
+            benefit("\(capacity.displayName) encrypted storage", icon: "internaldrive")
             benefit("Unlimited photo backup", icon: "photo.on.rectangle.angled")
             benefit("End-to-end zero-knowledge encryption", icon: "lock.fill")
             benefit("Multi-device sync + offline pinning", icon: "arrow.triangle.2.circlepath")
@@ -192,7 +194,7 @@ struct PaywallView: View {
 
     private var legalFooter: some View {
         VStack(spacing: 4) {
-            Text("Subscriptions auto-renew until cancelled. Cancel any time in Settings > Apple ID > Subscriptions.")
+            Text("Vaultyx Sovereign is an auto-renewing subscription billed monthly or yearly at the price shown. Payment is charged to your Apple ID at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period; your account is charged for renewal within 24 hours prior to the end of the current period. Manage your subscription and turn off auto-renewal in Apple ID Settings → Subscriptions.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

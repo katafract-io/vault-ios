@@ -4,11 +4,17 @@ import SwiftData
 
 struct MainTabView: View {
     @ObservedObject private var lock = BiometricLock.shared
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
+    @State private var showLapsedPaywall = false
+
+    var isReadOnly: Bool {
+        subscriptionStore.subscriptionState == .notSubscribed
+    }
 
     var body: some View {
         TabView {
             NavigationStack {
-                FileBrowserView(folderId: nil)
+                FileBrowserView(folderId: nil, isReadOnly: isReadOnly)
             }
             .tabItem {
                 Label("Files", systemImage: "folder.fill")
@@ -36,6 +42,45 @@ struct MainTabView: View {
             }
         }
         .tint(.kataSapphire)
+        .onChange(of: subscriptionStore.subscriptionState) { oldState, newState in
+            // Detect transition from subscribed/redeemed to notSubscribed
+            switch (oldState, newState) {
+            case (.subscribed, .notSubscribed), (.redeemed, .notSubscribed):
+                showLapsedPaywall = true
+                dlog("subscription lapsed, showing paywall", category: "subscription")
+            default:
+                break
+            }
+        }
+        .fullScreenCover(isPresented: $showLapsedPaywall) {
+            ZStack {
+                Color(.systemBackground).ignoresSafeArea()
+
+                VStack(spacing: 24) {
+                    Spacer()
+
+                    CapacityPickerView()
+
+                    Spacer()
+
+                    Button {
+                        showLapsedPaywall = false
+                        dlog("dismissed lapsed subscription paywall", category: "subscription")
+                    } label: {
+                        Text("Continue in read-only mode")
+                            .font(.kataBody(15, weight: .semibold))
+                            .foregroundStyle(Color.kataSapphire)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.kataSapphire.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 32)
+                }
+            }
+            .interactiveDismissDisabled()
+        }
     }
 }
 
@@ -691,9 +736,17 @@ struct SettingsView: View {
                 quota_bytes: 1024 * 1024 * 1024 * 1024,  // 1 TB
                 quota_exceeded: false
             )
+            if let meta = vaultMeta {
+                services.syncEngine.setRemoteQuota(usedBytes: meta.usage_bytes, quotaBytes: meta.quota_bytes)
+            }
             return
         }
-        do { vaultMeta = try await services.apiClient.vaultMeta() }
+        do {
+            vaultMeta = try await services.apiClient.vaultMeta()
+            if let meta = vaultMeta {
+                services.syncEngine.setRemoteQuota(usedBytes: meta.usage_bytes, quotaBytes: meta.quota_bytes)
+            }
+        }
         catch { print("vaultMeta fetch failed: \(error)") }
     }
 
