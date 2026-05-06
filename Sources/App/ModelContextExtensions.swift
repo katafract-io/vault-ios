@@ -9,12 +9,5 @@ func saveOrLog(_ context: ModelContext, _ location: StaticString = #function) {
         try context.save()
     } catch {
         persistenceLogger.error("save failed at \(location): \(error.localizedDescription)")
-        #if DEBUG
-        Task { @MainActor in
-            if let dlog = await DebugLog.shared {
-                await dlog.append("[persistence] save failed at \(location): \(error)")
-            }
-        }
-        #endif
     }
 }
