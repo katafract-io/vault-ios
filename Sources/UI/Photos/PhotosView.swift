@@ -7,6 +7,7 @@ struct PhotosView: View {
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @StateObject private var viewModel = PhotosViewModel()
     @State private var showPaywall = false
+    @State private var showAlbumsSheet = false
 
     var body: some View {
         NavigationStack {

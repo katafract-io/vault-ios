@@ -37,6 +37,7 @@ class PhotosViewModel: ObservableObject {
     /// selection is empty (all albums off). Drives the "Choose albums" empty state.
     @Published var isAlbumSelectionEmpty = false
 
+    private static let enabledAlbumsKey = "vaultyx.photos.enabled_albums"
     private weak var services: VaultServices?
 
     func configure(services: VaultServices) {
