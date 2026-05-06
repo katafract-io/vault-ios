@@ -21,7 +21,7 @@
 	<key>CFBundleVersion</key>
 	<string>13</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
+	<false/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>UISupportedInterfaceOrientations</key>
