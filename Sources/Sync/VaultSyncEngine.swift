@@ -208,18 +208,16 @@ public class VaultSyncEngine: ObservableObject {
         let manifestData = try JSONEncoder().encode(manifest)
         let encryptedManifest = try VaultCrypto.encrypt(manifestData, key: folderKey)
 
-        // Step 5-6: insert LocalFile + ChunkUploadQueue rows on MainActor
-        await MainActor.run {
-            // Store encrypted manifest in chunk cache under a deterministic key
-            // so the drain worker can read it without re-encrypting.
+        // Step 5-6: insert LocalFile + ChunkUploadQueue rows on MainActor — atomic.
+        // Any failure rolls back the in-memory inserts and throws rather than
+        // returning a fileId the drain worker will mark 'conflict'.
+        try await MainActor.run {
             let manifestKey = "__manifest__\(fileId)"
             do {
                 try ChunkCache.put(hash: manifestKey, data: encryptedManifest)
             } catch {
-                // Without the manifest cached, checkAndFinalizeFile will mark
-                // this file as "conflict" once chunks finish. Surface the cause.
-                self.logger.error("manifest cache write failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                dlog("manifest cache write failed for \(fileId): \(error.localizedDescription)", category: "sync", level: .error)
+                self.logger.fault("manifest cache write failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                throw VaultSyncEngineError.importFailed("manifest cache write failed: \(error.localizedDescription)")
             }
 
             let localFile = LocalFile(
@@ -237,6 +235,7 @@ public class VaultSyncEngine: ObservableObject {
             )
             modelContext.insert(localFile)
 
+            var queueRows: [ChunkUploadQueue] = []
             for descriptor in chunkDescriptors {
                 let cachedPath = ChunkCache.cacheURL
                     .appendingPathComponent(descriptor.hash).path
@@ -247,33 +246,39 @@ public class VaultSyncEngine: ObservableObject {
                     size: Int64(descriptor.size)
                 )
                 modelContext.insert(queueRow)
+                queueRows.append(queueRow)
             }
 
-            // Store filenameEnc + parentFolderId for the manifest POST
-            // in a lightweight sidecar attached to the manifest key slot.
             let sidecarKey = "__sidecar__\(fileId)"
-            let sidecar = ManifestSidecar(
+            guard let sidecarData = try? JSONEncoder().encode(ManifestSidecar(
                 fileId: fileId,
                 filenameEnc: filenameEnc,
                 parentFolderId: parentFolderId,
                 sizeBytes: totalSize,
                 chunkCount: chunkDescriptors.count,
                 chunkHashes: chunkDescriptors.map { $0.hash }
-            )
-            if let sidecarData = try? JSONEncoder().encode(sidecar) {
-                do {
-                    try ChunkCache.put(hash: sidecarKey, data: sidecarData)
-                } catch {
-                    self.logger.error("failed to cache sidecar for \(fileId): \(error)")
-                }
-            } else {
-                self.logger.error("failed to encode sidecar for \(fileId)")
+            )) else {
+                modelContext.delete(localFile)
+                queueRows.forEach { modelContext.delete($0) }
+                self.logger.fault("sidecar encode failed for \(fileId, privacy: .public)")
+                throw VaultSyncEngineError.importFailed("sidecar encode failed")
+            }
+            do {
+                try ChunkCache.put(hash: sidecarKey, data: sidecarData)
+            } catch {
+                modelContext.delete(localFile)
+                queueRows.forEach { modelContext.delete($0) }
+                self.logger.fault("sidecar cache write failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                throw VaultSyncEngineError.importFailed("sidecar cache write failed: \(error.localizedDescription)")
             }
 
             do {
                 try modelContext.save()
             } catch {
-                self.logger.error("failed to save LocalFile and ChunkUploadQueue for \(fileId): \(error)")
+                modelContext.delete(localFile)
+                queueRows.forEach { modelContext.delete($0) }
+                self.logger.fault("save failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                throw VaultSyncEngineError.importFailed("modelContext save failed: \(error.localizedDescription)")
             }
         }
 
@@ -1295,4 +1300,5 @@ public enum VaultSyncEngineError: Error {
     case httpError(statusCode: Int)
     case noNextChunk
     case uploadQueueFull(queuedBytes: Int64, fileBytes: Int64)
+    case importFailed(String)
 }

@@ -237,6 +237,15 @@ class FileBrowserViewModel: ObservableObject {
                 uploadInProgress = false
                 uploadTask = nil
                 _ = file  // suppress unused-var warning
+            } catch VaultSyncEngineError.importFailed(let reason) {
+                self.error = "Import failed: \(reason). Your file was not added."
+                activityMgr.failBatch(
+                    bytesUploaded: bytesUploaded,
+                    totalBytes: totalBytes,
+                    filesRemaining: filesRemaining
+                )
+                uploadInProgress = false
+                uploadTask = nil
             } catch is CancellationError {
                 // User-initiated cancel — end LiveActivity cleanly, no error alert.
                 activityMgr.failBatch(
