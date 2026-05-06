@@ -56,10 +56,12 @@ class FileBrowserViewModel: ObservableObject {
         }
 
         // Inject seed data if in ScreenshotMode
+        #if DEBUG
         if ScreenshotMode.seedData != nil {
             injectSeedData()
             return
         }
+        #endif
 
         refreshFromCache()
 
@@ -562,6 +564,7 @@ class FileBrowserViewModel: ObservableObject {
 
     /// Injects synthetic seed data for XCUITest screenshot runs.
     /// Bypasses all API calls and live sync.
+    #if DEBUG
     private func injectSeedData() {
         var seededItems: [VaultFileItem] = []
 
@@ -605,4 +608,5 @@ class FileBrowserViewModel: ObservableObject {
 
         items = seededItems
     }
+    #endif
 }
