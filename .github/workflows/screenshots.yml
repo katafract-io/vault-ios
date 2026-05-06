@@ -126,17 +126,17 @@ jobs:
         run: |
           set -o pipefail
           export PATH="${RBENV_RUBY}/bin:$PATH"
-          SCREENSHOTS_DIR="fastlane/screenshots/${DEVICE_NAME}"
+          SCREENSHOTS_DIR="/tmp/screenshots/${DEVICE_NAME}"
           rm -rf "$SCREENSHOTS_DIR"
           mkdir -p "$SCREENSHOTS_DIR"
           ${RBENV_RUBY}/bin/bundle exec fastlane ${FASTLANE_LANE} 2>&1 | tee /tmp/fastlane.log | tail -80
-          echo "shot_count=$(find "$SCREENSHOTS_DIR" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "shot_count=$(find fastlane/screenshots -name '*.png' 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
       - name: Collect IAP review screenshots (iPhone 16 Pro only)
         if: matrix.device.name == 'iPhone16Pro'
         run: |
           mkdir -p /tmp/iap-review-shots
-          cd "fastlane/screenshots/iPhone16Pro"
+          cd "fastlane/screenshots/en-US/iPhone 17 Pro Max"
           for frame in 08 09 10 11 12 13; do
             case "$frame" in
               08) MAP="100gb.monthly" ;;
@@ -156,7 +156,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "/tmp/screenshot-artifacts/${DEVICE_NAME}"
-          cp -r "fastlane/screenshots/${DEVICE_NAME}" "/tmp/screenshot-artifacts/" 2>/dev/null || true
+          cp -r fastlane/screenshots/en-US "/tmp/screenshot-artifacts/${DEVICE_NAME}/" 2>/dev/null || true
           tail -50 /tmp/fastlane.log > "/tmp/screenshot-artifacts/${DEVICE_NAME}/fastlane.tail.log" 2>/dev/null || true
 
       - name: Upload device screenshots
