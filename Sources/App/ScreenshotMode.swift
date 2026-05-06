@@ -30,6 +30,8 @@ enum ScreenshotMode {
     static var forceOnboarding: Bool  { isActive && args.contains("--force-onboarding") }
     static var mockPrices: Bool       { isActive && args.contains("--mock-prices") }
     static var forceDarkMode: Bool    { isActive && args.contains("--force-dark-mode") }
+    /// Forces PhotosViewModel to show the choose-albums empty state (isAlbumSelectionEmpty = true).
+    static var mockAlbumsEmpty: Bool  { isActive && args.contains("--mock-albums-empty") }
 
     static var seedData: String? {
         guard isActive else { return nil }

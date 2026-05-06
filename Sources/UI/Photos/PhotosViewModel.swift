@@ -47,6 +47,11 @@ class PhotosViewModel: ObservableObject {
     /// This is called on the root PhotosView .task and is intentionally lightweight.
     /// In ScreenshotMode, injects synthetic seed photos instead.
     func loadRecentPhotos() async {
+        if ScreenshotMode.mockAlbumsEmpty {
+            backedUpPhotos = []
+            isAlbumSelectionEmpty = true
+            return
+        }
         if ScreenshotMode.seedData != nil {
             injectSeedPhotos()
             return

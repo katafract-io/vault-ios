@@ -298,6 +298,22 @@ final class VaultyxScreenshotTests: XCTestCase {
         snapshot("16-upload-source-sheet")
     }
 
+    // MARK: - Frame 17: Photos tab — album selection / choose-albums state
+
+    func testCaptureAlbumSelection() {
+        let app = launch(flags: [
+            "--screenshots", "--skip-onboarding", "--mock-subscribed",
+            "--mock-prices", "--force-dark-mode", "--mock-albums-empty",
+        ])
+        sleep(3)
+        let photosTab = app.tabBars.buttons["Photos"].firstMatch
+        if photosTab.waitForExistence(timeout: 5) {
+            photosTab.tap()
+            sleep(3)
+        }
+        snapshot("17-album-selection")
+    }
+
     // MARK: - Helpers
 
     private var defaultFlags: [String] {
