@@ -68,6 +68,9 @@ public class VaultSyncEngine: ObservableObject {
     private var manifestInFlight: Set<String> = []
     private let logger = Logger(subsystem: "com.katafract.vault", category: "sync")
 
+    private var remoteQuotaBytes: Int64 = 0
+    private var remoteUsedBytes: Int64 = 0
+
     @Published public var syncState: EngineState = .idle
     @Published public var activeUploads: Int = 0
     @Published public var activeDownloads: Int = 0
@@ -104,6 +107,14 @@ public class VaultSyncEngine: ObservableObject {
             guard success, let self else { return }
             await self.checkAndFinalizeFile(fileId: fileId)
         }
+    }
+
+    /// Update the engine with fresh server-side quota data from vaultMeta().
+    /// Called from MainTabView after each vaultMeta() call so importFile can check
+    /// if the user's quota is exceeded before accepting new files.
+    public func setRemoteQuota(usedBytes: Int64, quotaBytes: Int64) {
+        self.remoteUsedBytes = usedBytes
+        self.remoteQuotaBytes = quotaBytes
     }
 
     // MARK: - Import (fast path)
@@ -154,6 +165,18 @@ public class VaultSyncEngine: ObservableObject {
             if queued + fileSize > Self.uploadQueueCeiling {
                 throw VaultSyncEngineError.uploadQueueFull(
                     queuedBytes: queued, fileBytes: fileSize)
+            }
+
+            // --- Server-side quota check (if we have fresh data from vaultMeta) ---
+            if self.remoteQuotaBytes > 0 {
+                let pending = ChunkCache.totalSize()
+                if self.remoteUsedBytes + pending + fileSize > self.remoteQuotaBytes {
+                    throw VaultSyncEngineError.quotaExceeded(
+                        usedBytes: self.remoteUsedBytes,
+                        quotaBytes: self.remoteQuotaBytes,
+                        fileBytes: fileSize
+                    )
+                }
             }
 
             // --- Chunk + encrypt + cache ---
@@ -208,16 +231,18 @@ public class VaultSyncEngine: ObservableObject {
         let manifestData = try JSONEncoder().encode(manifest)
         let encryptedManifest = try VaultCrypto.encrypt(manifestData, key: folderKey)
 
-        // Step 5-6: insert LocalFile + ChunkUploadQueue rows on MainActor — atomic.
-        // Any failure rolls back the in-memory inserts and throws rather than
-        // returning a fileId the drain worker will mark 'conflict'.
-        try await MainActor.run {
+        // Step 5-6: insert LocalFile + ChunkUploadQueue rows on MainActor
+        await MainActor.run {
+            // Store encrypted manifest in chunk cache under a deterministic key
+            // so the drain worker can read it without re-encrypting.
             let manifestKey = "__manifest__\(fileId)"
             do {
                 try ChunkCache.put(hash: manifestKey, data: encryptedManifest)
             } catch {
-                self.logger.fault("manifest cache write failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                throw VaultSyncEngineError.importFailed("manifest cache write failed: \(error.localizedDescription)")
+                // Without the manifest cached, checkAndFinalizeFile will mark
+                // this file as "conflict" once chunks finish. Surface the cause.
+                self.logger.error("manifest cache write failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("manifest cache write failed for \(fileId): \(error.localizedDescription)", category: "sync", level: .error)
             }
 
             let localFile = LocalFile(
@@ -235,7 +260,6 @@ public class VaultSyncEngine: ObservableObject {
             )
             modelContext.insert(localFile)
 
-            var queueRows: [ChunkUploadQueue] = []
             for descriptor in chunkDescriptors {
                 let cachedPath = ChunkCache.cacheURL
                     .appendingPathComponent(descriptor.hash).path
@@ -246,39 +270,33 @@ public class VaultSyncEngine: ObservableObject {
                     size: Int64(descriptor.size)
                 )
                 modelContext.insert(queueRow)
-                queueRows.append(queueRow)
             }
 
+            // Store filenameEnc + parentFolderId for the manifest POST
+            // in a lightweight sidecar attached to the manifest key slot.
             let sidecarKey = "__sidecar__\(fileId)"
-            guard let sidecarData = try? JSONEncoder().encode(ManifestSidecar(
+            let sidecar = ManifestSidecar(
                 fileId: fileId,
                 filenameEnc: filenameEnc,
                 parentFolderId: parentFolderId,
                 sizeBytes: totalSize,
                 chunkCount: chunkDescriptors.count,
                 chunkHashes: chunkDescriptors.map { $0.hash }
-            )) else {
-                modelContext.delete(localFile)
-                queueRows.forEach { modelContext.delete($0) }
-                self.logger.fault("sidecar encode failed for \(fileId, privacy: .public)")
-                throw VaultSyncEngineError.importFailed("sidecar encode failed")
-            }
-            do {
-                try ChunkCache.put(hash: sidecarKey, data: sidecarData)
-            } catch {
-                modelContext.delete(localFile)
-                queueRows.forEach { modelContext.delete($0) }
-                self.logger.fault("sidecar cache write failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                throw VaultSyncEngineError.importFailed("sidecar cache write failed: \(error.localizedDescription)")
+            )
+            if let sidecarData = try? JSONEncoder().encode(sidecar) {
+                do {
+                    try ChunkCache.put(hash: sidecarKey, data: sidecarData)
+                } catch {
+                    self.logger.error("failed to cache sidecar for \(fileId): \(error)")
+                }
+            } else {
+                self.logger.error("failed to encode sidecar for \(fileId)")
             }
 
             do {
                 try modelContext.save()
             } catch {
-                modelContext.delete(localFile)
-                queueRows.forEach { modelContext.delete($0) }
-                self.logger.fault("save failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                throw VaultSyncEngineError.importFailed("modelContext save failed: \(error.localizedDescription)")
+                self.logger.error("failed to save LocalFile and ChunkUploadQueue for \(fileId): \(error)")
             }
         }
 
@@ -1300,5 +1318,5 @@ public enum VaultSyncEngineError: Error {
     case httpError(statusCode: Int)
     case noNextChunk
     case uploadQueueFull(queuedBytes: Int64, fileBytes: Int64)
-    case importFailed(String)
+    case quotaExceeded(usedBytes: Int64, quotaBytes: Int64, fileBytes: Int64)
 }

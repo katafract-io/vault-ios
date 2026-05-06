@@ -87,6 +87,7 @@
 		F458FECDE0791AE6B7923125 /* RecoveryPhrase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */; };
 		F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842697680013FF51CC00E52D /* FounderRedeemSheet.swift */; };
 		FDD97B0168192EC903D8F70A /* DocArmorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A1424DE4DC3454E083764A /* DocArmorBridge.swift */; };
+		QLCCFTGU6WMQVVP9DGSDBTVW /* KeychainBootstrapErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = P2ICRF0USWF0L89NFFZEFNPS /* KeychainBootstrapErrorView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -228,6 +229,7 @@
 		E9D662A60B45581C824B4731 /* StuckItemsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StuckItemsView.swift; path = Sources/UI/Settings/StuckItemsView.swift; sourceTree = "<group>"; };
 		EA3AE803C9F313353B48A89C /* BIP39WordList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39WordList.swift; sourceTree = "<group>"; };
 		F830083E2B12A292C784C99C /* VaultEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultEnumerator.swift; sourceTree = "<group>"; };
+		P2ICRF0USWF0L89NFFZEFNPS /* KeychainBootstrapErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainBootstrapErrorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -331,6 +333,7 @@
 				1A1FB77CC808FDDFF55990C1 /* ContentView.swift */,
 				2D3A0314157A829A931228C0 /* EnclaveAppGroupWriter.swift */,
 				5D2D0C8F6A636C6333585B7F /* Info.plist */,
+				P2ICRF0USWF0L89NFFZEFNPS /* KeychainBootstrapErrorView.swift */,
 				A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */,
 				56EFC2D4148C3F943FD1145C /* MasterKeyBootstrap.swift */,
 				32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */,
@@ -746,6 +749,7 @@
 				E32C43DA6E3C480BADA96BBD /* UploadSourcePicker.swift in Sources */,
 				AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */,
 				721108FC19B9F0974EF7568B /* FolderPickerSheet.swift in Sources */,
+				QLCCFTGU6WMQVVP9DGSDBTVW /* KeychainBootstrapErrorView.swift in Sources */,
 				F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */,
 				7980FC2D27B6826C7B2E5E96 /* Keychain.swift in Sources */,
 				9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */,
