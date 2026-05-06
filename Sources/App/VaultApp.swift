@@ -111,25 +111,36 @@ struct VaultApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                ContentView()
-                    .blur(radius: lock.isLocked ? 20 : 0)
-
-                if lock.isLocked {
-                    LockScreenView()
-                        .transition(.opacity)
-                }
-
-                if !splashComplete {
-                    LaunchSplashView(onFinished: {
-                        withAnimation(.easeInOut(duration: 0.35)) {
-                            splashComplete = true
-                        }
+                if services.bootstrapError != nil {
+                    KeychainBootstrapErrorView(onRetry: {
+                        // Retry: attempt to reinitialize services.
+                        // In production, this would typically restart the app or
+                        // trigger a full relaunch. For now, we show the error persistently.
+                        // A real implementation might trigger AppDelegate to restart the app.
                     })
-                    .transition(.opacity)
-                    .zIndex(999)
+                } else {
+                    ZStack {
+                        ContentView()
+                            .blur(radius: lock.isLocked ? 20 : 0)
+
+                        if lock.isLocked {
+                            LockScreenView()
+                                .transition(.opacity)
+                        }
+
+                        if !splashComplete {
+                            LaunchSplashView(onFinished: {
+                                withAnimation(.easeInOut(duration: 0.35)) {
+                                    splashComplete = true
+                                }
+                            })
+                            .transition(.opacity)
+                            .zIndex(999)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: lock.isLocked)
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: lock.isLocked)
             .environmentObject(services)
             .environmentObject(subscriptionStore)
             .modelContainer(services.modelContainer)

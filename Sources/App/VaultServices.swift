@@ -19,6 +19,10 @@ public final class VaultServices: ObservableObject {
     /// Master key, generated on first launch and stashed in Keychain.
     public let masterKey: SymmetricKey
 
+    /// Error from Keychain bootstrap if it fails during initialization.
+    /// When non-nil, the main VaultApp displays KeychainBootstrapErrorView instead of normal content.
+    @Published public var bootstrapError: Error?
+
     public init() {
         let container: ModelContainer
         do {
