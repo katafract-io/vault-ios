@@ -21,7 +21,7 @@
 	<key>CFBundleVersion</key>
 	<string>13</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
+	<true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>UISupportedInterfaceOrientations</key>
@@ -40,9 +40,9 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Vaultyx uses Face ID to protect your encrypted files.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Vaultyx needs access to your photos for backup.</string>
+	<string>Vaultyx reads photos and videos from your library so you can back them up to your encrypted vault. Backup is off by default — you choose what to upload.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Vaultyx needs permission to save files to your photo library.</string>
+	<string>Vaultyx saves files you download from your encrypted vault back to your photo library when you tap Save to Photos.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Vaultyx needs access to your camera to take photos for upload.</string>
 	<key>UIApplicationSceneManifest</key>
