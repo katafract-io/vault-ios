@@ -128,6 +128,7 @@ jobs:
           TRAIN=$(grep -m1 "MARKETING_VERSION = " Vaultyx.xcodeproj/project.pbxproj \
                   | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/')
           echo "marketing train: $TRAIN"
+          python3 ci_scripts/lib/check-marketing-version.py --app-id "$APP_ID" --train "$TRAIN"
 
           BUILD_NUM=""
           if { [ -n "${ASC_KEY_CONTENT:-}" ] || [ -n "${ASC_KEY_PATH:-}" ]; } && [ -n "$TRAIN" ]; then
