@@ -29,6 +29,7 @@ struct FileBrowserView: View {
     @State private var selectedCategory: FileCategory = .all
 
     let folderId: String?  // nil = root
+    var isReadOnly: Bool = false
 
     enum ViewMode { case list, grid }
     enum SortOrder { case name, date, size, type }
@@ -135,7 +136,7 @@ struct FileBrowserView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                     EmptyFolderView(
-                        onUpload: { gate { showUploadMenu = true } },
+                        onUpload: { gate { if !isReadOnly { showUploadMenu = true } } },
                         onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
                     )
                 }
@@ -217,9 +218,10 @@ struct FileBrowserView: View {
                     Button(action: { gate { showNewFolder = true } }) {
                         Image(systemName: "folder.badge.plus")
                     }
-                    Button(action: { gate { showUploadMenu = true } }) {
+                    Button(action: { gate { if !isReadOnly { showUploadMenu = true } } }) {
                         Image(systemName: "plus")
                     }
+                    .disabled(isReadOnly)
                     Button(action: { isEditing = true }) {
                         Image(systemName: "checkmark.circle")
                     }
