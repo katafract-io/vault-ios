@@ -66,6 +66,7 @@
 		9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */; };
 		9A51A23C185C664790A6DB49 /* KatafractStyle in Frameworks */ = {isa = PBXBuildFile; productRef = C731E6EA2BCFCB88CFEA28B3 /* KatafractStyle */; };
 		A0E1F2B3CC7B4E8A91C3D5F6 /* AppGroupDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5E6A7B8C9D0E1F2 /* AppGroupDiagnosticsView.swift */; };
+		A0FBBE727F055DC3C4FC5AB1 /* RecoveryPhraseVerifyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99B7B23B5668A4EB3287CF05 /* RecoveryPhraseVerifyView.swift */; };
 		A32B8BE42C5BC137DF1703EF /* VaultKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57206996A054400EEF17E246 /* VaultKeyManager.swift */; };
 		AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC99130FB3DFEE8DB5125AA1 /* FileVersionsView.swift */; };
 		AC9BC416E472F06FB1FD5475 /* EnclaveAppGroupWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3A0314157A829A931228C0 /* EnclaveAppGroupWriter.swift */; };
@@ -192,6 +193,7 @@
 		94C764086C160239DF5BEBF5 /* UndoToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoToast.swift; sourceTree = "<group>"; };
 		9666910505BD37658AE382BF /* RecoveryPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseView.swift; sourceTree = "<group>"; };
 		97F57508EAEC5BECE0497A0D /* VaultChunk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultChunk.swift; sourceTree = "<group>"; };
+		99B7B23B5668A4EB3287CF05 /* RecoveryPhraseVerifyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseVerifyView.swift; sourceTree = "<group>"; };
 		9A95B7F2B96B712A555DDC10 /* VaultTreeSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultTreeSync.swift; sourceTree = "<group>"; };
 		9DE994CE23EFACBAE6973AFD /* NetworkReachability.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NetworkReachability.swift; path = Sources/App/NetworkReachability.swift; sourceTree = "<group>"; };
 		9E7115C9F830F462012DA4EC /* SyncState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncState.swift; sourceTree = "<group>"; };
@@ -471,6 +473,7 @@
 				DDEE00DCCBEBF9B2575EEBFE /* TokenRedemptionView.swift */,
 				94C764086C160239DF5BEBF5 /* UndoToast.swift */,
 				8E4CBF6623D63357E5B61B0A /* CapacityPickerView.swift */,
+				99B7B23B5668A4EB3287CF05 /* RecoveryPhraseVerifyView.swift */,
 			);
 			path = Common;
 			sourceTree = "<group>";
@@ -795,6 +798,7 @@
 				223BAC90A5E031B2BD6F3964 /* NetworkReachability.swift in Sources */,
 				820A5D7975C62807A1A60A7D /* ModelContextExtensions.swift in Sources */,
 				78B4FFFEEE270F78A4148163 /* SyncObjCBridge.m in Sources */,
+				A0FBBE727F055DC3C4FC5AB1 /* RecoveryPhraseVerifyView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
