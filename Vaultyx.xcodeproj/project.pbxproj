@@ -745,6 +745,7 @@
 				4AF8427238D557CB0235A132 /* FileUploadProgressBanner.swift in Sources */,
 				AA364500DCC296D5D3C4CCB8 /* FileVersionsView.swift in Sources */,
 				721108FC19B9F0974EF7568B /* FolderPickerSheet.swift in Sources */,
+				QLCCFTGU6WMQVVP9DGSDBTVW /* KeychainBootstrapErrorView.swift in Sources */,
 				F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */,
 				7980FC2D27B6826C7B2E5E96 /* Keychain.swift in Sources */,
 				9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */,
@@ -796,8 +797,7 @@
 			files = (
 				6CFC3F3E28AEE9B5D26D6884 /* SnapshotHelper.swift in Sources */,
 				8B6DC046CDF9D96782C89D48 /* VaultyxScreenshotTests.swift in Sources */,
-			
-			QLCCFTGU6WMQVVP9DGSDBTVW /* KeychainBootstrapErrorView.swift in Sources */,);
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
