@@ -255,6 +255,49 @@ final class VaultyxScreenshotTests: XCTestCase {
         snapshot("13-capacity-5tb-yearly")
     }
 
+    // MARK: - Frame 14: Photos tab — grid with active backup states
+
+    func testCapturePhotosGrid() {
+        let app = launch(flags: defaultFlags)
+        sleep(3)
+        let photosTab = app.tabBars.buttons["Photos"].firstMatch
+        if photosTab.waitForExistence(timeout: 5) {
+            photosTab.tap()
+            sleep(3)
+        }
+        snapshot("14-photos-grid")
+    }
+
+    // MARK: - Frame 15: Photos tab — sealed-album empty state
+
+    func testCapturePhotosEmptyState() {
+        let app = launch(flags: [
+            "--screenshots", "--skip-onboarding", "--mock-subscribed",
+            "--mock-prices", "--force-dark-mode",
+        ])
+        sleep(3)
+        let photosTab = app.tabBars.buttons["Photos"].firstMatch
+        if photosTab.waitForExistence(timeout: 5) {
+            photosTab.tap()
+            sleep(3)
+        }
+        snapshot("15-photos-empty")
+    }
+
+    // MARK: - Frame 16: Upload source menu sheet (Files "+" button)
+
+    func testCaptureUploadSourceSheet() {
+        let app = launch(flags: defaultFlags)
+        sleep(3)
+        // Tap the "+" toolbar button to open UploadSourceMenuSheet
+        let plusButton = app.navigationBars.buttons["plus"].firstMatch
+        if plusButton.waitForExistence(timeout: 5) {
+            plusButton.tap()
+            sleep(2)
+        }
+        snapshot("16-upload-source-sheet")
+    }
+
     // MARK: - Helpers
 
     private var defaultFlags: [String] {
