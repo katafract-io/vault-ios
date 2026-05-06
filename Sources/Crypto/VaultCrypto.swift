@@ -45,7 +45,10 @@ public enum VaultCrypto {
     /// Encrypt data with AES-256-GCM. Returns nonce + ciphertext + tag combined.
     public static func encrypt(_ data: Data, key: SymmetricKey) throws -> Data {
         let sealedBox = try AES.GCM.seal(data, using: key)
-        return sealedBox.combined!
+        guard let combined = sealedBox.combined else {
+            throw VaultCryptoError.encryptionFailed
+        }
+        return combined
     }
 
     /// Decrypt AES-256-GCM combined nonce+ciphertext+tag
