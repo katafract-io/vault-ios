@@ -20,6 +20,7 @@ class FileBrowserViewModel: ObservableObject {
     @Published var downloadInProgress: Bool = false
     @Published var downloadProgress: Double = 0
     @Published var downloadFilename: String = ""
+    @Published var showPaywall: Bool = false
 
     private weak var services: VaultServices?
     private var currentFolderId: String?
