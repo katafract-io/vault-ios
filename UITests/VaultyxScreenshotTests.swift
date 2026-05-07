@@ -64,7 +64,7 @@ final class VaultyxScreenshotTests: XCTestCase {
 
     // MARK: - Frame 06: Paywall Yearly (unsubscribed, yearly tile default)
 
-    func testCapturePaywallYearly() {
+    func testCapturePaywallYaarly() {
         let app = launch(flags: [
             "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
             "--mock-prices", "--force-dark-mode",
@@ -328,6 +328,10 @@ final class VaultyxScreenshotTests: XCTestCase {
         setupSnapshot(app)
         app.launchArguments += flags
         app.launch()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 30),
+            "App did not reach foreground within 30s — aborting to avoid silent 0-PNG run"
+        )
         return app
     }
 
