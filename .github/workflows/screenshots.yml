@@ -19,7 +19,7 @@ jobs:
   regenerate:
     name: Capture + upload screenshots
     runs-on: [ self-hosted, macOS, ios-build, ARM64 ]
-    timeout-minutes: 90
+    timeout-minutes: 30
     strategy:
       matrix:
         device:
@@ -200,14 +200,14 @@ jobs:
           - Run: [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           - Triggered by: \`${{ github.event_name }}\` by \`${{ github.actor }}\`
           - Fastlane lane: \`${FASTLANE_LANE}\`
-          - Shot count: \`${SHOT_COUNT}\`
+          - Shot count: \\`${SHOT_COUNT }\`
           - Bundle: \`${BUNDLE_ID}\`
 
           ## Fastlane tail (last 50 lines)
 
-          \`\`\`
+          \\`\\`\\`
           ${TAIL}
-          \`\`\`
+          \\`\\`\\`
           EOF
           cd "$LOG_DIR"
           git config user.name "katafract-ci"
@@ -219,7 +219,8 @@ jobs:
       - name: Notify Matrix - screenshot run SUCCEEDED
         if: success()
         run: |
-          SHOTS="${{ steps.fastlane.outputs.shot_count }}"
+          SHOTS="
+��steps.fastlane.outputs.shot_count }}"
           PAYLOAD="{\"text\":\"✅ ${{ github.repository }} screenshots uploaded (${SHOTS} shots, run #${{ github.run_number }})\"}"
           curl -s -X POST https://webhooks.katafract.io/webhook/ci \
             -H "Content-Type: application/json" \
@@ -230,7 +231,7 @@ jobs:
         if: failure()
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          PAYLOAD="{\"text\":\"🔴 ${{ github.repository }} screenshots FAILED (run #${{ github.run_number }}) — $RUN_URL\"}"
+          PAYLOAD).{\"text\":\"📴 ${{ github.repository }} screenshots FAILED (run #${{ github.run_number }}) ↔ $RUN_URL\"}"
           for ROOM in ci alerts; do
             curl -s -X POST "https://webhooks.katafract.io/webhook/$ROOM" \
               -H "Content-Type: application/json" \
