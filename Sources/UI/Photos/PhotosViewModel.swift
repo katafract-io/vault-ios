@@ -36,6 +36,9 @@ class PhotosViewModel: ObservableObject {
     /// True when the user has made at least one toggle choice and the current
     /// selection is empty (all albums off). Drives the "Choose albums" empty state.
     @Published var isAlbumSelectionEmpty = false
+    /// Non-nil when one or more photos failed to upload during the last backup
+    /// run. Cleared when the user dismisses the error alert.
+    @Published var uploadErrorMessage: String? = nil
 
     private static let enabledAlbumsKey = "vaultyx.photos.enabled_albums"
     private weak var services: VaultServices?
@@ -183,14 +186,24 @@ class PhotosViewModel: ObservableObject {
 
     /// Iterate pending photos, encrypt + queue each via syncEngine.importFile,
     /// promote per-asset state in `backedUpPhotos`. Failures don't abort the
-    /// batch — they mark that photo `.failed` and continue.
+    /// batch — they mark that photo `.failed` and accumulate into
+    /// `uploadErrorMessage` so the user sees a summary alert at the end.
     private func runBackupBatch(pendingIDs: [String], services: VaultServices) async {
+        var failedCount = 0
+        var lastFailureReason: String? = nil
+
         defer {
             backupInProgress = false
             backupProgress = 1.0
             remainingCount = 0
             services.photoBackup.refresh()
             allBackedUp = backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
+            if failedCount > 0 {
+                let reason = lastFailureReason ?? "unknown error"
+                uploadErrorMessage = failedCount == 1
+                    ? "1 photo could not be backed up: \(reason)"
+                    : "\(failedCount) photos could not be backed up. Last error: \(reason)"
+            }
         }
 
         let total = pendingIDs.count
@@ -207,6 +220,8 @@ class PhotosViewModel: ObservableObject {
                 logger.error("PHAsset \(assetID, privacy: .public) not found in library")
                 dlog("PHAsset not found for \(assetID)", category: "photos", level: .error)
                 updateAssetState(id: assetID, to: .failed)
+                failedCount += 1
+                lastFailureReason = "photo not found in library"
                 advanceProgress(done: done, total: total)
                 continue
             }
@@ -219,6 +234,8 @@ class PhotosViewModel: ObservableObject {
                 logger.error("photo backup failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 dlog("photo backup failed for \(assetID): \(error.localizedDescription)", category: "photos", level: .error)
                 updateAssetState(id: assetID, to: .failed)
+                failedCount += 1
+                lastFailureReason = error.localizedDescription
             }
 
             advanceProgress(done: done, total: total)

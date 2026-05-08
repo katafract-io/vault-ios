@@ -380,17 +380,40 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
     /// Write the original asset bytes to a temp URL the sync engine can read.
     /// Uses `PHAssetResourceManager` so we get the unmodified original (no
-    /// re-encode), preserving HEIC / RAW / Live Photo metadata.
+    /// re-encode), preserving HEIC / RAW / Live Photo / spatial video metadata.
+    ///
+    /// Resource-type priority:
+    ///   - Images (HEIC, JPEG, RAW): `.photo` > `.fullSizePhoto`
+    ///   - Videos / spatial videos (MV-HEIC stored as video): `.video` > `.fullSizeVideo`
+    ///   - Fallback: first available resource (catches edge-case asset types)
+    ///
     /// Mirrors the helper in PhotosViewModel (WP 71); WP 73 will extract a
     /// single shared implementation.
     static func exportAssetToTemp(
         asset: PHAsset
     ) async throws -> (url: URL, originalName: String, sizeBytes: Int64) {
         let resources = PHAssetResource.assetResources(for: asset)
-        guard let primary = resources.first(where: { $0.type == .photo })
-                ?? resources.first(where: { $0.type == .fullSizePhoto })
-                ?? resources.first else {
-            throw PhotoBackupManagerError.noResource
+        let primary: PHAssetResource
+        switch asset.mediaType {
+        case .video:
+            // Spatial video and regular video: prefer .video, fall back to
+            // .fullSizeVideo. Using a photo resource for a video asset silently
+            // writes a thumbnail HEIC instead of the actual video file.
+            guard let r = resources.first(where: { $0.type == .video })
+                       ?? resources.first(where: { $0.type == .fullSizeVideo })
+                       ?? resources.first else {
+                throw PhotoBackupManagerError.noResource
+            }
+            primary = r
+        default:
+            // Images (HEIC, JPEG, Live Photo stills, RAW): prefer .photo, fall
+            // back to .fullSizePhoto, then any resource.
+            guard let r = resources.first(where: { $0.type == .photo })
+                       ?? resources.first(where: { $0.type == .fullSizePhoto })
+                       ?? resources.first else {
+                throw PhotoBackupManagerError.noResource
+            }
+            primary = r
         }
         let originalName = primary.originalFilename
         let tempURL = FileManager.default.temporaryDirectory

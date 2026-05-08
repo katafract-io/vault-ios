@@ -95,15 +95,18 @@ struct RecentsView: View {
 
     var body: some View {
         Group {
-            if viewModel.items.isEmpty && !viewModel.isLoading {
+            // Show a full-screen spinner only on the very first load (no items
+            // yet). Pull-to-refresh keeps the List visible while refreshing so
+            // SwiftUI can run the native spinner animation to completion.
+            if viewModel.items.isEmpty && viewModel.isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if viewModel.items.isEmpty {
                 ContentUnavailableView {
                     Label("No Recent Files", systemImage: "clock")
                 } description: {
                     Text("Files you open will appear here")
                 }
-            } else if viewModel.isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     ForEach(viewModel.items) { item in
@@ -114,6 +117,9 @@ struct RecentsView: View {
                         )
                         .onTapGesture { selectedFile = item }
                     }
+                }
+                .refreshable {
+                    await viewModel.load()
                 }
             }
         }
@@ -145,9 +151,6 @@ struct RecentsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaultyxFileSynced)) { _ in
             Task { await viewModel.load() }
-        }
-        .refreshable {
-            await viewModel.load()
         }
     }
 }

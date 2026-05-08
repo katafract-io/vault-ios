@@ -83,6 +83,21 @@ struct PhotosView: View {
             .sheet(isPresented: $showPaywall) {
                 CapacityPickerView()
             }
+            .alert(
+                "Upload Failed",
+                isPresented: Binding(
+                    get: { viewModel.uploadErrorMessage != nil },
+                    set: { if !$0 { viewModel.uploadErrorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    viewModel.uploadErrorMessage = nil
+                }
+            } message: {
+                if let msg = viewModel.uploadErrorMessage {
+                    Text(msg)
+                }
+            }
         }
     }
 
