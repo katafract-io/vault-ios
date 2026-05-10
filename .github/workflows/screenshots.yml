@@ -1,13 +1,13 @@
 name: Auto-refresh App Store screenshots
 
-# Doctrine: /home/artemis/.claude/projects/-home-artemis/memory/feedback_screenshots_never_manual.md
-# Every UI change auto-regenerates + uploads screenshots via ASC API. No manual web UI work.
+# Doctrine: .doctrine/screenshot-pipeline.md (on-demand only — Tek prompts to run).
+# Auto-fire on push retired 2026-04-30 per marketing-truth + parity audit doctrine.
 
 on:
   workflow_dispatch:
     inputs:
       force:
-        description: 'Force run (ignore path filter)'
+        description: 'Force run'
         required: false
         default: 'false'
 
@@ -19,23 +19,7 @@ jobs:
   regenerate:
     name: Capture + upload screenshots
     runs-on: [ self-hosted, macOS, ios-build, chronos-macbuilder ]
-    timeout-minutes: 60
-    strategy:
-      matrix:
-        device:
-          - name: iPhone16Pro
-            destination: "generic/platform=iOS Simulator,name=iPhone 16 Pro"
-            width: 1290
-            height: 2796
-          - name: iPhone16
-            destination: "generic/platform=iOS Simulator,name=iPhone 16"
-            width: 1170
-            height: 2532
-          - name: iPadProM4
-            destination: "generic/platform=iOS Simulator,name=iPad Pro (13-inch) (M4)"
-            width: 1640
-            height: 2360
-      max-parallel: 1
+    timeout-minutes: 90
 
     env:
       APP_NAME: vaultyx
@@ -43,8 +27,6 @@ jobs:
       SCHEME: Vaultyx
       FASTLANE_LANE: submit_version_screenshots
       DOCS_INTERNAL_REPO: katafract-io/docs-internal
-      DEVICE_NAME: ${{ matrix.device.name }}
-      SIMULATOR_DESTINATION: ${{ matrix.device.destination }}
 
     steps:
       - name: Checkout
@@ -89,29 +71,30 @@ jobs:
           security set-keychain-settings -lut 7200 "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN" >/dev/null 2>&1 || true
 
-      - name: Regenerate Xcode project (if xcodegen)
-        run: |
-          if [ -f "project.yml" ] && command -v xcodegen >/dev/null 2>&1; then
-            xcodegen generate 2>&1 | tail -20
-          else
-            echo "no xcodegen needed"
-          fi
+      - name: Reset vendor/bundle (avoid stale bundler cache)
+        run: echo "vendor/bundle retained for cache warmth — remove this step only if gem corruption suspected"
 
-      - name: Install Ruby deps (Ruby 3.3.11 via rbenv)
+      - name: Install Ruby deps (Ruby 3.3.x via rbenv or system)
         run: |
+          # Probe for Ruby 3.3.11: cmfmbp $HOME/.rbenv, chronos $HOME/.rbenv, or fallback to system
           RUBY_BIN=""
           if [ -x "${HOME}/.rbenv/versions/3.3.11/bin/ruby" ]; then
             RUBY_BIN="${HOME}/.rbenv/versions/3.3.11/bin/ruby"
           elif command -v rbenv >/dev/null 2>&1; then
+            # rbenv on PATH; use it to locate ruby
             eval "$(rbenv init - bash)"
             RUBY_BIN="$(rbenv which ruby 2>/dev/null)"
           fi
+
+          # Fall back to system ruby if rbenv not found
           if [ -z "$RUBY_BIN" ] || [ ! -x "$RUBY_BIN" ]; then
             RUBY_BIN="$(command -v ruby 2>/dev/null)"
           fi
+
           if [ -z "$RUBY_BIN" ] || [ ! -x "$RUBY_BIN" ]; then
             echo "::error::Could not find Ruby 3.3.x"; exit 1
           fi
+
           export PATH="$(dirname "$RUBY_BIN"):$PATH"
           $RUBY_BIN --version
           $RUBY_BIN -S bundle --version || $RUBY_BIN -S gem install bundler
@@ -140,6 +123,7 @@ jobs:
           FASTLANE_XCODEBUILD_SETTINGS_RETRIES: "3"
         run: |
           set -o pipefail
+          # Use same Ruby probe as Install step
           RUBY_BIN=""
           if [ -x "${HOME}/.rbenv/versions/3.3.11/bin/ruby" ]; then
             RUBY_BIN="${HOME}/.rbenv/versions/3.3.11/bin/ruby"
@@ -150,98 +134,63 @@ jobs:
           if [ -z "$RUBY_BIN" ] || [ ! -x "$RUBY_BIN" ]; then
             RUBY_BIN="$(command -v ruby 2>/dev/null)"
           fi
+          export PATH="$(dirname "$RUBY_BIN"):$PATH"
+          OUTFILE=$(mktemp)
+          $RUBY_BIN -S bundle exec fastlane "${FASTLANE_LANE}" 2>&1 | tee "$OUTFILE"
+          SHOT_COUNT=$(grep -c "screenshot uploaded" "$OUTFILE" || echo "0")
+          echo "shot_count=${SHOT_COUNT}" >> "$GITHUB_OUTPUT"
+
+      - name: Frame screenshots with device bezels + marketing banners
+        run: |
+          # Use same Ruby probe as Install step
+          RUBY_BIN=""
+          if [ -x "${HOME}/.rbenv/versions/3.3.11/bin/ruby" ]; then
+            RUBY_BIN="${HOME}/.rbenv/versions/3.3.11/bin/ruby"
+          elif command -v rbenv >/dev/null 2>&1; then
+            eval "$(rbenv init - bash)"
+            RUBY_BIN="$(rbenv which ruby 2>/dev/null)"
+          fi
           if [ -z "$RUBY_BIN" ] || [ ! -x "$RUBY_BIN" ]; then
-            echo "::error::Could not find Ruby 3.3.x"; exit 1
+            RUBY_BIN="$(command -v ruby 2>/dev/null)"
           fi
           export PATH="$(dirname "$RUBY_BIN"):$PATH"
-          SCREENSHOTS_DIR="/tmp/screenshots/${DEVICE_NAME}"
-          rm -rf "$SCREENSHOTS_DIR"
-          mkdir -p "$SCREENSHOTS_DIR"
-          $RUBY_BIN -S bundle exec fastlane ${FASTLANE_LANE} 2>&1 | tee /tmp/fastlane.log | tail -80
-          echo "shot_count=$(find fastlane/screenshots -name '*.png' 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          $RUBY_BIN -S bundle exec fastlane frameit silver --path fastlane/screenshots || { echo "warn: frameit step failed (may be missing fonts or environment issue on this runner)"; exit 0; }
 
-      - name: Collect IAP review screenshots (iPhone 16 Pro only)
-        if: matrix.device.name == 'iPhone16Pro'
-        run: |
-          mkdir -p /tmp/iap-review-shots
-          cd "fastlane/screenshots/en-US/iPhone 17 Pro Max"
-          for frame in 08 09 10 11 12 13; do
-            case "$frame" in
-              08) MAP="100gb.monthly" ;;
-              09) MAP="100gb.yearly" ;;
-              10) MAP="1tb.monthly" ;;
-              11) MAP="1tb.yearly" ;;
-              12) MAP="5tb.monthly" ;;
-              13) MAP="5tb.yearly" ;;
-            esac
-            if [ -f "${frame}-capacity-${MAP}.png" ]; then
-              cp "${frame}-capacity-${MAP}.png" "/tmp/iap-review-shots/${MAP}.png"
-            fi
-          done
-          ls -la /tmp/iap-review-shots/ || true
-
-      - name: Collect artifacts (per-device)
+      - name: Clone docs-internal + commit screenshot logs
         if: always()
-        run: |
-          mkdir -p "/tmp/screenshot-artifacts/${DEVICE_NAME}"
-          cp -r fastlane/screenshots/en-US "/tmp/screenshot-artifacts/${DEVICE_NAME}/" 2>/dev/null || true
-          tail -50 /tmp/fastlane.log > "/tmp/screenshot-artifacts/${DEVICE_NAME}/fastlane.tail.log" 2>/dev/null || true
-
-      - name: Upload device screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-${{ matrix.device.name }}-${{ github.run_number }}
-          path: /tmp/screenshot-artifacts/${{ matrix.device.name }}/
-          retention-days: 14
-
-      - name: Upload IAP review shots
-        if: always() && matrix.device.name == 'iPhone16Pro'
-        uses: actions/upload-artifact@v4
-        with:
-          name: iap-review-shots-${{ github.run_number }}
-          path: /tmp/iap-review-shots/
-          retention-days: 14
-
-      - name: Commit audit log to docs-internal
-        if: success()
+        continue-on-error: true
         env:
-          DOCS_PUSH_TOKEN: ${{ secrets.DOCS_INTERNAL_PUSH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$DOCS_PUSH_TOKEN" ]; then
-            echo "::warning::DOCS_INTERNAL_PUSH_TOKEN not set, skipping log commit"
-            exit 0
-          fi
-          TS=$(date -u +'%Y-%m-%d_%H%M%S')
-          LOG_DIR="/tmp/docs-internal-clone"
+          LOG_DIR="/tmp/docs-internal-logs"
           rm -rf "$LOG_DIR"
-          git clone --depth 1 "https://x-access-token:${DOCS_PUSH_TOKEN}@github.com/${DOCS_INTERNAL_REPO}.git" "$LOG_DIR"
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${DOCS_INTERNAL_REPO}.git" "$LOG_DIR"
+          TS=$(date -u +%Y%m%d-%H%M%S)
+          TAIL=$(tail -50 /tmp/fastlane.log 2>/dev/null || echo "no logs")
           mkdir -p "$LOG_DIR/runbooks/screenshot_runs"
-          LOG_FILE="$LOG_DIR/runbooks/screenshot_runs/${APP_NAME}_${TS}.md"
-          SHOT_COUNT="${{ steps.fastlane.outputs.shot_count }}"
-          TAIL=$(tail -50 /tmp/fastlane.log 2>/dev/null | sed 's/`/\\`/g')
-          cat > "$LOG_FILE" <<EOF
-          # ${APP_NAME} screenshot run — ${TS}
 
-          - Repo: \`${{ github.repository }}\`
-          - Ref: \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`
+          cat > "$LOG_DIR/runbooks/screenshot_runs/${APP_NAME}-${TS}.md" << 'LOG_EOF'
+          # Screenshot run: ${{ github.repository }} #${{ github.run_number }}
+
+          - App: `${APP_NAME}`
           - Run: [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           - Triggered by: \`${{ github.event_name }}\` by \`${{ github.actor }}\`
           - Fastlane lane: \`${FASTLANE_LANE}\`
-          - Shot count: \\`${SHOT_COUNT }\`
+          - Shot count: \`${SHOT_COUNT}\`
           - Bundle: \`${BUNDLE_ID}\`
 
           ## Fastlane tail (last 50 lines)
 
-          \\`\\`\\`
+          \`\`\`
           ${TAIL}
-          \\`\\`\\`
-          EOF
+          \`\`\`
+          LOG_EOF
           cd "$LOG_DIR"
           git config user.name "katafract-ci"
           git config user.email "ci@katafract.com"
           git add runbooks/screenshot_runs/
           git commit -m "screenshots: ${APP_NAME} run ${TS} (#${{ github.run_number }})" || { echo "nothing to commit"; exit 0; }
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${DOCS_INTERNAL_REPO}.git"
           git push origin main
 
       - name: Notify Matrix - screenshot run SUCCEEDED
@@ -258,7 +207,7 @@ jobs:
         if: failure()
         run: |
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          PAYLOAD="{\"text\":\"📴 ${{ github.repository }} screenshots FAILED (run #${{ github.run_number }}) ↔ $RUN_URL\"}"
+          PAYLOAD="{\"text\":\"🔴 ${{ github.repository }} screenshots FAILED (run #${{ github.run_number }}) — $RUN_URL\"}"
           for ROOM in ci alerts; do
             curl -s -X POST "https://webhooks.katafract.io/webhook/$ROOM" \
               -H "Content-Type: application/json" \

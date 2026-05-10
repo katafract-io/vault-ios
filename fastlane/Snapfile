@@ -14,6 +14,9 @@ devices([
   "iPad Pro 13-inch (M5)",
 ])
 
+ios_version("26.4.1")
+# Pin to 26.4.1 — fastlane matches point version from simctl, not major.minor.
+
 languages(["en-US"])
 
 # UI test scheme name. Your XCUITest target lives here.
