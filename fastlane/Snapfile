@@ -9,13 +9,11 @@
 
 project("./Vaultyx.xcodeproj")
 
-# cmfmbp (ARM64) has both iOS 26.4 and 26.4.1 runtimes; devices are under 26.4.1.
-# Pin to 26.4.1 so fastlane passes OS=26.4.1 to xcodebuild (not the 26.4 fallback).
-ios_version("26.4.1")
+ios_version("18.0")
 
 devices([
-  "iPhone 17 Pro Max",
-  "iPad Pro 13-inch (M5)",
+  "iPhone 16 Pro Max",
+  "iPad Pro 13-inch (M4)",
 ])
 
 languages(["en-US"])

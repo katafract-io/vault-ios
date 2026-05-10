@@ -2,36 +2,6 @@
 # Per-app: copy to <repo>/fastlane/Fastfile, no customization needed unless app
 # has special build requirements.
 
-# simctl text output labels iOS 26.4.1 runtime as "-- iOS 26.4 --", so fastlane
-# passes OS=26.4 to xcodebuild which requires the actual patch version (26.4.1).
-# Remap device.os_version using simctl JSON before capture runs.
-require 'json'
-require 'fastlane_core/device_manager'
-module FastlaneCore
-  class DeviceManager
-    class << self
-      unless respond_to?(:_sims_pre_patch)
-        alias_method :_sims_pre_patch, :simulators
-        def simulators(requested_os_version: nil)
-          devs = _sims_pre_patch(requested_os_version: nil)
-          begin
-            runtimes = JSON.parse(`xcrun simctl list runtimes --json 2>/dev/null`)["runtimes"]
-            map = runtimes.each_with_object({}) do |rt, h|
-              display = rt["name"].sub(/^iOS /, "")
-              actual  = rt["version"]
-              h[display] = actual if actual && display != actual
-            end
-            devs.each { |d| d.os_version = map[d.os_version] if d.os_type == "iOS" && map[d.os_version] }
-          rescue => e
-            UI.important("sim-version-patch failed: #{e.message}")
-          end
-          requested_os_version ? devs.select { |d| d.os_version == requested_os_version } : devs
-        end
-      end
-    end
-  end
-end
-
 default_platform(:ios)
 
 platform :ios do
