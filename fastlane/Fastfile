@@ -12,8 +12,8 @@ before_all do
   next if dm.respond_to?(:_sims_pre_patch)
   orig = dm.method(:simulators)
   dm.define_singleton_method(:_sims_pre_patch, &orig)
-  dm.define_singleton_method(:simulators) do |requested_os_version: nil|
-    devs = dm._sims_pre_patch(requested_os_version: nil)
+  dm.define_singleton_method(:simulators) do |requested_os_type = ""|
+    devs = dm._sims_pre_patch("")
     begin
       runtimes = JSON.parse(`xcrun simctl list runtimes --json 2>/dev/null`)["runtimes"]
       map = runtimes.each_with_object({}) do |rt, h|
@@ -25,7 +25,7 @@ before_all do
     rescue => e
       UI.important("sim-version-patch: #{e.message}")
     end
-    requested_os_version ? devs.select { |d| d.os_version == requested_os_version } : devs
+    requested_os_type.empty? ? devs : devs.select { |d| d.os_type == requested_os_type }
   end
 end
 
