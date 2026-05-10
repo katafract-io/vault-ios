@@ -2,7 +2,32 @@
 # Per-app: copy to <repo>/fastlane/Fastfile, no customization needed unless app
 # has special build requirements.
 
+require 'json'
+
 default_platform(:ios)
+
+before_all do
+  dm = FastlaneCore::DeviceManager
+  next unless dm.respond_to?(:simulators)
+  next if dm.respond_to?(:_sims_pre_patch)
+  orig = dm.method(:simulators)
+  dm.define_singleton_method(:_sims_pre_patch, &orig)
+  dm.define_singleton_method(:simulators) do |requested_os_version: nil|
+    devs = dm._sims_pre_patch(requested_os_version: nil)
+    begin
+      runtimes = JSON.parse(`xcrun simctl list runtimes --json 2>/dev/null`)["runtimes"]
+      map = runtimes.each_with_object({}) do |rt, h|
+        display = rt["name"].sub(/^iOS /, "")
+        actual  = rt["version"]
+        h[display] = actual if actual && display != actual
+      end
+      devs.each { |d| d.os_version = map[d.os_version] if d.os_type == "iOS" && map[d.os_version] }
+    rescue => e
+      UI.important("sim-version-patch: #{e.message}")
+    end
+    requested_os_version ? devs.select { |d| d.os_version == requested_os_version } : devs
+  end
+end
 
 platform :ios do
   desc "Capture screenshots locally (output: fastlane/screenshots/)"
