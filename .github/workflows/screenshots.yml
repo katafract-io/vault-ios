@@ -42,7 +42,7 @@ jobs:
       BUNDLE_ID: com.katafract.vault
       SCHEME: Vaultyx
       FASTLANE_LANE: submit_version_screenshots
-      RBENV_RUBY: /Users/christianflores/.rbenv/versions/3.3.11
+      RBENV_RUBY: /Users/artemis/.rbenv/versions/3.3.11
       DOCS_INTERNAL_REPO: katafract-io/docs-internal
       DEVICE_NAME: ${{ matrix.device.name }}
       SIMULATOR_DESTINATION: ${{ matrix.device.destination }}
