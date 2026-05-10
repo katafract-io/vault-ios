@@ -18,7 +18,7 @@ concurrency:
 jobs:
   regenerate:
     name: Capture + upload screenshots
-    runs-on: [ self-hosted, macOS, ios-build ]
+    runs-on: [ self-hosted, macOS, ios-build, ARM64 ]
     timeout-minutes: 30
     strategy:
       matrix:
@@ -123,6 +123,9 @@ jobs:
           FASTLANE_HIDE_CHANGELOG: 1
           FASTLANE_SKIP_UPDATE_CHECK: 1
           FASTLANE_DISABLE_COLORS: 1
+          FASTLANE_SNAPSHOT: "1"
+          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "120"
+          FASTLANE_XCODEBUILD_SETTINGS_RETRIES: "3"
         run: |
           set -o pipefail
           export PATH="${RBENV_RUBY}/bin:$PATH"
