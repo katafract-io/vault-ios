@@ -150,6 +150,12 @@ public final class VaultServices: ObservableObject {
     }
     #endif
 
+    /// Return the count of pending files in the share extension inbox,
+    /// excluding JSON sidecars.
+    public func pendingInboxCount() -> Int {
+        ImportInbox.pending().count
+    }
+
     /// Drain the App-Group import inbox: each (file, sidecar) pair is run
     /// through `syncEngine.importFile` which encrypts + queues for upload,
     /// then both source files in the inbox are removed.

@@ -31,6 +31,7 @@ struct FileBrowserView: View {
     @State private var moveTarget: VaultFileItem?
     @State private var showBulkMoveSheet = false
     @State private var selectedCategory: FileCategory = .all
+    @State private var pendingInboxCount: Int = 0
 
     let folderId: String?  // nil = root
     var isReadOnly: Bool = false
@@ -139,6 +140,15 @@ struct FileBrowserView: View {
                     progress: viewModel.downloadProgress,
                     onCancel: { viewModel.cancelDownload(); selectedFile = nil }
                 )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if pendingInboxCount > 0 {
+                PendingShareBanner(count: pendingInboxCount) {
+                    Task {
+                        await services.drainShareExtensionInbox()
+                        pendingInboxCount = services.pendingInboxCount()
+                    }
+                }
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
             if viewModel.items.isEmpty && !viewModel.isLoading {
@@ -411,6 +421,14 @@ struct FileBrowserView: View {
         .task {
             viewModel.configure(services: services)
             await viewModel.load(folderId: folderId)
+            pendingInboxCount = services.pendingInboxCount()
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { return }
+                pendingInboxCount = services.pendingInboxCount()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaultyxFileSynced)) { _ in
             // Drain worker just confirmed a manifest. Refresh so the row's
