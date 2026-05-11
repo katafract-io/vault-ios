@@ -79,5 +79,5 @@ struct OnboardingView: View {
 
 #Preview {
     OnboardingView()
-        .environmentObject(VaultServices.preview)
+        .environmentObject(VaultServices())
 }
