@@ -39,6 +39,8 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Vaultyx uses Face ID to protect your encrypted files.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Vaultyx scans documents using the camera. Scanned PDFs are encrypted on this device before being saved to your vault.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Vaultyx reads photos and videos from your library so you can back them up to your encrypted vault. Backup is off by default — you choose what to upload.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
@@ -59,6 +61,25 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.katafract.vault.drain</string>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.item</string>
+				<string>public.content</string>
+				<string>public.image</string>
+				<string>public.movie</string>
+				<string>com.adobe.pdf</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>
