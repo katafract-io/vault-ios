@@ -45,6 +45,22 @@ class ShareViewController: UIViewController {
                             forTypeIdentifier: UTType.fileURL.identifier) as? URL {
                             staged.append((url.lastPathComponent, url, nil))
                         }
+                    } else if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                        if let url = try? await provider.loadItem(
+                            forTypeIdentifier: UTType.url.identifier) as? URL {
+                            let urlString = url.absoluteString
+                            let urlContent = "[InternetShortcut]\nURL=\(urlString)\n"
+                            if let data = urlContent.data(using: .utf8) {
+                                staged.append(("shared.url", nil, data))
+                            }
+                        }
+                    } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                        if let text = try? await provider.loadItem(
+                            forTypeIdentifier: UTType.plainText.identifier) as? String {
+                            if let data = text.data(using: .utf8) {
+                                staged.append(("shared.txt", nil, data))
+                            }
+                        }
                     } else if provider.hasItemConformingToTypeIdentifier(UTType.data.identifier) {
                         if let data = try? await provider.loadItem(
                             forTypeIdentifier: UTType.data.identifier) as? Data {
