@@ -1,0 +1,63 @@
+name: Release Readiness
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 9 * * *'  # daily 09:17 UTC
+  push:
+    branches: [main]
+    paths:
+      - '.katafract/config.yaml'
+      - '.github/workflows/release-readiness.yml'
+      - 'scripts/release-readiness/**'
+
+concurrency:
+  group: release-readiness-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: Evaluate readiness gates
+    runs-on: [self-hosted, Linux, X64, katafract-io-linux]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with: { fetch-depth: 1 }
+
+      - name: Evaluate gates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 -m pip install --quiet --user pyyaml requests pyjwt cryptography
+          python3 scripts/release-readiness/evaluate.py \
+            --config .katafract/config.yaml \
+            --output /tmp/readiness.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload readiness artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-readiness-${{ github.run_id }}
+          path: /tmp/readiness.json
+          retention-days: 90
+
+      - name: Fail if any blocker is RED
+        run: |
+          python3 -c "
+          import json, sys
+          d = json.load(open('/tmp/readiness.json'))
+          reds = [g for g in d['gates'] if g['severity']=='blocker' and g['status']=='red']
+          if reds:
+              print('::error::%d blocker gate(s) RED:' % len(reds))
+              for g in reds:
+                  print(f\"  - {g['id']}: {g.get('detail','')}\")
+              sys.exit(1)
+          print('::notice::all blocker gates green or yellow')
+          "
