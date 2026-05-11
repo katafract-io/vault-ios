@@ -4,6 +4,24 @@ import OSLog
 import SwiftData
 import CryptoKit
 
+/// Persisted state for full-library bulk backup. Survives app restart.
+@Model
+public final class BulkBackupState {
+    public var isActive: Bool
+    public var totalToBackup: Int
+    public var completedCount: Int
+    public var batchPosition: Int
+    public var createdAt: Date
+
+    public init(isActive: Bool = false, totalToBackup: Int = 0, completedCount: Int = 0, batchPosition: Int = 0) {
+        self.isActive = isActive
+        self.totalToBackup = totalToBackup
+        self.completedCount = completedCount
+        self.batchPosition = batchPosition
+        self.createdAt = Date()
+    }
+}
+
 /// Manages automatic photo backup from camera roll to Vault, and exposes a
 /// lookup for "is this asset backed up yet?" that the Photos UI uses to
 /// badge individual grid cells.
@@ -40,9 +58,16 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     /// the album mid-sync. Tasks self-remove from the dict on exit.
     private var albumOperations: [String: Task<Void, Never>] = [:]
 
+    /// In-flight full-library bulk backup task. Cancelled when the user
+    /// toggles off bulk backup.
+    private var bulkBackupTask: Task<Void, Never>?
+
     /// Cached set of backed-up asset identifiers, refreshed on `refresh()` /
     /// after `markBackedUp`. Faster than a SwiftData query per grid cell.
     private(set) public var backedUpIdentifiers: Set<String> = []
+
+    /// Current bulk backup state. Loaded on init, mutated during backup.
+    @Published public var bulkBackupState: BulkBackupState?
 
     /// In-memory mirror of `excludedAssetsKey`. Read by `enqueueAsset` and
     /// `runAlbumBackup` to skip user-deleted photos.
@@ -84,6 +109,22 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         self.masterKey = masterKey
         super.init()
         refresh()
+        loadBulkBackupState()
+    }
+
+    private func loadBulkBackupState() {
+        let descriptor = FetchDescriptor<BulkBackupState>()
+        if let state = (try? modelContext.fetch(descriptor))?.first {
+            bulkBackupState = state
+            // If a bulk backup was active when the app closed, resume it
+            if state.isActive && bulkBackupTask == nil {
+                let task = Task { [weak self] in
+                    guard let self else { return }
+                    await self.runFullLibraryBackup()
+                }
+                bulkBackupTask = task
+            }
+        }
     }
 
     // MARK: - State query
@@ -434,6 +475,114 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         let attrs = try FileManager.default.attributesOfItem(atPath: tempURL.path)
         let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
         return (tempURL, originalName, size)
+    }
+
+    /// Start or resume full library backup. Enumerates ALL photos (no limit),
+    /// filters out already backed-up and excluded ones, then batches enqueue
+    /// in chunks of 50. Persists progress to survive app restart.
+    public func startFullLibraryBackup() {
+        // Cancel any existing task
+        bulkBackupTask?.cancel()
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.runFullLibraryBackup()
+        }
+        bulkBackupTask = task
+    }
+
+    /// Stop the in-flight bulk backup. Current batch finishes, no new batches start.
+    public func stopFullLibraryBackup() {
+        bulkBackupTask?.cancel()
+        bulkBackupTask = nil
+        if var state = bulkBackupState {
+            state.isActive = false
+            modelContext.insert(state)
+            try? modelContext.save()
+        }
+        logger.info("bulk backup stopped by user")
+        dlog("bulk backup stopped by user", category: "photos", level: .info)
+    }
+
+    private func runFullLibraryBackup() async {
+        // Fetch ALL assets off-main
+        struct LibrarySnapshot: Sendable { let assetIds: [String] }
+        let snapshot: LibrarySnapshot = await Task.detached(priority: .userInitiated) {
+            let opts = PHFetchOptions()
+            opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            let result = PHAsset.fetchAssets(with: .image, options: opts)
+            var ids: [String] = []
+            result.enumerateObjects { asset, _, _ in
+                ids.append(asset.localIdentifier)
+            }
+            return LibrarySnapshot(assetIds: ids)
+        }.value
+
+        let allIds = snapshot.assetIds
+        let excluded = excludedIdentifiers
+        let backedUp = backedUpIdentifiers
+        let toProcess = allIds.filter { !backedUp.contains($0) && !excluded.contains($0) }
+
+        dlog("bulk library backup starting: \(allIds.count) total, \(toProcess.count) to backup", category: "photos", level: .info)
+        logger.info("bulk library backup: \(allIds.count, privacy: .public) total, \(toProcess.count, privacy: .public) to backup")
+
+        // Create or update the persistent state
+        var state = bulkBackupState
+        if state == nil {
+            state = BulkBackupState(isActive: true, totalToBackup: toProcess.count, completedCount: 0, batchPosition: 0)
+            modelContext.insert(state!)
+        } else {
+            state!.isActive = true
+            state!.totalToBackup = toProcess.count
+            if state!.completedCount == 0 { state!.batchPosition = 0 }
+        }
+        bulkBackupState = state
+        try? modelContext.save()
+
+        let batchSize = 50
+        var processedCount = 0
+
+        for assetId in toProcess {
+            if Task.isCancelled {
+                logger.info("bulk backup interrupted")
+                dlog("bulk backup interrupted", category: "photos", level: .info)
+                return
+            }
+
+            guard let asset = PHAsset.fetchAssets(
+                withLocalIdentifiers: [assetId], options: nil).firstObject else {
+                continue
+            }
+
+            do {
+                _ = try await enqueueAsset(asset)
+                processedCount += 1
+            } catch {
+                logger.error("bulk backup asset failed for \(assetId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("bulk backup asset failed for \(assetId): \(error.localizedDescription)", category: "photos", level: .error)
+            }
+
+            // Update progress periodically (every batch)
+            if processedCount % batchSize == 0 {
+                if var state = bulkBackupState {
+                    state.completedCount = processedCount
+                    state.batchPosition = processedCount
+                    bulkBackupState = state
+                    try? modelContext.save()
+                }
+            }
+        }
+
+        // Mark complete
+        if var state = bulkBackupState {
+            state.isActive = false
+            state.completedCount = processedCount
+            bulkBackupState = state
+            try? modelContext.save()
+        }
+
+        logger.info("bulk backup complete: \(processedCount, privacy: .public) / \(toProcess.count, privacy: .public)")
+        dlog("bulk backup complete: \(processedCount) / \(toProcess.count)", category: "photos", level: .info)
     }
 
     /// Request photo library authorization
