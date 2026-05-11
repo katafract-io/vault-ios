@@ -493,6 +493,21 @@ public class VaultSyncEngine: ObservableObject {
         }
     }
 
+    /// Defer upload because WiFi-only is enabled but network is cellular.
+    /// Sets nextRetryAt to 60 seconds in the future.
+    private func deferChunkForWiFi(fileId: String, chunkHash: String) async {
+        await MainActor.run {
+            let descriptor = FetchDescriptor<ChunkUploadQueue>(
+                predicate: #Predicate { $0.fileId == fileId && $0.chunkHash == chunkHash }
+            )
+            guard let row = (try? modelContext.fetch(descriptor))?.first else { return }
+            row.nextRetryAt = Date().addingTimeInterval(60)
+            try? modelContext.save()
+            self.logger.info("deferred chunk \(chunkHash, privacy: .public) for \(fileId, privacy: .public) — waiting for WiFi")
+            dlog("deferred chunk \(chunkHash) for \(fileId) — waiting for WiFi", category: "sync", level: .info)
+        }
+    }
+
     /// Drain one queue row. Either confirms the chunk is already on the
     /// server (HEAD dedup) and marks the row done synchronously, OR hands
     /// the upload to the OS-managed background URLSession and returns.
@@ -559,6 +574,13 @@ public class VaultSyncEngine: ObservableObject {
             self.logger.error("presign PUT failed for \(fileId, privacy: .public)/\(chunkHash, privacy: .public): \(String(describing: error), privacy: .public)")
             dlog("presign PUT failed for \(fileId)/\(chunkHash): \(String(describing: error))", category: "sync", level: .error)
             await updateChunkResult(fileId: fileId, chunkHash: chunkHash, success: false)
+            return
+        }
+
+        // Check WiFi-only setting: if enabled and network is cellular, defer upload.
+        let isCellular = await NetworkReachability.shared.isOnCellular
+        if UploadPolicy.wifiOnly && isCellular {
+            await deferChunkForWiFi(fileId: fileId, chunkHash: chunkHash)
             return
         }
 

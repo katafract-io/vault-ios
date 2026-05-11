@@ -1,113 +1,49 @@
 import SwiftUI
 import PhotosUI
-import UniformTypeIdentifiers
 
-struct UploadSourceMenuSheet: View {
-    var onUpload: ([URL]) -> Void
-    @Environment(\.dismiss) var dismiss
+/// Upload source selection menu.
+enum UploadSource {
+    case scan
+    case camera
+    case photoLibrary
+    case files
 
-    @State private var showCamera = false
-    @State private var showPhotoPicker = false
-    @State private var showDocumentPicker = false
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                Section {
-                    Button(action: { showCamera = true }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "camera.fill")
-                                .frame(width: 24)
-                            Text("Take Photo")
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .foregroundColor(.primary)
-
-                    Divider()
-
-                    Button(action: { showPhotoPicker = true }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "photo.on.rectangle")
-                                .frame(width: 24)
-                            Text("Choose Photos")
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .foregroundColor(.primary)
-
-                    Divider()
-
-                    Button(action: { showDocumentPicker = true }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "doc")
-                                .frame(width: 24)
-                            Text("Choose Files")
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .foregroundColor(.primary)
-
-                    Divider()
-
-                    HStack(spacing: 12) {
-                        Image(systemName: "doc.text.viewfinder")
-                            .frame(width: 24)
-                        Text("Scan Document")
-                        Spacer()
-                    }
-                    .foregroundColor(.gray)
-                    .opacity(0.6)
-                } header: {
-                    Text("Select a source for your upload")
-                        .font(.headline)
-                }
-
-                Spacer()
-            }
-            .padding()
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
+    var label: String {
+        switch self {
+        case .scan:
+            return "Scan Document"
+        case .camera:
+            return "Take Photo"
+        case .photoLibrary:
+            return "Choose Photos"
+        case .files:
+            return "Choose Files"
         }
-        .sheet(isPresented: $showCamera) {
-            ImagePickerView(sourceType: .camera) { urls in
-                onUpload(urls)
-                dismiss()
-            }
-        }
-        .sheet(isPresented: $showPhotoPicker) {
-            PHPickerViewRepresentable { urls in
-                onUpload(urls)
-                dismiss()
-            }
-        }
-        .sheet(isPresented: $showDocumentPicker) {
-            DocumentPickerView { urls in
-                onUpload(urls)
-                dismiss()
-            }
+    }
+
+    var icon: String {
+        switch self {
+        case .scan:
+            return "doc.viewfinder"
+        case .camera:
+            return "camera"
+        case .photoLibrary:
+            return "photo.on.rectangle"
+        case .files:
+            return "folder"
         }
     }
 }
 
-struct PHPickerViewRepresentable: UIViewControllerRepresentable {
+/// Wrapper for PHPickerViewController to select photos/videos.
+struct PhotoPickerView: UIViewControllerRepresentable {
     var onPick: ([URL]) -> Void
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()
-        config.selectionLimit = 0 // Unlimited selection
+        config.selectionLimit = 0  // unlimited
         config.filter = .any(of: [.images, .videos])
-
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
         return picker
@@ -129,52 +65,50 @@ struct PHPickerViewRepresentable: UIViewControllerRepresentable {
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            dismiss()
+
             var urls: [URL] = []
             let group = DispatchGroup()
 
             for result in results {
                 group.enter()
-                if result.itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                    result.itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
-                        defer { group.leave() }
-                        if let url = url {
-                            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_" + (url.lastPathComponent))
-                            try? FileManager.default.copyItem(at: url, to: tempURL)
+                let isVideo = result.itemProvider.hasItemConformingToTypeIdentifier("public.movie")
+                let typeId = isVideo ? "public.movie" : "public.image"
+
+                result.itemProvider.loadFileRepresentation(forTypeIdentifier: typeId) { url, error in
+                    if let url = url {
+                        // Copy to temp location since PHPicker gives us a temporary URL
+                        let tempURL = FileManager.default.temporaryDirectory
+                            .appendingPathComponent(UUID().uuidString)
+                            .appendingPathExtension(url.pathExtension)
+                        do {
+                            try FileManager.default.copyItem(at: url, to: tempURL)
                             urls.append(tempURL)
+                        } catch {
+                            urls.append(url)  // Fallback to original
                         }
                     }
-                } else if result.itemProvider.hasItemConformingToTypeIdentifier(UTType.video.identifier) {
-                    result.itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.video.identifier) { url, error in
-                        defer { group.leave() }
-                        if let url = url {
-                            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_" + (url.lastPathComponent))
-                            try? FileManager.default.copyItem(at: url, to: tempURL)
-                            urls.append(tempURL)
-                        }
-                    }
-                } else {
                     group.leave()
                 }
             }
 
             group.notify(queue: .main) {
                 self.onPick(urls)
-                self.dismiss()
             }
         }
     }
 }
 
-struct ImagePickerView: UIViewControllerRepresentable {
-    var sourceType: UIImagePickerController.SourceType
+/// Wrapper for UIImagePickerController (camera).
+struct CameraPickerView: UIViewControllerRepresentable {
     var onPick: ([URL]) -> Void
     @Environment(\.dismiss) var dismiss
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
-        picker.sourceType = sourceType
+        picker.sourceType = .camera
+        picker.mediaTypes = ["public.image", "public.movie"]
         picker.delegate = context.coordinator
-        picker.mediaTypes = ["public.image"]
         return picker
     }
 
@@ -194,14 +128,16 @@ struct ImagePickerView: UIViewControllerRepresentable {
         }
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let originalImage = info[.originalImage] as? UIImage {
-                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
-                if let jpegData = originalImage.jpegData(compressionQuality: 0.8) {
-                    try? jpegData.write(to: tempURL)
-                    onPick([tempURL])
-                }
-            }
             dismiss()
+
+            if let mediaURL = info[.mediaURL] as? URL {
+                onPick([mediaURL])
+            } else if let image = info[.originalImage] as? UIImage,
+                      let data = image.jpegData(compressionQuality: 0.9) {
+                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+                try? data.write(to: tempURL)
+                onPick([tempURL])
+            }
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {

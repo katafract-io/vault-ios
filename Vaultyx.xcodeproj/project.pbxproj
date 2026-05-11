@@ -39,7 +39,6 @@
 		5C07A228E435EC5660307850 /* RecoveryPhraseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9666910505BD37658AE382BF /* RecoveryPhraseView.swift */; };
 		5C26E2A9C0580A7ED6A04EAB /* StorageQuotaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E845B566D3BF6AC839915C0 /* StorageQuotaView.swift */; };
 		5C2AB085574802735BEB0B8B /* BiometricLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C754348E7C222A87AEFB8E9B /* BiometricLock.swift */; };
-		5E83A8DEC70F14CA2669EB92 /* VaultFileProvider.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A4CCFA1ADAABA739E8476F41 /* VaultFileProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6112717A5D57013A9CC2C84E /* TokenRedemptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDEE00DCCBEBF9B2575EEBFE /* TokenRedemptionView.swift */; };
 		67C980072E49DDDCF40D3845 /* VaultyxUploadLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1566764DC491B12A635FF1 /* VaultyxUploadLiveActivity.swift */; };
 		686E81F9A034C5FD34908239 /* MasterKeyBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56EFC2D4148C3F943FD1145C /* MasterKeyBootstrap.swift */; };
@@ -131,7 +130,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				5E83A8DEC70F14CA2669EB92 /* VaultFileProvider.appex in Embed Foundation Extensions */,
 				19130481F0ED671B155F817F /* VaultShare.appex in Embed Foundation Extensions */,
 				0305A5B60CA6C09957087A9C /* VaultyxLiveActivity.appex in Embed Foundation Extensions */,
 			);

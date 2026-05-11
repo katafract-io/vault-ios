@@ -35,7 +35,25 @@ public final class NetworkReachability: ObservableObject {
     private var started = false
     private var lastWiFi = false
 
+    public enum NetworkTransport {
+        case wifi
+        case cellular
+        case none
+    }
+
     private init() {}
+
+    /// Current network transport. Returns .wifi if connected to Wi-Fi,
+    /// .cellular if on cellular data, or .none if offline.
+    public var currentTransport: NetworkTransport {
+        if isOnWiFi {
+            return .wifi
+        } else if isOnCellular {
+            return .cellular
+        } else {
+            return .none
+        }
+    }
 
     /// Start monitoring. Idempotent.
     public func startMonitoring() {
