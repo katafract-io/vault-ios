@@ -59,7 +59,7 @@ struct DocumentScannerView: UIViewControllerRepresentable {
             let pdfDocument = PDFDocument()
 
             for pageIndex in 0..<scan.pageCount {
-                let documentImage = scan.imageOfDocument(at: pageIndex)
+                let documentImage = scan.imageOfPage(at: pageIndex)
                 guard let pdfPage = PDFPage(image: documentImage) else { continue }
                 pdfDocument.insert(pdfPage, at: pageIndex)
             }
