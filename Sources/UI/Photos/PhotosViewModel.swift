@@ -228,7 +228,7 @@ class PhotosViewModel: ObservableObject {
 
         // Album toggles — smart albums with photo count > 0.
         // Run in a background task so it doesn't block the main thread.
-        await Task.detached(priority: .userInitiated) {
+        let result = await Task.detached(priority: .userInitiated) { () -> [AlbumItem] in
             var albumResult: [AlbumItem] = []
             let smartAlbums = PHAssetCollection.fetchAssetCollections(
                 with: .smartAlbum, subtype: .any, options: nil)
@@ -250,10 +250,9 @@ class PhotosViewModel: ObservableObject {
                     backedUpCount: backed
                 ))
             }
-            await MainActor.run {
-                self.albums = albumResult
-            }
+            return albumResult
         }.value
+        self.albums = result
     }
 
     func toggleAlbum(_ album: AlbumItem, enabled: Bool) {
