@@ -42,6 +42,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRIVACY_MANIFEST_FILE: Sources/App/PrivacyInfo.xcprivacy
         PRODUCT_NAME: Vaultyx
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Vaultyx-Bridging-Header.h
     dependencies:
       - target: VaultFileProvider
       - target: VaultShare
