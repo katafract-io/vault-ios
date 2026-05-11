@@ -46,7 +46,7 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Vaultyx saves files you download from your encrypted vault back to your photo library when you tap Save to Photos.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Vaultyx needs access to your camera to take photos for upload.</string>
+	<string>Vaultyx scans documents using the camera. Scanned PDFs are encrypted on this device before being saved to your vault.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
