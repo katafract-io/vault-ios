@@ -24,6 +24,17 @@ struct BackedUpPhoto: Identifiable, Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
+/// Represents a user-accessible album (PHAssetCollection) in the Photos library.
+struct AlbumItem: Identifiable, Hashable {
+    let id: String                    // localIdentifier
+    let name: String
+    let count: Int                    // number of photos in this album
+    var isEnabled: Bool
+
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    static func == (lhs: AlbumItem, rhs: AlbumItem) -> Bool { lhs.id == rhs.id }
+}
+
 @MainActor
 class PhotosViewModel: ObservableObject {
     @Published var backedUpPhotos: [BackedUpPhoto] = []
@@ -32,6 +43,7 @@ class PhotosViewModel: ObservableObject {
     @Published var remainingCount = 0
     @Published var allBackedUp = false
     @Published var selectedPhoto: BackedUpPhoto?
+    @Published var albums: [AlbumItem] = []
     @Published var isLoadingAlbums = false
     /// True when the user has made at least one toggle choice and the current
     /// selection is empty (all albums off). Drives the "Choose albums" empty state.
@@ -270,6 +282,78 @@ class PhotosViewModel: ObservableObject {
         remainingCount = max(0, total - done)
     }
 
+    /// Load all available albums from the Photo Library. Reads enabled/disabled
+    /// state from UserDefaults and returns a list suitable for the album sheet.
+    func loadAlbums() async {
+        isLoadingAlbums = true
+        defer { isLoadingAlbums = false }
+
+        let defaults = UserDefaults.standard
+        let enabledIds = Set(defaults.stringArray(forKey: Self.enabledAlbumsKey) ?? [])
+
+        // Fetch all SmartAlbums + UserCollections off-main to avoid watchdog timeout
+        let items: [AlbumItem] = await Task.detached(priority: .userInitiated) {
+            var results: [AlbumItem] = []
+
+            // Fetch smart albums (Camera Roll, Favorites, etc.)
+            let smartAlbums = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .any, options: nil)
+            smartAlbums.enumerateObjects { collection, _, _ in
+                let opts = PHFetchOptions()
+                let assets = PHAsset.fetchAssets(in: collection, options: opts)
+                if assets.count > 0 {
+                    results.append(AlbumItem(
+                        id: collection.localIdentifier,
+                        name: collection.localizedTitle ?? "Album",
+                        count: assets.count,
+                        isEnabled: enabledIds.contains(collection.localIdentifier)
+                    ))
+                }
+            }
+
+            // Fetch user-created albums (folder-based)
+            let userAlbums = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: nil)
+            userAlbums.enumerateObjects { collection, _, _ in
+                let opts = PHFetchOptions()
+                let assets = PHAsset.fetchAssets(in: collection, options: opts)
+                if assets.count > 0 {
+                    results.append(AlbumItem(
+                        id: collection.localIdentifier,
+                        name: collection.localizedTitle ?? "Album",
+                        count: assets.count,
+                        isEnabled: enabledIds.contains(collection.localIdentifier)
+                    ))
+                }
+            }
+
+            return results.sorted { $0.name < $1.name }
+        }.value
+
+        albums = items
+    }
+
+    /// Toggle the enabled/disabled state of an album. Persists the selection
+    /// to UserDefaults under the `enabledAlbumsKey`.
+    func toggleAlbum(_ album: AlbumItem, _ newValue: Bool) {
+        let defaults = UserDefaults.standard
+        var enabledIds = Set(defaults.stringArray(forKey: Self.enabledAlbumsKey) ?? [])
+
+        if newValue {
+            enabledIds.insert(album.id)
+        } else {
+            enabledIds.remove(album.id)
+        }
+
+        defaults.set(Array(enabledIds), forKey: Self.enabledAlbumsKey)
+
+        // Update local state to reflect toggle
+        if let idx = albums.firstIndex(where: { $0.id == album.id }) {
+            albums[idx].isEnabled = newValue
+        }
+
+        // Update the empty-selection state
+        isAlbumSelectionEmpty = enabledIds.isEmpty
+    }
+
     /// Injects synthetic seed photos for XCUITest screenshot runs.
     private func injectSeedPhotos() {
         let seedPhotos = [
@@ -348,4 +432,3 @@ class PhotosViewModel: ObservableObject {
         allBackedUp = seedPhotos.allSatisfy { $0.backupState == .backedUp }
     }
 }
-
