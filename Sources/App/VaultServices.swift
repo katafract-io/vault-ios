@@ -162,6 +162,8 @@ public final class VaultServices: ObservableObject {
         let pending = ImportInbox.pending()
         guard !pending.isEmpty else { return }
         dlog("share-inbox drain: \(pending.count) pending file(s)", category: "sync", level: .info)
+        var imported = 0
+        var failures: [(URL, Error)] = []
         for (fileURL, sidecar) in pending {
             do {
                 let folderKey = try await keyManager.getOrCreateFolderKey(
@@ -176,6 +178,7 @@ public final class VaultServices: ObservableObject {
                 imported += 1
             } catch {
                 dlog("share-inbox import failed for \(fileURL.lastPathComponent): \(error.localizedDescription)", category: "sync", level: .error)
+                failures.append((fileURL, error))
             }
         }
 
