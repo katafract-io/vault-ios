@@ -3,6 +3,14 @@ import OSLog
 import Photos
 import SwiftUI
 
+struct AlbumItem: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let count: Int
+    var isEnabled: Bool
+    var backedUpCount: Int = 0
+}
+
 /// A photo from the user's local library. Thumbnails are fetched lazily
 /// via PHImageManager (see `PhotoThumbnailView`). The `backupState` reflects
 /// whether this asset has been uploaded to Vaultyx storage yet.
@@ -26,6 +34,7 @@ struct BackedUpPhoto: Identifiable, Hashable {
 
 @MainActor
 class PhotosViewModel: ObservableObject {
+    @Published var albums: [AlbumItem] = []
     @Published var backedUpPhotos: [BackedUpPhoto] = []
     @Published var backupInProgress = false
     @Published var backupProgress: Double = 0
@@ -43,8 +52,21 @@ class PhotosViewModel: ObservableObject {
     @Published var bulkBackupProgress: Double = 0
     @Published var bulkBackupRemaining = 0
 
-    private static let enabledAlbumsKey = "vaultyx.photos.enabled_albums"
+    var totalBackedUpCount: Int {
+        backedUpPhotos.filter { $0.backupState == .backedUp }.count
+    }
+    var totalBackedUpBytes: Int64 {
+        backedUpPhotos.filter { $0.backupState == .backedUp }.reduce(0) { $0 + $1.sizeBytes }
+    }
+
     private weak var services: VaultServices?
+
+    /// UserDefaults key holding the array of enabled album localIdentifiers.
+    /// Presence of the key (even with an empty array) means the user has
+    /// interacted with toggles at least once — on subsequent loads we use
+    /// their stored set verbatim. Absence means first-run, and we default to
+    /// Recents-only.
+    private let enabledAlbumsKey = "vaultyx.photos.enabled_albums"
 
     func configure(services: VaultServices) {
         self.services = services
@@ -54,11 +76,6 @@ class PhotosViewModel: ObservableObject {
     /// This is called on the root PhotosView .task and is intentionally lightweight.
     /// In ScreenshotMode, injects synthetic seed photos instead.
     func loadRecentPhotos() async {
-        if ScreenshotMode.mockAlbumsEmpty {
-            backedUpPhotos = []
-            isAlbumSelectionEmpty = true
-            return
-        }
         if ScreenshotMode.seedData != nil {
             injectSeedPhotos()
             return
@@ -74,8 +91,8 @@ class PhotosViewModel: ObservableObject {
         // lets us distinguish "never set" (first launch → fall back to a
         // recent-images preview) from "deliberately empty" (show nothing).
         let defaults = UserDefaults.standard
-        let hasPersisted = defaults.object(forKey: Self.enabledAlbumsKey) != nil
-        let enabledIds = Set(defaults.stringArray(forKey: Self.enabledAlbumsKey) ?? [])
+        let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
+        let enabledIds = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
 
         dlog("loadRecentPhotos: hasPersisted=\(hasPersisted) enabledIds.count=\(enabledIds.count) ids=\(Array(enabledIds).map { String($0.prefix(12)) })", category: "photos", level: .info)
 
@@ -83,11 +100,8 @@ class PhotosViewModel: ObservableObject {
             dlog("loadRecentPhotos: empty selection, showing empty grid", category: "photos", level: .info)
             backedUpPhotos = []
             allBackedUp = false
-            isAlbumSelectionEmpty = true
             return
         }
-        isAlbumSelectionEmpty = false
-
 
         // PhotoKit's PHAsset.fetchAssets / enumerateObjects are synchronous
         // calls into Photos.sqlite via NSXPCStoreConnection. On main, they
@@ -96,7 +110,7 @@ class PhotosViewModel: ObservableObject {
         // task and only return the lightweight summary back to the main
         // actor for state mutation.
         let summaries: [PhotoSummary] = await Task.detached(priority: .userInitiated) {
-            Self.fetchRecentPhotoSummaries(limit: 60)
+            Self.fetchPhotoSummaries(hasPersisted: hasPersisted, enabledIds: enabledIds, limit: 60)
         }.value
         dlog("loadRecentPhotos: fetched \(summaries.count) photo summaries", category: "photos", level: .info)
 
@@ -129,23 +143,145 @@ class PhotosViewModel: ObservableObject {
         let takenAt: Date
     }
 
-    /// Fetch + summarize recent image assets. Pure PhotoKit work; runs off-main.
-    /// `nonisolated` so it can be called from a `Task.detached` block — without
-    /// this, the @MainActor on the enclosing class would prevent off-main invocation.
-    nonisolated private static func fetchRecentPhotoSummaries(limit: Int) -> [PhotoSummary] {
-        // Show recent media. No mediaType filter to preserve Live Photos and iCloud-shared content.
-        let opts = PHFetchOptions()
-        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        opts.fetchLimit = limit
-        let result = PHAsset.fetchAssets(with: opts)
-        var collected: [PHAsset] = []
-        result.enumerateObjects { a, _, _ in collected.append(a) }
-        return collected.map { asset in
+    /// Fetch + summarize image assets. Pure PhotoKit work; runs off-main.
+    /// `hasPersisted` distinguishes first-launch (recent-images preview)
+    /// from a deliberate album selection. `nonisolated` so it can be called
+    /// from a `Task.detached` block — without this, the @MainActor on the
+    /// enclosing class would prevent off-main invocation.
+    nonisolated private static func fetchPhotoSummaries(
+        hasPersisted: Bool, enabledIds: Set<String>, limit: Int
+    ) -> [PhotoSummary] {
+        let assets: [PHAsset]
+        if hasPersisted {
+            assets = fetchAssets(fromAlbums: enabledIds, limit: limit)
+        } else {
+            // First-launch preview, no album selection yet — show recent media.
+            // No mediaType filter (see fetchAssets above).
+            let opts = PHFetchOptions()
+            opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            opts.fetchLimit = limit
+            let result = PHAsset.fetchAssets(with: opts)
+            var collected: [PHAsset] = []
+            result.enumerateObjects { a, _, _ in collected.append(a) }
+            assets = collected
+        }
+        return assets.map { asset in
             PhotoSummary(
                 localId: asset.localIdentifier,
                 filename: (asset.value(forKey: "filename") as? String) ?? "IMG.HEIC",
                 takenAt: asset.creationDate ?? .distantPast)
         }
+    }
+
+    /// Fetch image assets belonging to any of the given album local-ids.
+    /// Deduplicates across albums, sorts newest-first, caps at `limit`.
+    /// MUST be called off-main — see `fetchPhotoSummaries`.
+    nonisolated private static func fetchAssets(fromAlbums albumIds: Set<String>, limit: Int) -> [PHAsset] {
+        let idArray = Array(albumIds)
+        let collections = PHAssetCollection.fetchAssetCollections(
+            withLocalIdentifiers: idArray, options: nil)
+        dlog("fetchAssets: requested \(idArray.count) album id(s), resolved \(collections.count) collection(s)", category: "photos", level: .info)
+        // No mediaType predicate — Vaultyx backs up whatever the user has in
+        // an album. Filtering on PHAssetMediaType.image excluded videos
+        // (and some Live Photos / iCloud-shared content) and produced the
+        // empty-grid + silent-backup symptom Tek hit on build 520.
+        let opts = PHFetchOptions()
+        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+
+        var seen = Set<String>()
+        var collected: [PHAsset] = []
+        collections.enumerateObjects { collection, _, _ in
+            let result = PHAsset.fetchAssets(in: collection, options: opts)
+            dlog("fetchAssets: collection '\(collection.localizedTitle ?? "?")' (\(String(collection.localIdentifier.prefix(12)))) → \(result.count) image asset(s)", category: "photos", level: .info)
+            result.enumerateObjects { asset, _, _ in
+                if !seen.contains(asset.localIdentifier) {
+                    seen.insert(asset.localIdentifier)
+                    collected.append(asset)
+                }
+            }
+        }
+        collected.sort {
+            ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast)
+        }
+        if collected.count > limit { collected = Array(collected.prefix(limit)) }
+        return collected
+    }
+
+    /// Load all albums. Deferred until user opens the AlbumDrawerSheet.
+    /// Runs in background to avoid blocking the main thread.
+    func loadAlbums() async {
+        if ScreenshotMode.isActive { return }
+
+        isLoadingAlbums = true
+        defer { isLoadingAlbums = false }
+
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else { return }
+
+        let defaults = UserDefaults.standard
+        let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
+        let persistedEnabled = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
+
+        // Snapshot backed-up identifiers on MainActor before going off-thread.
+        // Set<String> is Sendable so it can cross the actor boundary safely.
+        let backedUpIds: Set<String> = services?.photoBackup.backedUpIdentifiers ?? []
+
+        // Album toggles — smart albums with photo count > 0.
+        // Run in a background task so it doesn't block the main thread.
+        let result = await Task.detached(priority: .userInitiated) { () -> [AlbumItem] in
+            var albumResult: [AlbumItem] = []
+            let smartAlbums = PHAssetCollection.fetchAssetCollections(
+                with: .smartAlbum, subtype: .any, options: nil)
+            smartAlbums.enumerateObjects { collection, _, _ in
+                let assets = PHAsset.fetchAssets(in: collection, options: nil)
+                guard assets.count > 0 else { return }
+                let isEnabled: Bool = hasPersisted
+                    ? persistedEnabled.contains(collection.localIdentifier)
+                    : collection.localizedTitle == "Recents"
+                var backed = 0
+                assets.enumerateObjects { asset, _, _ in
+                    if backedUpIds.contains(asset.localIdentifier) { backed += 1 }
+                }
+                albumResult.append(AlbumItem(
+                    id: collection.localIdentifier,
+                    name: collection.localizedTitle ?? "Album",
+                    count: assets.count,
+                    isEnabled: isEnabled,
+                    backedUpCount: backed
+                ))
+            }
+            return albumResult
+        }.value
+        self.albums = result
+    }
+
+    func toggleAlbum(_ album: AlbumItem, enabled: Bool) {
+        if let idx = albums.firstIndex(where: { $0.id == album.id }) {
+            albums[idx].isEnabled = enabled
+        }
+        // Persist the full current set so unchecking the last album still
+        // writes an empty array (distinguishable from first-run via key presence).
+        let enabledIDs = albums.filter(\.isEnabled).map(\.id)
+        UserDefaults.standard.set(enabledIDs, forKey: enabledAlbumsKey)
+        dlog("toggleAlbum: '\(album.name)' (\(String(album.id.prefix(12)))) → enabled=\(enabled), persisted \(enabledIDs.count) id(s)", category: "photos", level: .info)
+
+        guard let services = self.services else {
+            logger.error("toggleAlbum called before VaultServices was wired")
+            return
+        }
+        if enabled {
+            services.photoBackup.startAlbumBackup(albumId: album.id)
+        } else {
+            services.photoBackup.stopAlbumBackup(albumId: album.id, apiClient: services.apiClient)
+            Task { @MainActor in
+                await services.photoBackup.unsyncAlbum(
+                    albumId: album.id, apiClient: services.apiClient)
+            }
+        }
+        // Re-fetch the grid against the new album selection so the visible
+        // set reflects the toggle immediately. Disabling the last album
+        // empties the grid; enabling a new one expands the union.
+        Task { @MainActor in await loadRecentPhotos() }
     }
 
     /// Logger for the photo backup pipeline. Visible in Console.app on
@@ -189,24 +325,14 @@ class PhotosViewModel: ObservableObject {
 
     /// Iterate pending photos, encrypt + queue each via syncEngine.importFile,
     /// promote per-asset state in `backedUpPhotos`. Failures don't abort the
-    /// batch — they mark that photo `.failed` and accumulate into
-    /// `uploadErrorMessage` so the user sees a summary alert at the end.
+    /// batch — they mark that photo `.failed` and continue.
     private func runBackupBatch(pendingIDs: [String], services: VaultServices) async {
-        var failedCount = 0
-        var lastFailureReason: String? = nil
-
         defer {
             backupInProgress = false
             backupProgress = 1.0
             remainingCount = 0
             services.photoBackup.refresh()
             allBackedUp = backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
-            if failedCount > 0 {
-                let reason = lastFailureReason ?? "unknown error"
-                uploadErrorMessage = failedCount == 1
-                    ? "1 photo could not be backed up: \(reason)"
-                    : "\(failedCount) photos could not be backed up. Last error: \(reason)"
-            }
         }
 
         let total = pendingIDs.count
@@ -223,8 +349,6 @@ class PhotosViewModel: ObservableObject {
                 logger.error("PHAsset \(assetID, privacy: .public) not found in library")
                 dlog("PHAsset not found for \(assetID)", category: "photos", level: .error)
                 updateAssetState(id: assetID, to: .failed)
-                failedCount += 1
-                lastFailureReason = "photo not found in library"
                 advanceProgress(done: done, total: total)
                 continue
             }
@@ -237,8 +361,6 @@ class PhotosViewModel: ObservableObject {
                 logger.error("photo backup failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 dlog("photo backup failed for \(assetID): \(error.localizedDescription)", category: "photos", level: .error)
                 updateAssetState(id: assetID, to: .failed)
-                failedCount += 1
-                lastFailureReason = error.localizedDescription
             }
 
             advanceProgress(done: done, total: total)

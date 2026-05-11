@@ -30,23 +30,45 @@ struct PhotosView: View {
                         BackupCompleteBanner()
                     }
 
-                    // Header
+                    // Header with Albums button
                     HStack {
                         Text("RECENT PHOTOS")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
+                        Button {
+                            showAlbumsSheet = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Albums")
+                                Image(systemName: "chevron.down")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(Color.kataGold)
+                        }
                     }
                     .padding(.horizontal)
-                    .padding(.vertical, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, viewModel.totalBackedUpCount > 0 ? 4 : 12)
+
+                    if viewModel.totalBackedUpCount > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.shield.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Color.kataGold.opacity(0.75))
+                            Text("\(viewModel.totalBackedUpCount) \(viewModel.totalBackedUpCount == 1 ? "photo" : "photos") · \(ByteCountFormatter.string(fromByteCount: viewModel.totalBackedUpBytes, countStyle: .file)) secured")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 12)
+                    }
 
                     Divider().padding(.vertical, 8)
 
                     // Photo grid OR empty state
-                    if showChooseAlbumsState {
-                        ChooseAlbumsEmptyStateView(onChooseTap: { showAlbumsSheet = true })
-                            .padding(.top, 24)
-                    } else if showEmptyState {
+                    if showEmptyState {
                         PhotosEmptyStateView(onBackupTap: {
                             if subscriptionStore.isSubscribed {
                                 viewModel.startBackupNow()
@@ -106,38 +128,109 @@ struct PhotosView: View {
                     viewModel.removeFromBackup(photo)
                 })
             }
+            .sheet(isPresented: $showAlbumsSheet) {
+                AlbumDrawerSheet(
+                    isPresented: $showAlbumsSheet,
+                    albums: viewModel.albums,
+                    isLoading: viewModel.isLoadingAlbums,
+                    onToggle: viewModel.toggleAlbum,
+                    onAppear: { await viewModel.loadAlbums() }
+                )
+            }
             .sheet(isPresented: $showPaywall) {
                 CapacityPickerView()
-            }
-            .alert(
-                "Upload Failed",
-                isPresented: Binding(
-                    get: { viewModel.uploadErrorMessage != nil },
-                    set: { if !$0 { viewModel.uploadErrorMessage = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) {
-                    viewModel.uploadErrorMessage = nil
-                }
-            } message: {
-                if let msg = viewModel.uploadErrorMessage {
-                    Text(msg)
-                }
             }
         }
     }
 
-    /// True when the user has deselected every album — "Choose albums" CTA takes priority.
-    private var showChooseAlbumsState: Bool {
-        !viewModel.backupInProgress && viewModel.isAlbumSelectionEmpty
-    }
-
-    /// True when albums are (or may be) selected but no photos have been fetched yet.
-    /// Drives the "sealed album" empty state with a Backup Now CTA.
     private var showEmptyState: Bool {
         !viewModel.backupInProgress &&
-        !viewModel.isAlbumSelectionEmpty &&
-        viewModel.backedUpPhotos.isEmpty
+        !viewModel.backedUpPhotos.contains(where: { $0.backupState == .backedUp })
+    }
+}
+
+// MARK: - Album Drawer Sheet
+
+struct AlbumDrawerSheet: View {
+    @Binding var isPresented: Bool
+    let albums: [AlbumItem]
+    let isLoading: Bool
+    var onToggle: (AlbumItem, Bool) -> Void
+    var onAppear: () async -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if isLoading {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Loading albums...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .frame(height: 100)
+                } else if albums.isEmpty {
+                    HStack {
+                        Spacer()
+                        Text("No albums")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .frame(height: 60)
+                } else {
+                    ForEach(albums) { album in
+                        HStack {
+                            // Album thumbnail
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(.systemGray5))
+                                .frame(width: 44, height: 44)
+                                .overlay(
+                                    Image(systemName: "photo.on.rectangle")
+                                        .foregroundStyle(.secondary)
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(album.name).font(.body)
+                                if album.isEnabled && album.backedUpCount > 0 {
+                                    Text("\(album.backedUpCount) of \(album.count) backed up")
+                                        .font(.caption)
+                                        .foregroundStyle(album.backedUpCount == album.count ? Color.kataGold.opacity(0.85) : .secondary)
+                                } else {
+                                    Text("\(album.count) \(album.count == 1 ? "photo" : "photos")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: Binding(
+                                get: { album.isEnabled },
+                                set: { onToggle(album, $0) }
+                            ))
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("Albums")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") { isPresented = false }
+                }
+            }
+            .task {
+                await onAppear()
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -241,46 +334,6 @@ struct PhotosEmptyStateView: View {
         .frame(width: 180, height: 240)
         .scaleEffect(cardScale)
         .opacity(cardOpacity)
-    }
-}
-
-// MARK: - "Choose albums" empty state (all albums deselected)
-
-struct ChooseAlbumsEmptyStateView: View {
-    var onChooseTap: () -> Void
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "photo.stack")
-                .font(.system(size: 56, weight: .light))
-                .foregroundStyle(Color.kataSapphire.opacity(0.6))
-
-            VStack(spacing: 8) {
-                Text("Choose albums to back up")
-                    .font(.kataHeadline(22, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
-
-                Text("Select which albums Vaultyx should encrypt and back up.")
-                    .font(.kataBody(14))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
-
-            Button(action: onChooseTap) {
-                Label("Choose albums", systemImage: "photo.on.rectangle.angled")
-                    .font(.kataHeadline(15, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.85))
-                    .frame(maxWidth: 240)
-                    .frame(height: 48)
-                    .background(Color.kataPremiumGradient)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .padding(.top, 4)
-        }
-        .padding(.bottom, 40)
-        .frame(maxWidth: .infinity)
     }
 }
 
