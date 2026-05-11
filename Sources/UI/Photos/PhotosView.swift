@@ -145,7 +145,7 @@ struct PhotosView: View {
 
     private var showEmptyState: Bool {
         !viewModel.backupInProgress &&
-        !viewModel.backedUpPhotos.contains(where: { $0.backupState == .backedUp })
+        !viewModel.backedUpPhotos.contains(where: { $0.backupState == .syncedAndLocal })
     }
 }
 
@@ -382,7 +382,7 @@ struct PhotoGridSection: View {
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
 
     private var backedUpCount: Int {
-        photos.filter { $0.backupState == .backedUp }.count
+        photos.filter { $0.backupState == .syncedAndLocal }.count
     }
 
     var body: some View {
@@ -402,8 +402,9 @@ struct PhotoGridSection: View {
                         .aspectRatio(1, contentMode: .fit)
                         .overlay {
                             PhotoThumbnailView(
-                                assetLocalIdentifier: photo.id,
-                                targetSize: CGSize(width: 120, height: 120))
+                                assetLocalIdentifier: photo.isCloudOnly ? nil : photo.id,
+                                targetSize: CGSize(width: 120, height: 120),
+                                isCloudOnly: photo.isCloudOnly)
                         }
                         .overlay(alignment: .bottomTrailing) {
                             CustodyBadge(state: photo.custodyState)
@@ -422,21 +423,28 @@ struct PhotoGridSection: View {
 }
 
 /// Small corner badge indicating whether a photo is backed up, pending,
-/// uploading, or failed. Stays out of the way for `.backedUp` (invisible).
+/// Renders 4 sync states: synced (hidden), local-only (pending), cloud-only
+/// (download), or syncing (progress ring).
 struct BackupStateBadge: View {
     let state: BackedUpPhoto.BackupState
 
     var body: some View {
         switch state {
-        case .backedUp:
+        case .syncedAndLocal:
             EmptyView()
-        case .pending:
+        case .localOnly:
             Image(systemName: "icloud.slash")
                 .font(.caption2)
                 .foregroundStyle(.white)
                 .padding(3)
                 .background(Circle().fill(Color.black.opacity(0.4)))
-        case .uploading(let progress):
+        case .cloudOnly:
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.blue)
+                .padding(3)
+                .background(Circle().fill(Color.black.opacity(0.4)))
+        case .syncing(let progress):
             ZStack {
                 Circle().fill(Color.black.opacity(0.4)).frame(width: 18, height: 18)
                 Circle()
@@ -445,10 +453,6 @@ struct BackupStateBadge: View {
                     .frame(width: 14, height: 14)
                     .rotationEffect(.degrees(-90))
             }
-        case .failed:
-            Image(systemName: "exclamationmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.red)
         }
     }
 }
@@ -464,9 +468,10 @@ struct PhotoDetailView: View {
     var body: some View {
         NavigationStack {
             PhotoThumbnailView(
-                assetLocalIdentifier: photo.id,
+                assetLocalIdentifier: photo.isCloudOnly ? nil : photo.id,
                 targetSize: UIScreen.main.bounds.size,
-                contentMode: .aspectFit
+                contentMode: .aspectFit,
+                isCloudOnly: photo.isCloudOnly
             )
             .ignoresSafeArea()
             .navigationTitle(photo.filename)
@@ -475,7 +480,7 @@ struct PhotoDetailView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Done") { dismiss() }
                 }
-                if photo.backupState == .backedUp, onDelete != nil {
+                if case .syncedAndLocal = photo.backupState, onDelete != nil {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(role: .destructive) {
                             confirmDelete = true
