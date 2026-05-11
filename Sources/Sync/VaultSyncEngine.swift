@@ -578,7 +578,8 @@ public class VaultSyncEngine: ObservableObject {
         }
 
         // Check WiFi-only setting: if enabled and network is cellular, defer upload.
-        if UploadPolicy.wifiOnly && NetworkReachability.shared.currentTransport == .cellular {
+        let isCellular = await NetworkReachability.shared.isOnCellular
+        if UploadPolicy.wifiOnly && isCellular {
             await deferChunkForWiFi(fileId: fileId, chunkHash: chunkHash)
             return
         }
