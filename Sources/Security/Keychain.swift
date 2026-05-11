@@ -15,6 +15,7 @@ enum Keychain {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
         ]
         SecItemDelete(query as CFDictionary)
 
@@ -53,6 +54,13 @@ enum Keychain {
     }
 }
 
-enum KeychainError: Error {
+enum KeychainError: Error, LocalizedError {
     case storeFailed(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case .storeFailed(let status):
+            return "Keychain write failed (OSStatus \(status))."
+        }
+    }
 }
