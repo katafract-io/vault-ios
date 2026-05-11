@@ -457,6 +457,15 @@ struct FileBrowserView: View {
                         } else if !fileLoadingStates.contains(item.id) {
                             // Guard: prevent re-entry while materialize is in
                             // flight. Without this, an impatient user tapping
+                            // multiple times starts parallel downloads of the
+                            // same file and the cell flashes repeatedly.
+                            fileLoadingStates.insert(item.id)
+                            selectedFile = item
+                        }
+                    },
+                    onLongPress: {
+                        if !isEditing {
+                            isEditing = true
                             selectedIds.insert(item.id)
                         }
                     },
