@@ -62,8 +62,9 @@ jobs:
 
       - name: Regenerate Xcode project (xcodegen if present)
         run: |
-          if [ -f project.yml ] && command -v xcodegen >/dev/null 2>&1; then
-            xcodegen generate 2>&1 | tail -10
+          XCODEGEN_BIN=$(command -v xcodegen 2>/dev/null || echo /usr/local/bin/xcodegen)
+          if [ -f project.yml ] && [ -x "$XCODEGEN_BIN" ]; then
+            "$XCODEGEN_BIN" generate 2>&1 | tail -10
           else
             echo "no xcodegen / no project.yml — skipping regen"
           fi
