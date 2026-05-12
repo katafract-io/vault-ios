@@ -28,12 +28,36 @@ public final class VaultServices: ObservableObject {
 
     public init() {
         let container: ModelContainer
+        let schema = Schema([
+            LocalFile.self, LocalFolder.self, BackedUpAsset.self, VaultFolder.self,
+            PendingUpload.self, ChunkUploadQueue.self
+        ])
         do {
-            container = try ModelContainer(
-                for: LocalFile.self, LocalFolder.self, BackedUpAsset.self, VaultFolder.self,
-                    PendingUpload.self, ChunkUploadQueue.self)
+            container = try ModelContainer(for: schema)
         } catch {
-            fatalError("Failed to construct VaultServices ModelContainer: \(error)")
+            // Schema migration failed (new property added without a versioned plan).
+            // Wipe all .sqlite* and .store files from Application Support so SwiftData
+            // can create a fresh schema. The encrypted vault data lives on the server;
+            // losing the local cache means re-fetching the file index on next sync —
+            // acceptable for TestFlight. Log loudly so we notice in debug exports.
+            print("[VaultServices] ModelContainer init failed (\(error)). Wiping store and retrying.")
+            let appSupport = URL.applicationSupportDirectory
+            if let files = try? FileManager.default.contentsOfDirectory(
+                at: appSupport, includingPropertiesForKeys: nil
+            ) {
+                for f in files
+                where f.pathExtension == "sqlite"
+                    || f.pathExtension == "store"
+                    || f.lastPathComponent.hasSuffix("-wal")
+                    || f.lastPathComponent.hasSuffix("-shm") {
+                    try? FileManager.default.removeItem(at: f)
+                }
+            }
+            do {
+                container = try ModelContainer(for: schema)
+            } catch let retryError {
+                fatalError("ModelContainer failed even after store wipe: \(retryError)")
+            }
         }
         self.modelContainer = container
 
