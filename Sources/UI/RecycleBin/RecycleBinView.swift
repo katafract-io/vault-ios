@@ -195,6 +195,8 @@ final class RecycleBinViewModel: ObservableObject {
 
     func load() async {
         guard let services else { return }
+        // Screenshot mode has no auth token — skip API calls and show empty state.
+        if ScreenshotMode.isActive { return }
         isLoading = true
         defer { isLoading = false }
         do {
