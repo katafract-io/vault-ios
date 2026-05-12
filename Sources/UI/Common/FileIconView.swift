@@ -53,10 +53,7 @@ struct SyncStatusBadge: View {
     var body: some View {
         switch state {
         case .synced:
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.kataGold.opacity(0.85))
-                .accessibilityLabel("Encrypted, synced")
+            EmptyView()
         case .uploading(let progress):
             UploadingPill(progress: progress, mode: .uploading)
         case .downloading(let progress):
