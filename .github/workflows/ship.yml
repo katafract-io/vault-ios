@@ -18,7 +18,7 @@ jobs:
   archive-and-upload:
     name: Archive + TestFlight upload
     runs-on: [ self-hosted, macOS, ios-build ]
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
