@@ -90,11 +90,6 @@
 		F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842697680013FF51CC00E52D /* FounderRedeemSheet.swift */; };
 		FDD97B0168192EC903D8F70A /* DocArmorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A1424DE4DC3454E083764A /* DocArmorBridge.swift */; };
 		QLCCFTGU6WMQVVP9DGSDBTVW /* KeychainBootstrapErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = P2ICRF0USWF0L89NFFZEFNPS /* KeychainBootstrapErrorView.swift */; };
-		EA1A9056D6EC4C9EAD6528AF /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A644EEABE56D4F848E9E51FD /* OnboardingView.swift */; };
-		A64787C6C86C4195BCE05E41 /* NotificationsPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 612A2AA99DAB4CB993D957DE /* NotificationsPermissionStep.swift */; };
-		B65B0F04C4C0468AB7EA3897 /* PhotosPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A577A11BCC41839FD98C0A /* PhotosPermissionStep.swift */; };
-		C7F91C58057C477FB305719F /* TierPickerStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 827C6C3F2EB447838B5F8B0F /* TierPickerStep.swift */; };
-		950F34EF385D465494CEC96A /* WelcomeStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90CDFFFE73CE4B1686557ABD /* WelcomeStep.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -237,11 +232,6 @@
 		EA3AE803C9F313353B48A89C /* BIP39WordList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39WordList.swift; sourceTree = "<group>"; };
 		F830083E2B12A292C784C99C /* VaultEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultEnumerator.swift; sourceTree = "<group>"; };
 		P2ICRF0USWF0L89NFFZEFNPS /* KeychainBootstrapErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainBootstrapErrorView.swift; sourceTree = "<group>"; };
-		A644EEABE56D4F848E9E51FD /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = Sources/UI/Onboarding/OnboardingView.swift; sourceTree = "<group>"; };
-		612A2AA99DAB4CB993D957DE /* NotificationsPermissionStep.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NotificationsPermissionStep.swift; path = Sources/UI/Onboarding/NotificationsPermissionStep.swift; sourceTree = "<group>"; };
-		35A577A11BCC41839FD98C0A /* PhotosPermissionStep.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PhotosPermissionStep.swift; path = Sources/UI/Onboarding/PhotosPermissionStep.swift; sourceTree = "<group>"; };
-		827C6C3F2EB447838B5F8B0F /* TierPickerStep.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TierPickerStep.swift; path = Sources/UI/Onboarding/TierPickerStep.swift; sourceTree = "<group>"; };
-		90CDFFFE73CE4B1686557ABD /* WelcomeStep.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WelcomeStep.swift; path = Sources/UI/Onboarding/WelcomeStep.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -807,11 +797,6 @@
 				820A5D7975C62807A1A60A7D /* ModelContextExtensions.swift in Sources */,
 				78B4FFFEEE270F78A4148163 /* SyncObjCBridge.m in Sources */,
 				A0FBBE727F055DC3C4FC5AB1 /* RecoveryPhraseVerifyView.swift in Sources */,
-				EA1A9056D6EC4C9EAD6528AF /* OnboardingView.swift in Sources */,
-				A64787C6C86C4195BCE05E41 /* NotificationsPermissionStep.swift in Sources */,
-				B65B0F04C4C0468AB7EA3897 /* PhotosPermissionStep.swift in Sources */,
-				C7F91C58057C477FB305719F /* TierPickerStep.swift in Sources */,
-				950F34EF385D465494CEC96A /* WelcomeStep.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
