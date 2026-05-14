@@ -3,6 +3,12 @@ import OSLog
 import Photos
 import SwiftUI
 
+enum SyncStatus: Equatable {
+    case idle
+    case syncing
+    case error
+}
+
 struct AlbumItem: Identifiable, Hashable {
     let id: String
     let name: String
@@ -51,6 +57,16 @@ class PhotosViewModel: ObservableObject {
     @Published var bulkBackupActive = false
     @Published var bulkBackupProgress: Double = 0
     @Published var bulkBackupRemaining = 0
+
+    @Published var backedUpCount = 0
+    @Published var totalCount = 0
+    @Published var lastSealedAt: Date? = nil
+    @Published var storageUsed: Int64 = 0
+    @Published var quotaBytes: Int64 = 0
+    @Published var syncStatus: SyncStatus = .idle
+    @Published var queueCount = 0
+    @Published var errorLog: [String] = []
+    @Published var photoAuthStatus = PHPhotoLibrary.authorizationStatus()
 
     var totalBackedUpCount: Int {
         backedUpPhotos.filter { $0.backupState == .backedUp }.count
@@ -443,6 +459,70 @@ class PhotosViewModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
             }
         }
+    }
+
+    /// Refresh the backup dashboard with current counts, last sealed time, and quota.
+    func refreshDashboard() async {
+        // (a) backedUpCount from BackedUpAsset count
+        do {
+            if let services = self.services {
+                let fetchRequest = NSFetchRequest<NSNumber>(entityName: "BackedUpAsset")
+                fetchRequest.returnsDistinctResults = true
+                fetchRequest.resultType = .countResultType
+                let count = try services.vaultStorage?.modelContext.fetch(fetchRequest).first?.intValue ?? 0
+                await MainActor.run { self.backedUpCount = count }
+            }
+        } catch {
+            logger.error("Failed to fetch backed up count: \(error.localizedDescription)")
+        }
+
+        // (b) totalCount from PHPhotoLibrary
+        await Task.detached(priority: .userInitiated) { [weak self] in
+            let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            var total = 0
+            if status == .authorized || status == .limited {
+                let assets = PHAsset.fetchAssets(with: nil)
+                total = assets.count
+            }
+            await MainActor.run { self?.totalCount = total }
+        }.value
+
+        // (c) lastSealedAt from max uploadedAt in BackedUpAsset
+        do {
+            if let services = self.services {
+                let fetchRequest = NSFetchRequest<NSDictionary>(entityName: "BackedUpAsset")
+                fetchRequest.returnsDistinctResults = true
+                fetchRequest.resultType = .dictionaryResultType
+                fetchRequest.returnsObjectsAsFaults = false
+                let expression = NSExpressionDescription()
+                expression.name = "maxDate"
+                expression.expression = NSExpression(forFunction: "max:", arguments: [NSExpression(forKeyPath: "uploadedAt")])
+                expression.expressionResultType = .dateAttributeType
+                fetchRequest.returnsPropertiesNamed = ["maxDate"]
+                fetchRequest.propertiesToFetch = [expression]
+                let results = try services.vaultStorage?.modelContext.fetch(fetchRequest) as? [NSDictionary]
+                let maxDate = results?.first?["maxDate"] as? Date
+                await MainActor.run { self.lastSealedAt = maxDate }
+            }
+        } catch {
+            logger.error("Failed to fetch last sealed time: \(error.localizedDescription)")
+        }
+
+        // (d) storageUsed and quotaBytes from API
+        do {
+            if let services = self.services {
+                let response = try await services.apiClient.fetchQuota()
+                await MainActor.run {
+                    self.storageUsed = response.usage_bytes
+                    self.quotaBytes = response.quota_bytes
+                }
+            }
+        } catch {
+            logger.error("Failed to fetch quota: \(error.localizedDescription)")
+        }
+
+        // Update photoAuthStatus
+        await MainActor.run { self.photoAuthStatus = PHPhotoLibrary.authorizationStatus() }
     }
 
     /// Injects synthetic seed photos for XCUITest screenshot runs.

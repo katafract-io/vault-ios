@@ -30,6 +30,41 @@ struct PhotosView: View {
                         BackupCompleteBanner()
                     }
 
+                    // Backup Dashboard Card
+                    BackupDashboardCard(viewModel: viewModel)
+                        .padding(.horizontal)
+                        .padding(.vertical, 12)
+
+                    // Photo access permission banner
+                    if viewModel.photoAuthStatus != .authorized && viewModel.photoAuthStatus != .limited {
+                        HStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundColor(.orange)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Enable Photo Access")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                Text("Grant permission to back up your photos")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color(.systemOrange).opacity(0.1))
+                        .cornerRadius(8)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .onTapGesture {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                    }
+
                     // Header with Albums button
                     HStack {
                         Text("RECENT PHOTOS")
@@ -122,6 +157,12 @@ struct PhotosView: View {
             .task {
                 viewModel.configure(services: services)
                 await viewModel.loadRecentPhotos()
+                await viewModel.refreshDashboard()
+            }
+            .onAppear {
+                Task {
+                    await viewModel.refreshDashboard()
+                }
             }
             .sheet(item: $viewModel.selectedPhoto) { photo in
                 PhotoDetailView(photo: photo, onDelete: {

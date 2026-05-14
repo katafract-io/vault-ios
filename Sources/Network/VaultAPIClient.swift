@@ -77,6 +77,11 @@ public actor VaultAPIClient {
         return try await get("/v1/vault/meta", authOverride: nil)
     }
 
+    /// GET /v1/vault/quota — returns user's quota_bytes and usage_bytes.
+    public func fetchQuota() async throws -> QuotaResponse {
+        return try await get("/v1/vault/quota", authOverride: nil)
+    }
+
     // MARK: - Presign
 
     /// HEAD /v1/vault/chunks/{hash} — returns true if the server already has this chunk.
@@ -474,6 +479,11 @@ public struct VaultMetaResponse: Decodable, Sendable {
     public let usage_bytes: Int64
     public let quota_bytes: Int64
     public let quota_exceeded: Bool
+}
+
+public struct QuotaResponse: Decodable, Sendable {
+    public let quota_bytes: Int64
+    public let usage_bytes: Int64
 }
 
 public struct FolderRecord: Decodable, Sendable {
