@@ -52,6 +52,30 @@ targets:
       - VisionKit
       - PDFKit
 
+  VaultFileProvider:
+    type: app-extension
+    platform: iOS
+    bundleId: com.katafract.vault.fileprovider
+    sources:
+      - path: FileProvider
+        excludes:
+          - "**/.DS_Store"
+    entitlements:
+      path: FileProvider/VaultFileProvider.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.katafract.vault
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault.fileprovider
+        INFOPLIST_FILE: FileProvider/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        PRODUCT_NAME: VaultFileProvider
+        SWIFT_VERSION: "5.10"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    frameworks:
+      - FileProvider
+
   VaultyxLiveActivity:
     type: app-extension
     platform: iOS
@@ -114,6 +138,7 @@ schemes:
         Vaultyx: all
         VaultShare: all
         VaultyxLiveActivity: all
+        VaultFileProvider: all
     run:
       config: Debug
       executable: Vaultyx
