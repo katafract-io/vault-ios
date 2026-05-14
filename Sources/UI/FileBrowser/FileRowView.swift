@@ -50,7 +50,10 @@ struct FileRowView: View {
 
             Spacer()
 
-            trailingBadge
+            VStack(spacing: 6) {
+                CustodyBadge(state: item.custodyState)
+                trailingBadge
+            }
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 4)
@@ -131,38 +134,40 @@ struct FileRowView: View {
 
 #Preview {
     List {
-        FileRowView(
-            item: VaultFileItem(
-                id: "1",
-                name: "Passport scan.pdf",
-                isFolder: false,
-                sizeBytes: 2_400_000,
-                modifiedAt: Date().addingTimeInterval(-3600),
-                syncState: .synced,
-                isPinned: true
-            )
+        var item1 = VaultFileItem(
+            id: "1",
+            name: "Passport scan.pdf",
+            isFolder: false,
+            sizeBytes: 2_400_000,
+            modifiedAt: Date().addingTimeInterval(-3600),
+            syncState: .synced,
+            isPinned: true
         )
-        FileRowView(
-            item: VaultFileItem(
-                id: "2",
-                name: "Family Archive",
-                isFolder: true,
-                sizeBytes: 0,
-                modifiedAt: Date().addingTimeInterval(-86400),
-                syncState: .synced,
-                isPinned: false
-            )
+        item1.custodyState = .inVault
+        FileRowView(item: item1)
+
+        var item2 = VaultFileItem(
+            id: "2",
+            name: "Family Archive",
+            isFolder: true,
+            sizeBytes: 0,
+            modifiedAt: Date().addingTimeInterval(-86400),
+            syncState: .synced,
+            isPinned: false
         )
-        FileRowView(
-            item: VaultFileItem(
-                id: "3",
-                name: "Trip photos — Kyoto 2025.zip",
-                isFolder: false,
-                sizeBytes: 240_000_000,
-                modifiedAt: Date(),
-                syncState: .uploading(0.42),
-                isPinned: false
-            )
+        item2.custodyState = .verified
+        FileRowView(item: item2)
+
+        var item3 = VaultFileItem(
+            id: "3",
+            name: "Trip photos — Kyoto 2025.zip",
+            isFolder: false,
+            sizeBytes: 240_000_000,
+            modifiedAt: Date(),
+            syncState: .uploading(0.42),
+            isPinned: false
         )
+        item3.custodyState = [.stripped, .inVault]
+        FileRowView(item: item3)
     }
 }

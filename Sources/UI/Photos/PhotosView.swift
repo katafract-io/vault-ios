@@ -406,6 +406,10 @@ struct PhotoGridSection: View {
                                 targetSize: CGSize(width: 120, height: 120))
                         }
                         .overlay(alignment: .bottomTrailing) {
+                            CustodyBadge(state: photo.custodyState)
+                                .padding(4)
+                        }
+                        .overlay(alignment: .topTrailing) {
                             BackupStateBadge(state: photo.backupState)
                                 .padding(4)
                         }

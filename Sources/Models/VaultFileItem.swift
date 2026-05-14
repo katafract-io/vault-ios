@@ -9,6 +9,7 @@ struct VaultFileItem: Identifiable, Hashable {
     let syncState: SyncStateDisplay
     let isPinned: Bool
     var thumbnailImage: UIImage?
+    var custodyState: CustodyState = []
 
     enum SyncStateDisplay: Equatable {
         case synced

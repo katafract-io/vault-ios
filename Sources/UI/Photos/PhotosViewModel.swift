@@ -20,6 +20,7 @@ struct BackedUpPhoto: Identifiable, Hashable {
     let sizeBytes: Int64
     let takenAt: Date
     var backupState: BackupState
+    var custodyState: CustodyState = .onDevice
 
     enum BackupState: Hashable {
         case backedUp
