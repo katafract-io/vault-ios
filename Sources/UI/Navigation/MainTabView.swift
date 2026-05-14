@@ -425,6 +425,13 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
+                    S3KeyManagementView()
+                } label: {
+                    labeledRow(icon: "key.fill", title: "S3 Access")
+                }
+                .listRowBackground(Color.kataSapphire.opacity(0.04))
+
+                NavigationLink {
                     RecycleBinView()
                 } label: {
                     labeledRow(icon: "trash.fill", title: "Recycle Bin")
