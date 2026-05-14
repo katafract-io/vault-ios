@@ -51,6 +51,7 @@ class PhotosViewModel: ObservableObject {
     @Published var bulkBackupActive = false
     @Published var bulkBackupProgress: Double = 0
     @Published var bulkBackupRemaining = 0
+    @Published var isGridView = true
 
     var totalBackedUpCount: Int {
         backedUpPhotos.filter { $0.backupState == .backedUp }.count
@@ -67,9 +68,41 @@ class PhotosViewModel: ObservableObject {
     /// their stored set verbatim. Absence means first-run, and we default to
     /// Recents-only.
     private let enabledAlbumsKey = "vaultyx.photos.enabled_albums"
+    private let gridViewKey = "vaultyx.photos.grid_view"
+
+    init() {
+        self.isGridView = UserDefaults.standard.object(forKey: gridViewKey) as? Bool ?? true
+    }
 
     func configure(services: VaultServices) {
         self.services = services
+    }
+
+    var photosByMonth: [(month: String, photos: [BackedUpPhoto])] {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+
+        let grouped = Dictionary(grouping: backedUpPhotos) { photo in
+            formatter.string(from: photo.takenAt)
+        }
+
+        return grouped
+            .sorted { a, b in
+                let dateA = formatter.date(from: a.key) ?? .distantPast
+                let dateB = formatter.date(from: b.key) ?? .distantPast
+                return dateA > dateB
+            }
+            .map { (month: $0.key, photos: $0.value.sorted { $0.takenAt > $1.takenAt }) }
+    }
+
+    // TODO: Fetch from VaultIndex once the vault services pattern is established.
+    // Current implementation uses PHAsset local identifiers and thumbnails.
+    // Future: Query VaultIndex for encrypted metadata (thumb_key, mime type, created_at)
+    // and integrate ThumbLoader for encrypted thumbnails.
+
+    func setGridView(_ isGrid: Bool) {
+        isGridView = isGrid
+        UserDefaults.standard.set(isGrid, forKey: gridViewKey)
     }
 
     /// Load recent photos only (limit 60 from newest first).
