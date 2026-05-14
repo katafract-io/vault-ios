@@ -3,7 +3,7 @@ import OSLog
 import Photos
 import SwiftUI
 
-struct AlbumItem: Identifiable, Hashable {
+struct PhotoAlbumItem: Identifiable, Hashable {
     let id: String
     let name: String
     let count: Int
@@ -34,7 +34,7 @@ struct BackedUpPhoto: Identifiable, Hashable {
 
 @MainActor
 class PhotosViewModel: ObservableObject {
-    @Published var albums: [AlbumItem] = []
+    @Published var albums: [PhotoAlbumItem] = []
     @Published var backedUpPhotos: [BackedUpPhoto] = []
     @Published var backupInProgress = false
     @Published var backupProgress: Double = 0
@@ -66,7 +66,7 @@ class PhotosViewModel: ObservableObject {
     /// interacted with toggles at least once — on subsequent loads we use
     /// their stored set verbatim. Absence means first-run, and we default to
     /// Recents-only.
-    private let enabledAlbumsKey = "vaultyx.photos.enabled_albums"
+    private let enabledAlbumsKey = "enabledAlbumIds"
 
     func configure(services: VaultServices) {
         self.services = services
@@ -228,8 +228,8 @@ class PhotosViewModel: ObservableObject {
 
         // Album toggles — smart albums with photo count > 0.
         // Run in a background task so it doesn't block the main thread.
-        let result = await Task.detached(priority: .userInitiated) { () -> [AlbumItem] in
-            var albumResult: [AlbumItem] = []
+        let result = await Task.detached(priority: .userInitiated) { () -> [PhotoAlbumItem] in
+            var albumResult: [PhotoAlbumItem] = []
             let smartAlbums = PHAssetCollection.fetchAssetCollections(
                 with: .smartAlbum, subtype: .any, options: nil)
             smartAlbums.enumerateObjects { collection, _, _ in
@@ -242,7 +242,7 @@ class PhotosViewModel: ObservableObject {
                 assets.enumerateObjects { asset, _, _ in
                     if backedUpIds.contains(asset.localIdentifier) { backed += 1 }
                 }
-                albumResult.append(AlbumItem(
+                albumResult.append(PhotoAlbumItem(
                     id: collection.localIdentifier,
                     name: collection.localizedTitle ?? "Album",
                     count: assets.count,
@@ -255,7 +255,7 @@ class PhotosViewModel: ObservableObject {
         self.albums = result
     }
 
-    func toggleAlbum(_ album: AlbumItem, enabled: Bool) {
+    func toggleAlbum(_ album: PhotoAlbumItem, enabled: Bool) {
         if let idx = albums.firstIndex(where: { $0.id == album.id }) {
             albums[idx].isEnabled = enabled
         }
