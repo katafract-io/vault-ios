@@ -52,8 +52,19 @@ class FileBrowserViewModel: ObservableObject {
             folderName = "Vault"
         } else {
             let context = ModelContext(services.modelContainer)
-            let folders = (try? context.fetch(FetchDescriptor<VaultFolder>())) ?? []
-            folderName = folders.first { $0.folderId == folderId }?.name ?? "Folder"
+            if let folderId = folderId, let folderId = UUID(uuidString: folderId) {
+                var descriptor = FetchDescriptor<VaultIndexItem>(
+                    predicate: #Predicate { $0.id == folderId }
+                )
+                descriptor.fetchLimit = 1
+                if let folder = try? context.fetch(descriptor).first {
+                    folderName = folder.name
+                } else {
+                    folderName = "Folder"
+                }
+            } else {
+                folderName = "Folder"
+            }
         }
 
         // Inject seed data if in ScreenshotMode
@@ -81,63 +92,34 @@ class FileBrowserViewModel: ObservableObject {
         }
     }
 
-    /// Re-query SwiftData and rebuild `items`. Called after load, uploads,
-    /// deletes, and background sync.
+    /// Re-query SwiftData and rebuild `items` from VaultIndexItem.
+    /// Called after load, uploads, deletes, and background sync.
     func refreshFromCache() {
         guard let services else { return }
         let context = ModelContext(services.modelContainer)
 
-        let folders = ((try? context.fetch(FetchDescriptor<VaultFolder>())) ?? [])
-            .filter { $0.parentFolderId == currentFolderId }
-            .sorted { $0.name.lowercased() < $1.name.lowercased() }
+        let targetParentId = currentFolderId.flatMap { UUID(uuidString: $0) }
+        var descriptor = FetchDescriptor<VaultIndexItem>(
+            predicate: #Predicate { item in
+                !item.isDeleted && item.parentId == targetParentId
+            },
+            sortBy: [SortDescriptor(\.name)]
+        )
 
-        // Photos backed up via the Photos tab live as LocalFile rows at the
-        // vault root (same storage path), but the user's mental model is
-        // that they belong to the Photos grid and shouldn't clutter the File
-        // Browser. Build the exclusion set from BackedUpAsset → fileId so
-        // the browser only shows files the user explicitly added.
-        let photoFileIds: Set<String> = Set(
-            ((try? context.fetch(FetchDescriptor<BackedUpAsset>())) ?? [])
-                .map(\.fileId))
+        let indexItems = (try? context.fetch(descriptor)) ?? []
+        dlog("refreshFromCache: fetched \(indexItems.count) item(s) for parent=\(currentFolderId ?? "root")", category: "ui", level: .info)
 
-        let files = ((try? context.fetch(FetchDescriptor<LocalFile>())) ?? [])
-            .filter { $0.parentFolderId == currentFolderId
-                && !photoFileIds.contains($0.fileId)
-                && $0.sourceAssetIdentifier == nil }
-            .sorted { $0.modifiedAt > $1.modifiedAt }
-
-        let folderItems = folders.map { folder in
+        let items = indexItems.map { item -> VaultFileItem in
             VaultFileItem(
-                id: folder.folderId,
-                name: folder.name,
-                isFolder: true,
-                sizeBytes: 0,
-                modifiedAt: folder.modifiedAt,
+                id: item.id.uuidString,
+                name: item.name,
+                isFolder: item.mime == "application/vnd.vault.folder",
+                sizeBytes: Int64(item.sizeBytes),
+                modifiedAt: item.modifiedAt,
                 syncState: .synced,
                 isPinned: false)
         }
-        let fileItems = files.map { row in
-            let syncDisplay: VaultFileItem.SyncStateDisplay
-            switch row.syncState {
-            case "pending_upload":   syncDisplay = .pendingUpload
-            case "partial":          syncDisplay = .partial
-            case "uploading":        syncDisplay = .uploading(0)
-            case "downloading":      syncDisplay = .downloading(0)
-            case "manifest_pending": syncDisplay = .uploading(0)
-            case "manifest_failed":  syncDisplay = .conflict
-            case "conflict":         syncDisplay = .conflict
-            default:                 syncDisplay = .synced
-            }
-            return VaultFileItem(
-                id: row.fileId,
-                name: row.filename,
-                isFolder: false,
-                sizeBytes: row.sizeBytes,
-                modifiedAt: row.modifiedAt,
-                syncState: syncDisplay,
-                isPinned: row.isPinned)
-        }
-        items = folderItems + fileItems
+        self.items = items
     }
 
     /// Encrypt + chunk + upload the user-picked URLs, then persist display

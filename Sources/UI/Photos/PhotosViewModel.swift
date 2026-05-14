@@ -2,6 +2,7 @@ import Foundation
 import OSLog
 import Photos
 import SwiftUI
+import SwiftData
 
 struct AlbumItem: Identifiable, Hashable {
     let id: String
@@ -11,13 +12,12 @@ struct AlbumItem: Identifiable, Hashable {
     var backedUpCount: Int = 0
 }
 
-/// A photo from the user's local library. Thumbnails are fetched lazily
-/// via PHImageManager (see `PhotoThumbnailView`). The `backupState` reflects
-/// whether this asset has been uploaded to Vaultyx storage yet.
+/// A photo from the vault's VaultIndexItem table. Renders from the
+/// decrypted metadata in the local SQLite cache (VaultIndexItem).
 struct BackedUpPhoto: Identifiable, Hashable {
-    let id: String               // PHAsset.localIdentifier
+    let id: UUID                 // VaultIndexItem.id
     let filename: String
-    let sizeBytes: Int64
+    let sizeBytes: Int
     let takenAt: Date
     var backupState: BackupState
     var custodyState: CustodyState = .onDevice
@@ -73,8 +73,8 @@ class PhotosViewModel: ObservableObject {
         self.services = services
     }
 
-    /// Load recent photos only (limit 60 from newest first).
-    /// This is called on the root PhotosView .task and is intentionally lightweight.
+    /// Load recent photos from VaultIndex (limit 60, sorted by date descending).
+    /// Queries the local SwiftData cache for VaultIndexItem rows with mime LIKE 'image/%'.
     /// In ScreenshotMode, injects synthetic seed photos instead.
     func loadRecentPhotos() async {
         if ScreenshotMode.seedData != nil {
@@ -82,131 +82,47 @@ class PhotosViewModel: ObservableObject {
             return
         }
         if ScreenshotMode.isActive { return }
-        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-        guard status == .authorized || status == .limited else { return }
 
-        // Honor the user's album selection. The grid is a *preview of what
-        // will be backed up* — if the user disabled every album (including
-        // Recents, which is iOS's "all photos" view), they expect an empty
-        // grid. Reading the persisted set with `defaults.object(forKey:)`
-        // lets us distinguish "never set" (first launch → fall back to a
-        // recent-images preview) from "deliberately empty" (show nothing).
-        let defaults = UserDefaults.standard
-        let hasPersisted = defaults.object(forKey: enabledAlbumsKey) != nil
-        let enabledIds = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
-
-        dlog("loadRecentPhotos: hasPersisted=\(hasPersisted) enabledIds.count=\(enabledIds.count) ids=\(Array(enabledIds).map { String($0.prefix(12)) })", category: "photos", level: .info)
-
-        if hasPersisted && enabledIds.isEmpty {
-            dlog("loadRecentPhotos: empty selection, showing empty grid", category: "photos", level: .info)
+        guard let services = self.services else {
             backedUpPhotos = []
-            allBackedUp = false
             return
         }
 
-        // PhotoKit's PHAsset.fetchAssets / enumerateObjects are synchronous
-        // calls into Photos.sqlite via NSXPCStoreConnection. On main, they
-        // hang the runloop and trip the iOS watchdog (bug type 228 / "UIKit-
-        // runloop timeout"). Move all PhotoKit work to a detached priority
-        // task and only return the lightweight summary back to the main
-        // actor for state mutation.
-        let summaries: [PhotoSummary] = await Task.detached(priority: .userInitiated) {
-            Self.fetchPhotoSummaries(hasPersisted: hasPersisted, enabledIds: enabledIds, limit: 60)
-        }.value
-        dlog("loadRecentPhotos: fetched \(summaries.count) photo summaries", category: "photos", level: .info)
+        let context = ModelContext(services.modelContainer)
+        dlog("loadRecentPhotos: querying VaultIndexItem for recent images", category: "photos", level: .info)
 
-        services?.photoBackup.refresh()
-        let backedUp = services?.photoBackup.backedUpIdentifiers ?? []
+        var descriptor = FetchDescriptor<VaultIndexItem>(
+            predicate: #Predicate { item in
+                !item.isDeleted && item.mime.starts(with: "image/")
+            },
+            sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 60
 
-        var photos: [BackedUpPhoto] = []
-        photos.reserveCapacity(summaries.count)
-        for s in summaries {
-            let state: BackedUpPhoto.BackupState =
-                backedUp.contains(s.localId) ? .backedUp : .pending
-            photos.append(BackedUpPhoto(
-                id: s.localId,
-                filename: s.filename,
-                sizeBytes: 0,
-                takenAt: s.takenAt,
-                backupState: state
-            ))
-        }
-        backedUpPhotos = photos
-        allBackedUp = !photos.isEmpty && photos.allSatisfy { $0.backupState == .backedUp }
-    }
+        do {
+            let items = try context.fetch(descriptor)
+            dlog("loadRecentPhotos: fetched \(items.count) image item(s)", category: "photos", level: .info)
 
-    /// Sendable summary of a PHAsset suitable for crossing isolation
-    /// boundaries — the PHAsset object itself is bound to its fetch
-    /// context, so we extract scalars eagerly while still off-main.
-    private struct PhotoSummary: Sendable {
-        let localId: String
-        let filename: String
-        let takenAt: Date
-    }
-
-    /// Fetch + summarize image assets. Pure PhotoKit work; runs off-main.
-    /// `hasPersisted` distinguishes first-launch (recent-images preview)
-    /// from a deliberate album selection. `nonisolated` so it can be called
-    /// from a `Task.detached` block — without this, the @MainActor on the
-    /// enclosing class would prevent off-main invocation.
-    nonisolated private static func fetchPhotoSummaries(
-        hasPersisted: Bool, enabledIds: Set<String>, limit: Int
-    ) -> [PhotoSummary] {
-        let assets: [PHAsset]
-        if hasPersisted {
-            assets = fetchAssets(fromAlbums: enabledIds, limit: limit)
-        } else {
-            // First-launch preview, no album selection yet — show recent media.
-            // No mediaType filter (see fetchAssets above).
-            let opts = PHFetchOptions()
-            opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            opts.fetchLimit = limit
-            let result = PHAsset.fetchAssets(with: opts)
-            var collected: [PHAsset] = []
-            result.enumerateObjects { a, _, _ in collected.append(a) }
-            assets = collected
-        }
-        return assets.map { asset in
-            PhotoSummary(
-                localId: asset.localIdentifier,
-                filename: (asset.value(forKey: "filename") as? String) ?? "IMG.HEIC",
-                takenAt: asset.creationDate ?? .distantPast)
-        }
-    }
-
-    /// Fetch image assets belonging to any of the given album local-ids.
-    /// Deduplicates across albums, sorts newest-first, caps at `limit`.
-    /// MUST be called off-main — see `fetchPhotoSummaries`.
-    nonisolated private static func fetchAssets(fromAlbums albumIds: Set<String>, limit: Int) -> [PHAsset] {
-        let idArray = Array(albumIds)
-        let collections = PHAssetCollection.fetchAssetCollections(
-            withLocalIdentifiers: idArray, options: nil)
-        dlog("fetchAssets: requested \(idArray.count) album id(s), resolved \(collections.count) collection(s)", category: "photos", level: .info)
-        // No mediaType predicate — Vaultyx backs up whatever the user has in
-        // an album. Filtering on PHAssetMediaType.image excluded videos
-        // (and some Live Photos / iCloud-shared content) and produced the
-        // empty-grid + silent-backup symptom Tek hit on build 520.
-        let opts = PHFetchOptions()
-        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-
-        var seen = Set<String>()
-        var collected: [PHAsset] = []
-        collections.enumerateObjects { collection, _, _ in
-            let result = PHAsset.fetchAssets(in: collection, options: opts)
-            dlog("fetchAssets: collection '\(collection.localizedTitle ?? "?")' (\(String(collection.localIdentifier.prefix(12)))) → \(result.count) image asset(s)", category: "photos", level: .info)
-            result.enumerateObjects { asset, _, _ in
-                if !seen.contains(asset.localIdentifier) {
-                    seen.insert(asset.localIdentifier)
-                    collected.append(asset)
-                }
+            var photos: [BackedUpPhoto] = []
+            photos.reserveCapacity(items.count)
+            for item in items {
+                photos.append(BackedUpPhoto(
+                    id: item.id,
+                    filename: item.name,
+                    sizeBytes: item.sizeBytes,
+                    takenAt: item.modifiedAt,
+                    backupState: .backedUp
+                ))
             }
+            backedUpPhotos = photos
+            allBackedUp = !photos.isEmpty && photos.allSatisfy { $0.backupState == .backedUp }
+        } catch {
+            dlog("loadRecentPhotos: fetch failed: \(error.localizedDescription)", category: "photos", level: .error)
+            backedUpPhotos = []
+            allBackedUp = false
         }
-        collected.sort {
-            ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast)
-        }
-        if collected.count > limit { collected = Array(collected.prefix(limit)) }
-        return collected
     }
+
 
     /// Load all albums. Deferred until user opens the AlbumDrawerSheet.
     /// Runs in background to avoid blocking the main thread.

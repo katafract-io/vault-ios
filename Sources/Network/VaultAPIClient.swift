@@ -228,6 +228,13 @@ public actor VaultAPIClient {
         return data
     }
 
+    /// GET /v1/vault/manifest/delta?since=cursor — fetches incremental changes since last sync.
+    /// Returns items added/modified and IDs of items deleted.
+    public func fetchManifestDelta(since cursor: String) async throws -> ManifestDeltaResponse {
+        let queryParam = cursor.isEmpty ? "" : "?since=\(cursor)"
+        return try await get("/v1/vault/manifest/delta\(queryParam)", authOverride: nil)
+    }
+
     // MARK: - Keys
 
     public func storeKey(keyId: String, encryptedKeyBlob: Data) async throws {
@@ -427,6 +434,47 @@ public actor VaultAPIClient {
 
     private struct KeyResponse: Decodable {
         let keyBlobB64: String
+    }
+}
+
+// MARK: - ManifestDeltaResponse (public for VaultIndexDeltaSync)
+
+public struct ManifestDeltaResponse: Decodable, Sendable {
+    public struct DeltaItem: Decodable, Sendable {
+        public let id: UUID
+        public let parentId: UUID?
+        public let name: String
+        public let path: String
+        public let mime: String
+        public let sizeBytes: Int
+        public let createdAt: Date
+        public let modifiedAt: Date
+        public let custodyState: String
+        public let thumbKey: String?
+        public let originalKey: String?
+        public let exifKey: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, path, mime
+            case parentId = "parent_id"
+            case sizeBytes = "size_bytes"
+            case createdAt = "created_at"
+            case modifiedAt = "modified_at"
+            case custodyState = "custody_state"
+            case thumbKey = "thumb_key"
+            case originalKey = "original_key"
+            case exifKey = "exif_key"
+        }
+    }
+
+    public let items: [DeltaItem]
+    public let deletedIds: [String]
+    public let nextCursor: String
+
+    enum CodingKeys: String, CodingKey {
+        case items, deletedIds, nextCursor
+        case deletedIds = "deleted_ids"
+        case nextCursor = "next_cursor"
     }
 }
 

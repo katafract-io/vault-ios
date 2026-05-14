@@ -26,14 +26,24 @@ public final class VaultServices: ObservableObject {
     /// When non-nil, the main VaultApp displays KeychainBootstrapErrorView instead of normal content.
     @Published public var bootstrapError: Error?
 
+    private var deltaSync: VaultIndexDeltaSync?
+    private var deltaSyncTask: Task<Void, Never>?
+
     public init() {
         let container: ModelContainer
         let schema = Schema([
             LocalFile.self, LocalFolder.self, BackedUpAsset.self, VaultFolder.self,
-            PendingUpload.self, ChunkUploadQueue.self
+            PendingUpload.self, ChunkUploadQueue.self, VaultIndexItem.self
         ])
         do {
-            container = try ModelContainer(for: schema)
+            // Use App Group container for FileProvider extension access
+            let containerUrl: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave")
+            var modelConfig = ModelConfiguration(schema: schema)
+            if let containerUrl = containerUrl {
+                let storeUrl = containerUrl.appendingPathComponent("vault.sqlite")
+                modelConfig.url = storeUrl
+            }
+            container = try ModelContainer(for: schema, configurations: [modelConfig])
         } catch {
             // Schema migration failed (new property added without a versioned plan).
             // Wipe all .sqlite* and .store files from Application Support so SwiftData
@@ -54,7 +64,13 @@ public final class VaultServices: ObservableObject {
                 }
             }
             do {
-                container = try ModelContainer(for: schema)
+                let containerUrl: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave")
+                var modelConfig = ModelConfiguration(schema: schema)
+                if let containerUrl = containerUrl {
+                    let storeUrl = containerUrl.appendingPathComponent("vault.sqlite")
+                    modelConfig.url = storeUrl
+                }
+                container = try ModelContainer(for: schema, configurations: [modelConfig])
             } catch let retryError {
                 fatalError("ModelContainer failed even after store wipe: \(retryError)")
             }
@@ -100,6 +116,7 @@ public final class VaultServices: ObservableObject {
         // because VaultKeyManager is an actor.
         Task {
             await self.configureKeyManager()
+            await self.startDeltaSync()
         }
     }
 
@@ -108,6 +125,29 @@ public final class VaultServices: ObservableObject {
     private func configureKeyManager() async {
         await keyManager.setMasterKeyDirectly(masterKey)
         await keyManager.configure(apiClient: apiClient)
+    }
+
+    /// Initialize and start the background delta sync actor.
+    /// Syncs manifest changes every 30 seconds (configurable).
+    private func startDeltaSync() async {
+        let context = ModelContext(modelContainer)
+        self.deltaSync = VaultIndexDeltaSync(apiClient: apiClient, modelContext: context)
+
+        // Start background sync loop (every 30 seconds)
+        deltaSyncTask = Task {
+            while !Task.isCancelled {
+                do {
+                    if let deltaSync = self.deltaSync {
+                        try await deltaSync.performDeltaSync()
+                    }
+                    try await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
+                } catch {
+                    // Log but don't crash; will retry on next loop
+                    print("[VaultIndexDeltaSync] sync failed: \(error)")
+                    try? await Task.sleep(nanoseconds: 5_000_000_000) // Back off 5s before retry
+                }
+            }
+        }
     }
 
     /// Populate demo seed data for screenshot capture.
@@ -234,5 +274,9 @@ public final class VaultServices: ObservableObject {
         dlog(
             "queue summary: chunks pending=\(pendingChunks.count) inflight=\(inFlight.count) ready=\(readyNow) backoff=\(waitingRetry.count) | files: \(stateSummary)",
             category: "sync", level: .info)
+    }
+
+    deinit {
+        deltaSyncTask?.cancel()
     }
 }
