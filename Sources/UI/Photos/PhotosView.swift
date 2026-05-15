@@ -40,7 +40,7 @@ struct PhotosView: View {
                             showAlbumsSheet = true
                         } label: {
                             HStack(spacing: 4) {
-                                Text("Albums")
+                                Text("Choose Albums")
                                 Image(systemName: "chevron.down")
                             }
                             .font(.caption)
@@ -129,13 +129,11 @@ struct PhotosView: View {
                 })
             }
             .sheet(isPresented: $showAlbumsSheet) {
-                AlbumDrawerSheet(
-                    isPresented: $showAlbumsSheet,
-                    albums: viewModel.albums,
-                    isLoading: viewModel.isLoadingAlbums,
-                    onToggle: viewModel.toggleAlbum,
-                    onAppear: { await viewModel.loadAlbums() }
-                )
+                AlbumPickerSheet(onSave: {
+                    Task {
+                        await viewModel.loadRecentPhotos()
+                    }
+                })
             }
             .sheet(isPresented: $showPaywall) {
                 CapacityPickerView()
@@ -146,91 +144,6 @@ struct PhotosView: View {
     private var showEmptyState: Bool {
         !viewModel.backupInProgress &&
         !viewModel.backedUpPhotos.contains(where: { $0.backupState == .syncedAndLocal })
-    }
-}
-
-// MARK: - Album Drawer Sheet
-
-struct AlbumDrawerSheet: View {
-    @Binding var isPresented: Bool
-    let albums: [AlbumItem]
-    let isLoading: Bool
-    var onToggle: (AlbumItem, Bool) -> Void
-    var onAppear: () async -> Void
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if isLoading {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 12) {
-                            ProgressView()
-                            Text("Loading albums...")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .frame(height: 100)
-                } else if albums.isEmpty {
-                    HStack {
-                        Spacer()
-                        Text("No albums")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .frame(height: 60)
-                } else {
-                    ForEach(albums) { album in
-                        HStack {
-                            // Album thumbnail
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(.systemGray5))
-                                .frame(width: 44, height: 44)
-                                .overlay(
-                                    Image(systemName: "photo.on.rectangle")
-                                        .foregroundStyle(.secondary)
-                                )
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(album.name).font(.body)
-                                if album.isEnabled && album.backedUpCount > 0 {
-                                    Text("\(album.backedUpCount) of \(album.count) backed up")
-                                        .font(.caption)
-                                        .foregroundStyle(album.backedUpCount == album.count ? Color.kataGold.opacity(0.85) : .secondary)
-                                } else {
-                                    Text("\(album.count) \(album.count == 1 ? "photo" : "photos")")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-
-                            Spacer()
-
-                            Toggle("", isOn: Binding(
-                                get: { album.isEnabled },
-                                set: { onToggle(album, $0) }
-                            ))
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-            .listStyle(.plain)
-            .navigationTitle("Albums")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { isPresented = false }
-                }
-            }
-            .task {
-                await onAppear()
-            }
-        }
-        .presentationDetents([.medium, .large])
     }
 }
 
