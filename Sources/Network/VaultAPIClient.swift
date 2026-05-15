@@ -235,6 +235,13 @@ public actor VaultAPIClient {
         return try await get("/v1/vault/manifest/delta\(queryParam)", authOverride: nil)
     }
 
+    // MARK: - DocArmor
+
+    /// GET /v1/vault/docarmor-folder — list files in user's docarmor-vaults S3 prefix.
+    public func fetchDocArmorFolder() async throws -> DocArmorFolderResponse {
+        return try await get("/v1/vault/docarmor-folder", authOverride: nil)
+    }
+
     // MARK: - Keys
 
     public func storeKey(keyId: String, encryptedKeyBlob: Data) async throws {
@@ -625,6 +632,16 @@ public struct FounderCodeRedeemResponse: Decodable, Sendable {
     public let is_founder: Bool
     public let expires_at: Int?
     public let label: String
+}
+
+public struct DocArmorFolderItem: Decodable, Sendable {
+    public let key: String
+    public let size: Int64
+    public let last_modified: String
+}
+
+public struct DocArmorFolderResponse: Decodable, Sendable {
+    public let files: [DocArmorFolderItem]
 }
 
 // MARK: - Error types

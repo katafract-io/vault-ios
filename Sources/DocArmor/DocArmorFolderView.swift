@@ -72,8 +72,16 @@ class DocArmorFolderViewModel: ObservableObject {
     @Published var documents: [DocArmorDocument] = []
 
     func load() async {
-        // TODO: list objects from docarmor-vaults/{user_id}/ S3 prefix via Vault API
-        // Placeholder
-        documents = []
+        do {
+            let response = try await VaultAPIClient.shared.fetchDocArmorFolder()
+            documents = response.files.map { file in
+                let name = URL(fileURLWithPath: file.key).lastPathComponent
+                let sizeKB = Double(file.size) / 1024.0
+                let subtitle = String(format: "%.1f KB", sizeKB)
+                return DocArmorDocument(id: file.key, name: name, subtitle: subtitle)
+            }
+        } catch {
+            documents = []
+        }
     }
 }
