@@ -18,6 +18,7 @@ final class VaultIndexItem {
     var exifKey: String?
     var isDeleted: Bool = false
     var deletedAt: Date?
+    var assetIdentifier: String?
 
     init(
         id: UUID = UUID(),
@@ -34,7 +35,8 @@ final class VaultIndexItem {
         originalKey: String? = nil,
         exifKey: String? = nil,
         isDeleted: Bool = false,
-        deletedAt: Date? = nil
+        deletedAt: Date? = nil,
+        assetIdentifier: String? = nil
     ) {
         self.id = id
         self.parentId = parentId
@@ -51,5 +53,6 @@ final class VaultIndexItem {
         self.exifKey = exifKey
         self.isDeleted = isDeleted
         self.deletedAt = deletedAt
+        self.assetIdentifier = assetIdentifier
     }
 }
