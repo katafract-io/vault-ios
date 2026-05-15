@@ -129,7 +129,11 @@ struct PhotosView: View {
                 })
             }
             .sheet(isPresented: $showAlbumsSheet) {
-                AlbumPickerSheet()
+                AlbumPickerSheet(onSave: {
+                    Task {
+                        await viewModel.loadRecentPhotos()
+                    }
+                })
             }
             .sheet(isPresented: $showPaywall) {
                 CapacityPickerView()

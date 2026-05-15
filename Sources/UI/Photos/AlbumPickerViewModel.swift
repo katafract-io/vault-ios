@@ -34,9 +34,12 @@ class AlbumPickerViewModel: ObservableObject {
         let defaults = UserDefaults.standard
         selectedAlbumIds = Set(defaults.stringArray(forKey: enabledAlbumsKey) ?? [])
 
+        // Capture selectedAlbumIds on @MainActor before Task.detached
+        let snapshot = selectedAlbumIds
+
         // Fetch albums off-main to avoid blocking the runloop
         let fetchedAlbums: [AlbumItem] = await Task.detached(priority: .userInitiated) {
-            Self.fetchAllAlbums(selectedIds: self.selectedAlbumIds)
+            Self.fetchAllAlbums(selectedIds: snapshot)
         }.value
 
         albums = fetchedAlbums

@@ -5,6 +5,7 @@ import KatafractStyle
 struct AlbumPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = AlbumPickerViewModel()
+    var onSave: () -> Void = {}
 
     var body: some View {
         NavigationStack {
@@ -95,6 +96,7 @@ struct AlbumPickerSheet: View {
 
                         Button {
                             _ = viewModel.save()
+                            onSave()
                             dismiss()
                         } label: {
                             Text("Save Selection")
