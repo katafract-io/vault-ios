@@ -13,7 +13,7 @@ extension View {
 }
 
 /// Extracted row helper for FileBrowserView list body.
-/// 
+///
 /// Combines FileRowView + swipeActions + NavigationLink (for folders) in one
 /// self-contained view to keep the type-checker happy and avoid inline body
 /// complexity timeouts.
@@ -30,6 +30,9 @@ struct FileBrowserListRow: View {
     let onShare: () -> Void
     let onPin: () -> Void
     let onMove: () -> Void
+    let onDuplicate: () -> Void
+    let onToggleStar: () -> Void
+    let onToggleOffline: () -> Void
 
     var body: some View {
         Group {
@@ -54,18 +57,26 @@ struct FileBrowserListRow: View {
         .if(!isEditing) { view in
             view
                 .contextMenu {
-                    Button(action: onShare) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
                     Button(action: onRename) {
                         Label("Rename", systemImage: "pencil")
                     }
                     Button(action: onMove) {
                         Label("Move", systemImage: "folder")
                     }
-                    Button(action: onPin) {
-                        Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+                    Button(action: onDuplicate) {
+                        Label("Duplicate", systemImage: "doc.on.doc")
                     }
+                    Button(action: onShare) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    Divider()
+                    Button(action: onToggleStar) {
+                        Label(item.isStar ? "Unstar" : "Star", systemImage: item.isStar ? "star.fill" : "star")
+                    }
+                    Button(action: onToggleOffline) {
+                        Label(item.isPinned ? "Remove Offline" : "Keep Offline", systemImage: item.isPinned ? "pin.slash" : "pin")
+                    }
+                    Divider()
                     Button(role: .destructive, action: onDelete) {
                         Label("Delete", systemImage: "trash")
                     }

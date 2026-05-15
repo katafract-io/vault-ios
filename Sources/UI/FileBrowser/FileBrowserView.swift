@@ -111,6 +111,26 @@ struct FileBrowserView: View {
         isEditing = false
     }
 
+    /// Bulk star/unstar selected items.
+    private func bulkToggleStar() {
+        let selectedItems = sortedItems.filter { selectedIds.contains($0.id) }
+        for item in selectedItems {
+            viewModel.toggleStar(item)
+        }
+        selectedIds.removeAll()
+        isEditing = false
+    }
+
+    /// Bulk toggle offline mode for selected items.
+    private func bulkToggleOffline() {
+        let selectedItems = sortedItems.filter { selectedIds.contains($0.id) }
+        for item in selectedItems {
+            viewModel.toggleOffline(item)
+        }
+        selectedIds.removeAll()
+        isEditing = false
+    }
+
     var sortedItems: [VaultFileItem] {
         let filtered: [VaultFileItem]
         if selectedCategory == .all {
@@ -216,30 +236,52 @@ struct FileBrowserView: View {
         .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
         .safeAreaInset(edge: .bottom) {
             if isEditing && !selectedIds.isEmpty {
-                HStack(spacing: 16) {
-                    Button(action: { showDeleteConfirmation = true }) {
-                        Image(systemName: "trash")
-                        Text("Delete")
+                VStack(spacing: 0) {
+                    Divider()
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 24) {
+                            Button(action: { showDeleteConfirmation = true }) {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "trash")
+                                    Text("Delete")
+                                        .font(.caption)
+                                }
+                            }
+                            .foregroundColor(.red)
+
+                            Button(action: { showBulkMoveSheet = true }) {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "folder")
+                                    Text("Move")
+                                        .font(.caption)
+                                }
+                            }
+                            .foregroundColor(.kataSapphire)
+
+                            Button(action: { bulkToggleStar() }) {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "star")
+                                    Text("Star")
+                                        .font(.caption)
+                                }
+                            }
+                            .foregroundColor(.kataGold)
+
+                            Button(action: { bulkToggleOffline() }) {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "pin")
+                                    Text("Offline")
+                                        .font(.caption)
+                                }
+                            }
+                            .foregroundColor(.kataGold)
+
+                            Spacer()
+                                .frame(width: 1)
+                        }
+                        .padding()
                     }
-                    .foregroundColor(.red)
-
-                    Spacer()
-
-                    Button(action: { showBulkMoveSheet = true }) {
-                        Image(systemName: "folder")
-                        Text("Move")
-                    }
-                    .foregroundColor(.kataSapphire)
-
-                    Spacer()
-
-                    Button(action: { bulkTogglePin() }) {
-                        Image(systemName: "pin")
-                        Text("Pin")
-                    }
-                    .foregroundColor(.kataGold)
                 }
-                .padding()
                 .background(Color.kataNavy.opacity(0.95))
                 .foregroundColor(.white)
             }
@@ -544,15 +586,17 @@ struct FileBrowserView: View {
                         onDelete: { softDelete(item) },
                         onShare: { shareFile = item },
                         onPin: { viewModel.togglePin(item) },
-                        onMove: { moveTarget = item }
+                        onMove: { moveTarget = item },
+                        onDuplicate: { viewModel.duplicateItem(item) },
+                        onToggleStar: { viewModel.toggleStar(item) },
+                        onToggleOffline: { viewModel.toggleOffline(item) }
                     )
                     if item.isFolder && !isEditing {
                         NavigationLink(value: item) { EmptyView() }
                             .opacity(0)
                     }
                 }
-            }
-        }
+
     }
 
     @ViewBuilder

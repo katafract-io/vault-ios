@@ -17,6 +17,7 @@ import Foundation
     var modifiedAt: Date
     var syncState: String           // synced | uploading | downloading | conflict | deleted | pending | pending_upload | manifest_pending | manifest_failed | partial
     var isPinned: Bool              // pinned for offline access
+    var isStar: Bool                // starred by user
     var thumbnailPath: String?      // local thumbnail cache path
 
     /// Retry bookkeeping for the manifest POST step. Chunks have their own
@@ -42,6 +43,7 @@ import Foundation
         modifiedAt: Date = Date(),
         syncState: String = "pending",
         isPinned: Bool = false,
+        isStar: Bool = false,
         thumbnailPath: String? = nil,
         manifestAttempts: Int = 0,
         nextManifestRetryAt: Date = Date(),
@@ -57,6 +59,7 @@ import Foundation
         self.modifiedAt = modifiedAt
         self.syncState = syncState
         self.isPinned = isPinned
+        self.isStar = isStar
         self.thumbnailPath = thumbnailPath
         self.manifestAttempts = manifestAttempts
         self.nextManifestRetryAt = nextManifestRetryAt

@@ -129,7 +129,29 @@ class FileBrowserViewModel: ObservableObject {
                 syncState: .synced,
                 isPinned: false)
         }
-        self.items = items
+        let fileItems = files.map { row in
+            let syncDisplay: VaultFileItem.SyncStateDisplay
+            switch row.syncState {
+            case "pending_upload":   syncDisplay = .pendingUpload
+            case "partial":          syncDisplay = .partial
+            case "uploading":        syncDisplay = .uploading(0)
+            case "downloading":      syncDisplay = .downloading(0)
+            case "manifest_pending": syncDisplay = .uploading(0)
+            case "manifest_failed":  syncDisplay = .conflict
+            case "conflict":         syncDisplay = .conflict
+            default:                 syncDisplay = .synced
+            }
+            return VaultFileItem(
+                id: row.fileId,
+                name: row.filename,
+                isFolder: false,
+                sizeBytes: row.sizeBytes,
+                modifiedAt: row.modifiedAt,
+                syncState: syncDisplay,
+                isPinned: row.isPinned,
+                isStar: row.isStar)
+        }
+        items = folderItems + fileItems
     }
 
     /// Encrypt + chunk + upload the user-picked URLs, then persist display
@@ -566,6 +588,86 @@ class FileBrowserViewModel: ObservableObject {
                 isPinned: !updated.isPinned,
                 thumbnailImage: updated.thumbnailImage)
         }
+    }
+
+    /// Duplicate a file by downloading it and re-uploading to the same folder.
+    /// This creates a copy with the name "{original} copy".
+    func duplicateItem(_ item: VaultFileItem) {
+        guard let services, !item.isFolder else { return }
+        let folderId = currentFolderId ?? "root"
+        dlog("duplicate file: \(item.name) id=\(item.id)", category: "ui", level: .info)
+
+        Task { @MainActor in
+            do {
+                // Download the original file
+                let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId)
+                let plaintext = try await services.syncEngine.downloadFile(
+                    fileId: item.id,
+                    folderKey: folderKey
+                )
+
+                // Create a new name with " copy" suffix
+                let nameComponents = item.name.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+                let newName: String
+                if nameComponents.count == 2 {
+                    // "file.txt" → "file copy.txt"
+                    newName = "\(nameComponents[0]) copy.\(nameComponents[1])"
+                } else {
+                    // "file" → "file copy"
+                    newName = "\(item.name) copy"
+                }
+
+                // Upload as a new file
+                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                try plaintext.write(to: tempURL)
+                defer { try? FileManager.default.removeItem(at: tempURL) }
+
+                _ = try await services.syncEngine.importFile(
+                    localURL: tempURL,
+                    parentFolderId: folderId == "root" ? nil : folderId,
+                    folderKey: folderKey,
+                    masterKey: services.masterKey,
+                    filename: newName
+                )
+
+                refreshFromCache()
+            } catch {
+                self.error = "Duplicate failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Toggle star status for a file (local-only tracking for now).
+    func toggleStar(_ item: VaultFileItem) {
+        guard let services else { return }
+        let context = ModelContext(services.modelContainer)
+        let descriptor = FetchDescriptor<LocalFile>()
+        if let rows = try? context.fetch(descriptor) {
+            for row in rows where row.fileId == item.id {
+                row.isStar.toggle()
+            }
+            saveOrLog(context)
+        }
+        // Update in-memory items list
+        if let idx = items.firstIndex(where: { $0.id == item.id }) {
+            let updated = items[idx]
+            items[idx] = VaultFileItem(
+                id: updated.id,
+                name: updated.name,
+                isFolder: updated.isFolder,
+                sizeBytes: updated.sizeBytes,
+                modifiedAt: updated.modifiedAt,
+                syncState: updated.syncState,
+                isPinned: updated.isPinned,
+                isStar: !updated.isStar,
+                thumbnailImage: updated.thumbnailImage)
+        }
+    }
+
+    /// Toggle offline mode (keep offline / remove offline).
+    /// This is equivalent to toggling the pin status.
+    func toggleOffline(_ item: VaultFileItem) {
+        togglePin(item)
     }
 
     /// Injects synthetic seed data for XCUITest screenshot runs.
