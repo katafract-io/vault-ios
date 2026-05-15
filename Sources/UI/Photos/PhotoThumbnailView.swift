@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 import Photos
 
-/// Fetches and renders a thumbnail for a PHAsset identified by localIdentifier.
+/// Fetches and renders a thumbnail for a PHAsset identified by localIdentifier,
+/// or renders a shield placeholder for cloud-only assets (in vault but deleted from device).
 ///
 /// Owns its own frame: callers supply `targetSize` and get back a view that
 /// clips to that size. This avoids the nested-aspectRatio layout thrash that
@@ -14,19 +15,22 @@ import Photos
 /// no geometry change between states, and we explicitly disable transition
 /// animations on the image swap.
 struct PhotoThumbnailView: View {
-    let assetLocalIdentifier: String
+    let assetLocalIdentifier: String?
     let targetSize: CGSize
     let contentMode: PHImageContentMode
+    let isCloudOnly: Bool
 
     @State private var image: UIImage?
     @State private var requestID: PHImageRequestID?
 
-    init(assetLocalIdentifier: String,
+    init(assetLocalIdentifier: String?,
          targetSize: CGSize = CGSize(width: 200, height: 200),
-         contentMode: PHImageContentMode = .aspectFill) {
+         contentMode: PHImageContentMode = .aspectFill,
+         isCloudOnly: Bool = false) {
         self.assetLocalIdentifier = assetLocalIdentifier
         self.targetSize = targetSize
         self.contentMode = contentMode
+        self.isCloudOnly = isCloudOnly
     }
 
     var body: some View {
@@ -36,7 +40,12 @@ struct PhotoThumbnailView: View {
             // delivery (low-res, then high-res).
             Color(.systemGray5)
 
-            if let image {
+            if isCloudOnly {
+                // Cloud-only asset: show shield icon placeholder
+                Image(systemName: "shield.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+            } else if let image {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(
@@ -51,9 +60,10 @@ struct PhotoThumbnailView: View {
     }
 
     private func fetch() {
-        guard image == nil else { return }
+        guard image == nil, !isCloudOnly else { return }
+        guard let localId = assetLocalIdentifier else { return }
         let fetchResult = PHAsset.fetchAssets(
-            withLocalIdentifiers: [assetLocalIdentifier], options: nil)
+            withLocalIdentifiers: [localId], options: nil)
         guard let asset = fetchResult.firstObject else { return }
 
         let opts = PHImageRequestOptions()

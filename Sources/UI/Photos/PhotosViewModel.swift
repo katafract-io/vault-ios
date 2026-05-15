@@ -12,21 +12,22 @@ struct AlbumItem: Identifiable, Hashable {
     var backedUpCount: Int = 0
 }
 
-/// A photo from the vault's VaultIndexItem table. Renders from the
-/// decrypted metadata in the local SQLite cache (VaultIndexItem).
+/// A photo in the grid — either in the local library or in vault only (cloud-only).
+/// Thumbnails are fetched lazily via PHImageManager for local assets (see
+/// `PhotoThumbnailView`). Cloud-only photos use vault thumbnails or placeholder.
 struct BackedUpPhoto: Identifiable, Hashable {
-    let id: UUID                 // VaultIndexItem.id
+    let id: String               // PHAsset.localIdentifier or BackedUpAsset.assetIdentifier
     let filename: String
     let sizeBytes: Int
     let takenAt: Date
     var backupState: BackupState
-    var custodyState: CustodyState = .onDevice
+    let isCloudOnly: Bool        // true if in vault but deleted from device
 
     enum BackupState: Hashable {
-        case backedUp
-        case pending
-        case uploading(Double)
-        case failed
+        case syncedAndLocal      // in photo roll AND in vault
+        case localOnly           // in photo roll, NOT yet uploaded
+        case cloudOnly           // in vault, NOT in photo roll (user deleted locally)
+        case syncing(Double)     // upload in flight
     }
 
     static func == (lhs: BackedUpPhoto, rhs: BackedUpPhoto) -> Bool { lhs.id == rhs.id }
@@ -54,10 +55,10 @@ class PhotosViewModel: ObservableObject {
     @Published var bulkBackupRemaining = 0
 
     var totalBackedUpCount: Int {
-        backedUpPhotos.filter { $0.backupState == .backedUp }.count
+        backedUpPhotos.filter { $0.backupState == .syncedAndLocal }.count
     }
     var totalBackedUpBytes: Int64 {
-        backedUpPhotos.filter { $0.backupState == .backedUp }.reduce(0) { $0 + $1.sizeBytes }
+        backedUpPhotos.filter { $0.backupState == .syncedAndLocal }.reduce(0) { $0 + $1.sizeBytes }
     }
 
     private weak var services: VaultServices?
@@ -73,7 +74,8 @@ class PhotosViewModel: ObservableObject {
         self.services = services
     }
 
-    /// Load recent photos from VaultIndex (limit 60, sorted by date descending).
+    /// Load recent photos from VaultIndex (limit 60, sorted by date descending),
+    /// plus cloud-only photos (in vault but deleted from device).
     /// Queries the local SwiftData cache for VaultIndexItem rows with mime LIKE 'image/%'.
     /// In ScreenshotMode, injects synthetic seed photos instead.
     func loadRecentPhotos() async {
@@ -107,20 +109,64 @@ class PhotosViewModel: ObservableObject {
             photos.reserveCapacity(items.count)
             for item in items {
                 photos.append(BackedUpPhoto(
-                    id: item.id,
+                    id: item.assetIdentifier ?? item.id.uuidString,
                     filename: item.name,
                     sizeBytes: item.sizeBytes,
                     takenAt: item.modifiedAt,
-                    backupState: .backedUp
+                    backupState: .syncedAndLocal,
+                    isCloudOnly: false
                 ))
             }
+
+            // Query cloud-only photos — BackedUpAssets whose assetIdentifier
+            // doesn't resolve to a live PHAsset (user deleted from device).
+            let localAssetIds = Set(items.compactMap { $0.assetIdentifier })
+            let cloudOnlyPhotos = await fetchCloudOnlyPhotos(
+                excludeLocalIds: localAssetIds, modelContainer: services.modelContainer)
+
+            photos.append(contentsOf: cloudOnlyPhotos)
+
+            // Sort all items newest-first by takenAt.
+            photos.sort { ($0.takenAt) > ($1.takenAt) }
+
             backedUpPhotos = photos
-            allBackedUp = !photos.isEmpty && photos.allSatisfy { $0.backupState == .backedUp }
+            allBackedUp = !photos.isEmpty && photos.allSatisfy { $0.backupState == .syncedAndLocal }
         } catch {
             dlog("loadRecentPhotos: fetch failed: \(error.localizedDescription)", category: "photos", level: .error)
             backedUpPhotos = []
             allBackedUp = false
         }
+    }
+
+    /// Fetch BackedUpAssets whose assetIdentifiers don't resolve to live PHAssets.
+    /// Returns them as BackedUpPhoto items with .cloudOnly state.
+    private func fetchCloudOnlyPhotos(
+        excludeLocalIds: Set<String>,
+        modelContainer: ModelContainer?
+    ) async -> [BackedUpPhoto] {
+        guard let container = modelContainer else { return [] }
+
+        return await Task.detached(priority: .userInitiated) {
+            let context = ModelContext(container)
+            var descriptor = FetchDescriptor<BackedUpAsset>()
+            descriptor.fetchLimit = 1000  // Safety limit
+
+            guard let allBackedUp = try? context.fetch(descriptor) else { return [] }
+
+            // Filter to BackedUpAssets not in the live PHAsset collection.
+            let cloudOnly = allBackedUp.filter { !excludeLocalIds.contains($0.assetIdentifier) }
+
+            return cloudOnly.map { asset in
+                BackedUpPhoto(
+                    id: asset.assetIdentifier,
+                    filename: asset.originalFilename,
+                    sizeBytes: asset.sizeBytes,
+                    takenAt: asset.backedUpAt,
+                    backupState: .cloudOnly,
+                    isCloudOnly: true
+                )
+            }
+        }.value
     }
 
 
@@ -222,7 +268,7 @@ class PhotosViewModel: ObservableObject {
         // backup) sets. Without the exclusion check, tapping Backup Now after
         // the user has explicitly removed a photo would silently re-upload it.
         let pending = backedUpPhotos.filter {
-            $0.backupState != .backedUp
+            $0.backupState != .syncedAndLocal
                 && !services.photoBackup.isExcludedFromBackup($0.id)
         }
         guard !pending.isEmpty else {
@@ -249,7 +295,7 @@ class PhotosViewModel: ObservableObject {
             backupProgress = 1.0
             remainingCount = 0
             services.photoBackup.refresh()
-            allBackedUp = backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
+            allBackedUp = backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
         }
 
         let total = pendingIDs.count
@@ -272,7 +318,7 @@ class PhotosViewModel: ObservableObject {
 
             do {
                 let fileId = try await services.photoBackup.enqueueAsset(asset)
-                updateAssetState(id: assetID, to: .backedUp)
+                updateAssetState(id: assetID, to: .syncedAndLocal)
                 logger.info("photo backed up: \(assetID, privacy: .public) → \(fileId, privacy: .public)")
             } catch {
                 logger.error("photo backup failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -302,8 +348,8 @@ class PhotosViewModel: ObservableObject {
         let assetId = photo.id
         Task { @MainActor in
             await services.photoBackup.removeBackup(assetIdentifier: assetId, apiClient: services.apiClient)
-            updateAssetState(id: assetId, to: .pending)
-            allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .backedUp }
+            updateAssetState(id: assetId, to: .localOnly)
+            allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
         }
     }
 
@@ -370,74 +416,84 @@ class PhotosViewModel: ObservableObject {
                 filename: "Sunset at Acadia.heic",
                 sizeBytes: 3_200_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 2),
-                backupState: .backedUp
+                backupState: .syncedAndLocal,
+                isCloudOnly: false
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Coffee Morning.jpeg",
                 sizeBytes: 1_400_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 3),
-                backupState: .backedUp
+                backupState: .syncedAndLocal,
+                isCloudOnly: false
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Garden Update.heic",
                 sizeBytes: 4_100_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 5),
-                backupState: .backedUp
+                backupState: .syncedAndLocal,
+                isCloudOnly: false
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Birthday Cake.jpeg",
                 sizeBytes: 2_300_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 7),
-                backupState: .pending
+                backupState: .localOnly,
+                isCloudOnly: false
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Mountain Trek.heic",
                 sizeBytes: 5_600_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 9),
-                backupState: .uploading(0.35)
+                backupState: .syncing(0.35),
+                isCloudOnly: false
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Beach Day.jpeg",
                 sizeBytes: 3_800_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 12),
-                backupState: .backedUp
+                backupState: .syncedAndLocal,
+                isCloudOnly: false
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Concert Night.heic",
                 sizeBytes: 6_200_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 15),
-                backupState: .backedUp
+                backupState: .syncedAndLocal,
+                isCloudOnly: false
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Restaurant Plating.jpeg",
                 sizeBytes: 2_900_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 18),
-                backupState: .failed
+                backupState: .cloudOnly,
+                isCloudOnly: true
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Autumn Leaves.heic",
                 sizeBytes: 4_700_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 21),
-                backupState: .backedUp
+                backupState: .syncedAndLocal,
+                isCloudOnly: false
             ),
             BackedUpPhoto(
                 id: UUID().uuidString,
                 filename: "Hiking Summit.jpeg",
                 sizeBytes: 3_500_000,
                 takenAt: Date(timeIntervalSinceNow: -86400 * 25),
-                backupState: .pending
+                backupState: .localOnly,
+                isCloudOnly: false
             ),
         ]
         backedUpPhotos = seedPhotos
-        allBackedUp = seedPhotos.allSatisfy { $0.backupState == .backedUp }
+        allBackedUp = seedPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
     }
 }
 
