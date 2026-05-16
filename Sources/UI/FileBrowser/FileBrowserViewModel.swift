@@ -8,6 +8,7 @@ class FileBrowserViewModel: ObservableObject {
     @Published var folderName: String = "Vault"
     @Published var isLoading = false
     @Published var error: String?
+    @Published var navPath: [VaultFileItem] = []
 
     // Upload progress state — drives FileUploadProgressBanner
     @Published var uploadInProgress: Bool = false
@@ -23,9 +24,13 @@ class FileBrowserViewModel: ObservableObject {
     @Published var showPaywall: Bool = false
 
     private weak var services: VaultServices?
-    private var currentFolderId: String?
+    private var rootFolderId: String?
     private var uploadTask: Task<Void, Never>?
     private var downloadTask: Task<URL?, Never>?
+
+    var currentFolderId: String? {
+        navPath.last?.id ?? rootFolderId
+    }
 
     func configure(services: VaultServices) {
         self.services = services
@@ -38,7 +43,8 @@ class FileBrowserViewModel: ObservableObject {
     ///
     /// In ScreenshotMode, injects synthetic seed data instead of hitting the API.
     func load(folderId: String?) async {
-        self.currentFolderId = folderId
+        self.rootFolderId = folderId
+        navPath.removeAll()
         isLoading = true
         defer { isLoading = false }
 
@@ -94,6 +100,7 @@ class FileBrowserViewModel: ObservableObject {
 
     /// Re-query SwiftData and rebuild `items` from VaultIndexItem.
     /// Called after load, uploads, deletes, and background sync.
+    /// Sorts folders first (isFolder DESC), then by name (ASC).
     func refreshFromCache() {
         guard let services else { return }
         let context = ModelContext(services.modelContainer)
@@ -103,7 +110,10 @@ class FileBrowserViewModel: ObservableObject {
             predicate: #Predicate { item in
                 !item.isDeleted && item.parentId == targetParentId
             },
-            sortBy: [SortDescriptor(\.name)]
+            sortBy: [
+                SortDescriptor(\.mime, order: .reverse),
+                SortDescriptor(\.name)
+            ]
         )
 
         let indexItems = (try? context.fetch(descriptor)) ?? []
@@ -133,8 +143,8 @@ class FileBrowserViewModel: ObservableObject {
             error = "VaultServices not configured"
             return
         }
-        let folderId = currentFolderId ?? "root"
-        dlog("user picked \(urls.count) file(s) for upload to folder=\(folderId)", category: "ui", level: .info)
+        let folderId = currentFolderId ?? rootFolderId
+        dlog("user picked \(urls.count) file(s) for upload to folder=\(folderId ?? "root")", category: "ui", level: .info)
         uploadTask = Task {
             // Estimate total bytes for LiveActivity progress tracking.
             // Reads file sizes without loading contents — safe and fast.
@@ -211,7 +221,7 @@ class FileBrowserViewModel: ObservableObject {
                 activityMgr.completeBatch(filesRemaining: 0, totalBytes: totalBytes)
                 uploadInProgress = false
                 uploadTask = nil
-                await load(folderId: currentFolderId)
+                refreshFromCache()
             } catch VaultSyncEngineError.uploadQueueFull(let queued, let file) {
                 let qFmt = ByteCountFormatter.string(fromByteCount: queued, countStyle: .file)
                 self.error = "Upload queue is full (\(qFmt) queued). Wait for uploads to complete or connect to Wi-Fi."
@@ -325,7 +335,7 @@ class FileBrowserViewModel: ObservableObject {
 
         // Snapshot what we need to restore locally
         let snapshotName = item.name
-        let snapshotFolderId = currentFolderId
+        let snapshotFolderId = currentFolderId ?? rootFolderId
         let itemId = item.id
         let itemIsFolder = item.isFolder
         dlog("delete \(itemIsFolder ? "folder" : "file"): \(snapshotName) id=\(itemId)", category: "ui", level: .info)
@@ -402,7 +412,7 @@ class FileBrowserViewModel: ObservableObject {
 
     func renameItem(_ item: VaultFileItem, newName: String) {
         guard let services else { return }
-        let folderId = currentFolderId ?? "root"
+        let folderId = currentFolderId ?? rootFolderId
         Task { @MainActor in
             do {
                 let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId)
@@ -501,7 +511,7 @@ class FileBrowserViewModel: ObservableObject {
 
         // Branch 2: pull from server, decrypt, write into LocalCache so the
         // next open hits the fast path.
-        let folderId = currentFolderId ?? "root"
+        let folderId = currentFolderId ?? rootFolderId
         downloadFilename = item.name
         downloadProgress = 0
         downloadInProgress = true

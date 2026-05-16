@@ -42,6 +42,22 @@ struct FileBrowserView: View {
     /// Gate a write-side action behind the Sovereign subscription. If the
     /// user is a subscriber, the action runs immediately; otherwise the
     /// paywall is presented.
+    private var breadcrumbPath: [BreadcrumbItem] {
+        var path: [BreadcrumbItem] = [.init(name: "Vault", item: nil)]
+        for item in viewModel.navPath {
+            path.append(.init(name: item.name, item: item))
+        }
+        return path
+    }
+
+    private func navigateToBreadcrumb(_ index: Int) {
+        if index == 0 {
+            viewModel.navPath.removeAll()
+        } else {
+            viewModel.navPath = Array(viewModel.navPath.prefix(index))
+        }
+    }
+
     private func gate(_ action: () -> Void) {
         if subscriptionStore.isSubscribed {
             action()
@@ -107,59 +123,93 @@ struct FileBrowserView: View {
         let sorted: [VaultFileItem]
         switch sortOrder {
         case .name:
-            sorted = filtered.sorted { $0.name.lowercased() < $1.name.lowercased() }
+            sorted = filtered.sorted { a, b in
+                if a.isFolder != b.isFolder {
+                    return a.isFolder && !b.isFolder
+                }
+                return a.name.lowercased() < b.name.lowercased()
+            }
         case .date:
-            sorted = filtered.sorted { $0.modifiedAt > $1.modifiedAt }
+            sorted = filtered.sorted { a, b in
+                if a.isFolder != b.isFolder {
+                    return a.isFolder && !b.isFolder
+                }
+                return a.modifiedAt > b.modifiedAt
+            }
         case .size:
-            sorted = filtered.sorted { $0.sizeBytes > $1.sizeBytes }
+            sorted = filtered.sorted { a, b in
+                if a.isFolder != b.isFolder {
+                    return a.isFolder && !b.isFolder
+                }
+                return a.sizeBytes > b.sizeBytes
+            }
         case .type:
-            sorted = filtered.sorted { $0.isFolder && !$1.isFolder }
+            sorted = filtered.sorted { a, b in
+                if a.isFolder != b.isFolder {
+                    return a.isFolder && !b.isFolder
+                }
+                return a.name.lowercased() < b.name.lowercased()
+            }
         }
         return sorted
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Single banner instance — hoisting outside the branch selector
-            // prevents the spring transition from re-firing when items.isEmpty
-            // or viewMode flips (which would swap branches, animating the
-            // banner out and back in on every state change).
-            if viewModel.uploadInProgress {
-                FileUploadProgressBanner(
-                    fileIndex: viewModel.batchFileIndex,
-                    totalFiles: viewModel.batchTotalFiles,
-                    bytesUploaded: viewModel.batchBytesUploaded,
-                    totalBytes: viewModel.batchTotalBytes,
-                    onCancel: viewModel.cancelUpload
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-            if viewModel.downloadInProgress {
-                FileDownloadProgressBanner(
-                    filename: viewModel.downloadFilename,
-                    progress: viewModel.downloadProgress,
-                    onCancel: { viewModel.cancelDownload(); selectedFile = nil }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-            if pendingInboxCount > 0 {
-                PendingShareBanner(count: pendingInboxCount) {
-                    Task {
-                        await services.drainShareExtensionInbox()
-                        pendingInboxCount = services.pendingInboxCount()
+        NavigationStack(path: $viewModel.navPath) {
+            VStack(spacing: 0) {
+                // Breadcrumb navigation
+                if !viewModel.navPath.isEmpty {
+                    BreadcrumbNavigation(path: breadcrumbPath) { index in
+                        navigateToBreadcrumb(index)
                     }
+                    .padding(.vertical, 8)
+                    Divider()
                 }
-                .transition(.move(edge: .top).combined(with: .opacity))
+
+                // Single banner instance — hoisting outside the branch selector
+                // prevents the spring transition from re-firing when items.isEmpty
+                // or viewMode flips (which would swap branches, animating the
+                // banner out and back in on every state change).
+                if viewModel.uploadInProgress {
+                    FileUploadProgressBanner(
+                        fileIndex: viewModel.batchFileIndex,
+                        totalFiles: viewModel.batchTotalFiles,
+                        bytesUploaded: viewModel.batchBytesUploaded,
+                        totalBytes: viewModel.batchTotalBytes,
+                        onCancel: viewModel.cancelUpload
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                if viewModel.downloadInProgress {
+                    FileDownloadProgressBanner(
+                        filename: viewModel.downloadFilename,
+                        progress: viewModel.downloadProgress,
+                        onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                if pendingInboxCount > 0 {
+                    PendingShareBanner(count: pendingInboxCount) {
+                        Task {
+                            await services.drainShareExtensionInbox()
+                            pendingInboxCount = services.pendingInboxCount()
+                        }
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                if viewModel.items.isEmpty && !viewModel.isLoading {
+                    EmptyFolderView(
+                        onUpload: { gate { uploadSource = .files } },
+                        onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
+                    )
+                } else if viewMode == .list {
+                    listContent
+                } else {
+                    gridContent
+                }
             }
-            if viewModel.items.isEmpty && !viewModel.isLoading {
-                EmptyFolderView(
-                    onUpload: { gate { uploadSource = .files } },
-                    onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
-                )
-            } else if viewMode == .list {
-                listContent
-            } else {
-                gridContent
+            .navigationDestination(for: VaultFileItem.self) { item in
+                FileBrowserView(folderId: item.id)
             }
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
@@ -461,38 +511,46 @@ struct FileBrowserView: View {
     private var listView: some View {
         List {
             ForEach(sortedItems) { item in
-                FileBrowserListRow(
-                    item: item,
-                    isEditing: isEditing,
-                    isSelected: selectedIds.contains(item.id),
-                    onTap: {
-                        if isEditing {
-                            if selectedIds.contains(item.id) {
-                                selectedIds.remove(item.id)
-                            } else {
+                ZStack {
+                    FileBrowserListRow(
+                        item: item,
+                        isEditing: isEditing,
+                        isSelected: selectedIds.contains(item.id),
+                        onTap: {
+                            if isEditing {
+                                if selectedIds.contains(item.id) {
+                                    selectedIds.remove(item.id)
+                                } else {
+                                    selectedIds.insert(item.id)
+                                }
+                            } else if item.isFolder {
+                                viewModel.navPath.append(item)
+                            } else if !fileLoadingStates.contains(item.id) {
+                                // Guard: prevent re-entry while materialize is in
+                                // flight. Without this, an impatient user tapping
+                                // multiple times starts parallel downloads of the
+                                // same file and the cell flashes repeatedly.
+                                fileLoadingStates.insert(item.id)
+                                selectedFile = item
+                            }
+                        },
+                        onLongPress: {
+                            if !isEditing {
+                                isEditing = true
                                 selectedIds.insert(item.id)
                             }
-                        } else if !fileLoadingStates.contains(item.id) {
-                            // Guard: prevent re-entry while materialize is in
-                            // flight. Without this, an impatient user tapping
-                            // multiple times starts parallel downloads of the
-                            // same file and the cell flashes repeatedly.
-                            fileLoadingStates.insert(item.id)
-                            selectedFile = item
-                        }
-                    },
-                    onLongPress: {
-                        if !isEditing {
-                            isEditing = true
-                            selectedIds.insert(item.id)
-                        }
-                    },
-                    onRename: { renameTarget = item; renamingName = item.name },
-                    onDelete: { softDelete(item) },
-                    onShare: { shareFile = item },
-                    onPin: { viewModel.togglePin(item) },
-                    onMove: { moveTarget = item }
-                )
+                        },
+                        onRename: { renameTarget = item; renamingName = item.name },
+                        onDelete: { softDelete(item) },
+                        onShare: { shareFile = item },
+                        onPin: { viewModel.togglePin(item) },
+                        onMove: { moveTarget = item }
+                    )
+                    if item.isFolder && !isEditing {
+                        NavigationLink(value: item) { EmptyView() }
+                            .opacity(0)
+                    }
+                }
             }
         }
     }
@@ -511,34 +569,31 @@ struct FileBrowserView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 8)], spacing: 8) {
                 ForEach(sortedItems) { item in
                     ZStack(alignment: .topTrailing) {
-                        if item.isFolder && !isEditing {
-                            NavigationLink {
-                                FileBrowserView(folderId: item.id)
-                            } label: {
-                                GridItemView(item: item)
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            GridItemView(item: item)
-                                .onTapGesture {
-                                    if isEditing {
-                                        if selectedIds.contains(item.id) {
-                                            selectedIds.remove(item.id)
-                                        } else {
-                                            selectedIds.insert(item.id)
-                                        }
-                                    } else if !item.isFolder && !fileLoadingStates.contains(item.id) {
-                                        // Same re-entry guard as list view.
-                                        fileLoadingStates.insert(item.id)
-                                        selectedFile = item
-                                    }
-                                }
-                                .onLongPressGesture {
-                                    if !isEditing {
-                                        isEditing = true
+                        GridItemView(item: item)
+                            .onTapGesture {
+                                if isEditing {
+                                    if selectedIds.contains(item.id) {
+                                        selectedIds.remove(item.id)
+                                    } else {
                                         selectedIds.insert(item.id)
                                     }
+                                } else if item.isFolder {
+                                    viewModel.navPath.append(item)
+                                } else if !fileLoadingStates.contains(item.id) {
+                                    // Same re-entry guard as list view.
+                                    fileLoadingStates.insert(item.id)
+                                    selectedFile = item
                                 }
+                            }
+                            .onLongPressGesture {
+                                if !isEditing {
+                                    isEditing = true
+                                    selectedIds.insert(item.id)
+                                }
+                            }
+                        if item.isFolder && !isEditing {
+                            NavigationLink(value: item) { EmptyView() }
+                                .opacity(0)
                         }
                         if isEditing {
                             Image(systemName: selectedIds.contains(item.id) ? "checkmark.circle.fill" : "circle")
@@ -553,6 +608,43 @@ struct FileBrowserView: View {
     }
 }
 
+
+struct BreadcrumbItem {
+    let name: String
+    let item: VaultFileItem?
+}
+
+/// Breadcrumb navigation view — shows path as tappable chips
+struct BreadcrumbNavigation: View {
+    let path: [BreadcrumbItem]
+    let onTap: (Int) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(path.enumerated()), id: \.offset) { index, breadcrumb in
+                    Button(action: { onTap(index) }) {
+                        HStack(spacing: 4) {
+                            Text(breadcrumb.name)
+                                .font(.kataCaption(12))
+                                .lineLimit(1)
+                            if index < path.count - 1 {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 8))
+                            }
+                        }
+                        .foregroundColor(.kataSapphire)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.kataSapphire.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+}
 
 /// Simple wrapper for UIActivityViewController to share files.
 struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
