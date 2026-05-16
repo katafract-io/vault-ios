@@ -206,8 +206,7 @@ class RecentsViewModel: ObservableObject {
                 sizeBytes: row.sizeBytes,
                 modifiedAt: row.modifiedAt,
                 syncState: Self.displayState(for: row.syncState),
-                isPinned: row.isPinned,
-                isStar: false))
+                isPinned: row.isPinned))
         }
 
         // Server response — decrypt filenames against the file's folder key
@@ -231,8 +230,7 @@ class RecentsViewModel: ObservableObject {
                     sizeBytes: record.size_bytes,
                     modifiedAt: Date(timeIntervalSince1970: TimeInterval(record.modified_at)),
                     syncState: .synced,
-                    isPinned: false,
-                    isStar: false))
+                    isPinned: false))
             }
         } catch {
             // Local rows still display; surface the network error only if there
@@ -288,8 +286,7 @@ class RecentsViewModel: ObservableObject {
                 sizeBytes: 145 * 1024,
                 modifiedAt: Date(timeIntervalSinceNow: -3600),
                 syncState: .synced,
-                isPinned: false,
-                isStar: false
+                isPinned: false
             ),
             VaultFileItem(
                 id: UUID().uuidString.lowercased(),
@@ -298,8 +295,7 @@ class RecentsViewModel: ObservableObject {
                 sizeBytes: 2_100 * 1024,
                 modifiedAt: Date(timeIntervalSinceNow: -7200),
                 syncState: .synced,
-                isPinned: true,
-                isStar: false
+                isPinned: true
             ),
             VaultFileItem(
                 id: UUID().uuidString.lowercased(),
@@ -308,8 +304,7 @@ class RecentsViewModel: ObservableObject {
                 sizeBytes: 87 * 1024,
                 modifiedAt: Date(timeIntervalSinceNow: -10800),
                 syncState: .synced,
-                isPinned: false,
-                isStar: false
+                isPinned: false
             ),
         ]
     }
