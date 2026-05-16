@@ -503,7 +503,7 @@ public struct ManifestDeltaResponse: Decodable, Sendable {
     public let nextCursor: String
 
     enum CodingKeys: String, CodingKey {
-        case items, deletedIds, nextCursor
+        case items
         case deletedIds = "deleted_ids"
         case nextCursor = "next_cursor"
     }
