@@ -15,7 +15,7 @@ final class UndoToastModel: ObservableObject {
     /// Default undo window matches iOS system behavior. Deliberately short —
     /// it's a safety net, not a guarantee. For longer-window recovery, the
     /// user goes through Recycle Bin.
-    static let window: Duration = .seconds(6)
+    static let window: Duration = .seconds(5)
 
     func show(message: String, onUndo: @escaping () async -> Void) {
         dismissTask?.cancel()
