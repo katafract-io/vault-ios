@@ -352,7 +352,7 @@ class FileBrowserViewModel: ObservableObject {
     /// endpoint and re-inserting the local cache row.
     func deleteItem(_ item: VaultFileItem) -> DeleteResult {
         guard let services else {
-            return .init(message: "", undo: {})
+            return .init(message: "", undo: { } as () async -> Void)
         }
 
         // Snapshot what we need to restore locally
