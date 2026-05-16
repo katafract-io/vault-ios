@@ -12,7 +12,7 @@ actor ThumbLoader {
     static let shared = ThumbLoader(apiClient: VaultAPIClient())
 
     private let apiClient: VaultAPIClient
-    private var loadingTasks: [String: Task<UIImage?, Error>] = [:]
+    private var loadingTasks: [String: Task<UIImage?, Never>] = [:]
 
     init(apiClient: VaultAPIClient) {
         self.apiClient = apiClient
@@ -36,14 +36,12 @@ actor ThumbLoader {
 
         // If already loading, await the in-flight task to avoid duplicate fetches.
         if let existing = loadingTasks[cacheKey] {
-            return try? await existing.value
+            return await existing.value
         }
 
         let task = Task { () -> UIImage? in
-            defer { await { self.loadingTasks.removeValue(forKey: cacheKey) }() }
-
             // 1. Check local cache first (fast path during import, before server sync)
-            if let cachedImage = loadFromDisk(fileId: fileId, size: size) {
+            if let cachedImage = self.loadFromDisk(fileId: fileId, size: size) {
                 return cachedImage
             }
 
@@ -52,7 +50,7 @@ actor ThumbLoader {
             let garageKey = "\(fileId)/\(label).enc"
 
             do {
-                let encryptedData = try await apiClient.downloadObject(fileId: fileId, key: garageKey)
+                let encryptedData = try await self.apiClient.downloadObject(fileId: fileId, key: garageKey)
 
                 // 3. Decrypt with the thumbnail key
                 let jpegData = try VaultCrypto.decrypt(encryptedData, key: thumbKey)
@@ -63,17 +61,18 @@ actor ThumbLoader {
                     return nil
                 }
 
-                saveToDisk(image: image, fileId: fileId, size: size)
+                self.saveToDisk(image: image, fileId: fileId, size: size)
                 return image
             } catch {
                 Self.logger.error("Failed to load thumbnail \(garageKey, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                print("[ThumbLoader] decrypt failed for \(fileId): \(error)")
                 return nil
             }
         }
 
         loadingTasks[cacheKey] = task
-        return try? await task.value
+        let result = await task.value
+        loadingTasks.removeValue(forKey: cacheKey)
+        return result
     }
 
     /// Save a thumbnail to local cache.
