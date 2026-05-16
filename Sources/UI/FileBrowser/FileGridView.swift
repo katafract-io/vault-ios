@@ -100,7 +100,8 @@ struct GridItemView: View {
             sizeBytes: 3_000_000,
             modifiedAt: Date(),
             syncState: .synced,
-            isPinned: false
+            isPinned: false,
+            isStar: false
         ),
         VaultFileItem(
             id: "2",
@@ -109,7 +110,8 @@ struct GridItemView: View {
             sizeBytes: 0,
             modifiedAt: Date(),
             syncState: .synced,
-            isPinned: false
+            isPinned: false,
+            isStar: false
         ),
     ])
 }
