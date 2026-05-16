@@ -67,6 +67,7 @@ actor ThumbLoader {
                 return image
             } catch {
                 Self.logger.error("Failed to load thumbnail \(garageKey, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                print("[ThumbLoader] decrypt failed for \(fileId): \(error)")
                 return nil
             }
         }

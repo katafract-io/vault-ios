@@ -55,6 +55,7 @@ struct GridItemView: View {
 
     private func loadThumbnail() async {
         guard !item.isFolder else { return }
+        guard loadedThumbnail == nil else { return }
 
         do {
             let thumbKey = try VaultCrypto.deriveKey(from: item.id)
@@ -68,7 +69,7 @@ struct GridItemView: View {
             )
             loadedThumbnail = thumb
         } catch {
-            // Silently fail; show placeholder
+            print("[GridItemView] thumbnail load error: \(error)")
         }
     }
 

@@ -40,6 +40,14 @@ public enum VaultCrypto {
         SymmetricKey(size: .bits256)
     }
 
+    /// Derive a deterministic thumbnail key from a file ID using SHA-256.
+    /// This provides a temporary unblocking mechanism until per-file key material is available.
+    public static func deriveKey(from fileId: String) -> SymmetricKey {
+        let data = Data(fileId.utf8)
+        let hash = SHA256.hash(data: data)
+        return SymmetricKey(data: hash)
+    }
+
     // MARK: - Encryption / Decryption
 
     /// Encrypt data with AES-256-GCM. Returns nonce + ciphertext + tag combined.
