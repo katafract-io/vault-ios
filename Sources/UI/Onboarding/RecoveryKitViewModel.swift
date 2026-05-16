@@ -3,6 +3,7 @@ import SwiftUI
 import CryptoKit
 import CoreMotion
 import PDFKit
+import CommonCrypto
 
 /// Manages the full Recovery Kit ceremony: entropy animation, phrase generation,
 /// confirmation quiz, and PDF export with PBKDF2 key wrapping.
@@ -362,6 +363,3 @@ enum PBKDF2 {
         return Data(derivedKey)
     }
 }
-
-// Import CommonCrypto for PBKDF2
-import CommonCrypto
