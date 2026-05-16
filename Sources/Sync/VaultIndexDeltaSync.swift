@@ -27,7 +27,8 @@ actor VaultIndexDeltaSync {
 
         // Then upsert items
         for deltaItem in delta.items {
-            let descriptor = FetchDescriptor<VaultIndexItem>(predicate: #Predicate { $0.id == deltaItem.id })
+            let uuidId = deltaItem.id
+            let descriptor = FetchDescriptor<VaultIndexItem>(predicate: #Predicate { $0.id == uuidId })
             let existingItem = try modelContext.fetch(descriptor).first
 
             if let existing = existingItem {
