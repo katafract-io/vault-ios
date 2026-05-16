@@ -127,8 +127,7 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: Int64(item.sizeBytes),
                 modifiedAt: item.modifiedAt,
                 syncState: .synced,
-                isPinned: false,
-                isStar: false)
+                isPinned: false)
         }
 
         // Fetch LocalFile records for this folder
@@ -196,7 +195,7 @@ class FileBrowserViewModel: ObservableObject {
 
             do {
                 let folderKey = try await services.keyManager.getOrCreateFolderKey(
-                    folderId: folderId)
+                    folderId: folderId ?? "root")
                 for (idx, url) in urls.enumerated() {
                     // Check for cancellation between files — exits cleanly
                     try Task.checkCancellation()
@@ -443,7 +442,7 @@ class FileBrowserViewModel: ObservableObject {
         let folderId = currentFolderId ?? rootFolderId
         Task { @MainActor in
             do {
-                let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId)
+                let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId ?? "root")
                 guard let nameData = newName.data(using: .utf8) else { return }
                 let encrypted = try VaultCrypto.encrypt(nameData, key: folderKey)
                 let encB64 = encrypted.base64EncodedString()
@@ -547,7 +546,7 @@ class FileBrowserViewModel: ObservableObject {
         defer { downloadInProgress = false }
 
         do {
-            let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId)
+            let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId ?? "root")
             let plaintext = try await services.syncEngine.downloadFile(
                 fileId: item.id,
                 folderKey: folderKey,
@@ -608,7 +607,7 @@ class FileBrowserViewModel: ObservableObject {
         Task { @MainActor in
             do {
                 // Download the original file
-                let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId)
+                let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId ?? "root")
                 let plaintext = try await services.syncEngine.downloadFile(
                     fileId: item.id,
                     folderKey: folderKey
@@ -698,8 +697,7 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: 0,
                 modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...30)),
                 syncState: .synced,
-                isPinned: false,
-                isStar: false
+                isPinned: false
             ))
         }
 
@@ -719,8 +717,7 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: Int64(sizeBytes),
                 modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...60)),
                 syncState: state,
-                isPinned: isPinned,
-                isStar: false
+                isPinned: isPinned
             ))
         }
 
