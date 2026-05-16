@@ -23,9 +23,9 @@ struct OnboardingView: View {
         welcomed && recoveryKitConfirmed && photosPrompted && notificationsPrompted && tierChosen
     }
 
-    var body: some View {
-        Group {
-            switch currentStep {
+    @ViewBuilder
+    private var stepView: some View {
+        switch currentStep {
             case .welcome:
                 WelcomeStep {
                     welcomed = true
@@ -73,8 +73,12 @@ struct OnboardingView: View {
                 }
             }
         }
-        .navigationBarBackButtonHidden(true)
-        .toolbarBackground(.hidden, for: .navigationBar)
+    }
+
+    var body: some View {
+        stepView
+            .navigationBarBackButtonHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
 

@@ -10,7 +10,7 @@ struct PendingShareBanner: View {
 
     var body: some View {
         Button(action: {
-            KataHaptic.selection.fire()
+            UISelectionFeedbackGenerator().selectionChanged()
             onDrain()
         }) {
             HStack(spacing: 10) {
