@@ -133,44 +133,30 @@ struct FileRowView: View {
 }
 
 #Preview {
-    List {
-        var item1 = VaultFileItem(
-            id: "1",
-            name: "Passport scan.pdf",
-            isFolder: false,
-            sizeBytes: 2_400_000,
-            modifiedAt: Date().addingTimeInterval(-3600),
-            syncState: .synced,
-            isPinned: true,
-            isStar: false
-        )
-        item1.custodyState = .inVault
+    let item1: VaultFileItem = {
+        var i = VaultFileItem(id: "1", name: "Passport scan.pdf", isFolder: false,
+            sizeBytes: 2_400_000, modifiedAt: Date().addingTimeInterval(-3600),
+            syncState: .synced, isPinned: true, isStar: false)
+        i.custodyState = .inVault
+        return i
+    }()
+    let item2: VaultFileItem = {
+        var i = VaultFileItem(id: "2", name: "Family Archive", isFolder: true,
+            sizeBytes: 0, modifiedAt: Date().addingTimeInterval(-86400),
+            syncState: .synced, isPinned: false, isStar: false)
+        i.custodyState = .verified
+        return i
+    }()
+    let item3: VaultFileItem = {
+        var i = VaultFileItem(id: "3", name: "Trip photos — Kyoto 2025.zip", isFolder: false,
+            sizeBytes: 240_000_000, modifiedAt: Date(),
+            syncState: .uploading(0.42), isPinned: false, isStar: false)
+        i.custodyState = [.stripped, .inVault]
+        return i
+    }()
+    return List {
         FileRowView(item: item1)
-
-        var item2 = VaultFileItem(
-            id: "2",
-            name: "Family Archive",
-            isFolder: true,
-            sizeBytes: 0,
-            modifiedAt: Date().addingTimeInterval(-86400),
-            syncState: .synced,
-            isPinned: false,
-            isStar: false
-        )
-        item2.custodyState = .verified
         FileRowView(item: item2)
-
-        var item3 = VaultFileItem(
-            id: "3",
-            name: "Trip photos — Kyoto 2025.zip",
-            isFolder: false,
-            sizeBytes: 240_000_000,
-            modifiedAt: Date(),
-            syncState: .uploading(0.42),
-            isPinned: false,
-            isStar: false
-        )
-        item3.custodyState = [.stripped, .inVault]
         FileRowView(item: item3)
     }
 }

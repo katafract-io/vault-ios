@@ -1,4 +1,5 @@
 import SwiftUI
+import CryptoKit
 
 /// Full Recovery Kit onboarding ceremony: entropy animation, phrase display,
 /// confirmation quiz, and PDF generation.
