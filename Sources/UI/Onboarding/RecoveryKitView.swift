@@ -130,7 +130,7 @@ struct RecoveryKitView: View {
                 HStack(spacing: 12) {
                     Button {
                         UIPasteboard.general.string = viewModel.phrase.joined(separator: " ")
-                        KataHaptic.tap.fire()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
                         Label("Copy", systemImage: "doc.on.doc")
                             .font(.system(size: 13, weight: .medium))
@@ -380,7 +380,7 @@ struct RecoveryKitView: View {
                 }
 
                 Button {
-                    KataHaptic.success.fire()
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                     _ = viewModel.storeWrappedKeyInKeychain()
                     onComplete()
                     dismiss()

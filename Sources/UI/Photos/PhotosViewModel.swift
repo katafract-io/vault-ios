@@ -58,7 +58,7 @@ class PhotosViewModel: ObservableObject {
         backedUpPhotos.filter { $0.backupState == .syncedAndLocal }.count
     }
     var totalBackedUpBytes: Int64 {
-        backedUpPhotos.filter { $0.backupState == .syncedAndLocal }.reduce(0) { $0 + $1.sizeBytes }
+        backedUpPhotos.filter { $0.backupState == .syncedAndLocal }.reduce(Int64(0)) { $0 + Int64($1.sizeBytes) }
     }
 
     private weak var services: VaultServices?
@@ -160,7 +160,7 @@ class PhotosViewModel: ObservableObject {
                 BackedUpPhoto(
                     id: asset.assetIdentifier,
                     filename: asset.originalFilename,
-                    sizeBytes: asset.sizeBytes,
+                    sizeBytes: Int(asset.sizeBytes),
                     takenAt: asset.backedUpAt,
                     backupState: .cloudOnly,
                     isCloudOnly: true
@@ -303,7 +303,7 @@ class PhotosViewModel: ObservableObject {
 
         for assetID in pendingIDs {
             done += 1
-            updateAssetState(id: assetID, to: .uploading(0.0))
+            updateAssetState(id: assetID, to: .syncing(0.0))
 
             // Resolve PHAsset by localIdentifier.
             let fetchOpts = PHFetchOptions()
@@ -311,7 +311,7 @@ class PhotosViewModel: ObservableObject {
             guard let asset = assets.firstObject else {
                 logger.error("PHAsset \(assetID, privacy: .public) not found in library")
                 dlog("PHAsset not found for \(assetID)", category: "photos", level: .error)
-                updateAssetState(id: assetID, to: .failed)
+                updateAssetState(id: assetID, to: .localOnly)
                 advanceProgress(done: done, total: total)
                 continue
             }
@@ -323,7 +323,7 @@ class PhotosViewModel: ObservableObject {
             } catch {
                 logger.error("photo backup failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 dlog("photo backup failed for \(assetID): \(error.localizedDescription)", category: "photos", level: .error)
-                updateAssetState(id: assetID, to: .failed)
+                updateAssetState(id: assetID, to: .localOnly)
             }
 
             advanceProgress(done: done, total: total)
