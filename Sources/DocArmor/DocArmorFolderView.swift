@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Read-only view of DocArmor documents accessible from Vault.
 struct DocArmorFolderView: View {
+    @EnvironmentObject private var services: VaultServices
     @StateObject private var viewModel = DocArmorFolderViewModel()
 
     var body: some View {
@@ -57,7 +58,7 @@ struct DocArmorFolderView: View {
                 }
             }
         }
-        .task { await viewModel.load() }
+        .task { await viewModel.load(apiClient: services.apiClient) }
     }
 }
 
@@ -71,9 +72,9 @@ struct DocArmorDocument: Identifiable {
 class DocArmorFolderViewModel: ObservableObject {
     @Published var documents: [DocArmorDocument] = []
 
-    func load() async {
+    func load(apiClient: VaultAPIClient) async {
         do {
-            let response = try await VaultAPIClient.shared.fetchDocArmorFolder()
+            let response = try await apiClient.fetchDocArmorFolder()
             documents = response.files.map { file in
                 let name = URL(fileURLWithPath: file.key).lastPathComponent
                 let sizeKB = Double(file.size) / 1024.0
