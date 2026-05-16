@@ -82,7 +82,7 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
                 }
             }
         }
-        RunLoop.main.add(timer, forMode: .common)
+        if let timer { RunLoop.main.add(timer, forMode: .common) }
     }
 
     private func mixAccelerometerEntropy() {
