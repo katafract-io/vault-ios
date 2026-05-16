@@ -802,6 +802,11 @@ public class VaultSyncEngine: ObservableObject {
             ChunkCache.delete(hash: sidecarKey)
             ChunkCache.delete(hash: manifestKey)
 
+            // Generate and upload thumbnails asynchronously (fire-and-forget)
+            Task {
+                await self.generateAndUploadThumbnails(fileId: fileId, sidecar: sidecar)
+            }
+
             // Mark LocalFile as synced + emit notification. Reset retry
             // bookkeeping so a re-imported file with the same id starts clean.
             await MainActor.run {
@@ -1017,6 +1022,77 @@ public class VaultSyncEngine: ObservableObject {
     private static func fileSize(of url: URL) throws -> Int64 {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
         return Int64(values.fileSize ?? 0)
+    }
+
+    /// Generate encrypted thumbnails and upload to Garage as sibling objects.
+    /// Called asynchronously after manifest POST succeeds.
+    private func generateAndUploadThumbnails(fileId: String, sidecar: ManifestSidecar) async {
+        // Fetch LocalFile to get the source file path
+        guard let file = await MainActor.run(body: { () -> LocalFile? in
+            let desc = FetchDescriptor<LocalFile>(
+                predicate: #Predicate { $0.fileId == fileId })
+            return (try? modelContext.fetch(desc))?.first
+        }) else {
+            self.logger.warning("LocalFile not found for thumbnail generation: \(fileId)")
+            return
+        }
+
+        guard let sourceURL = file.localPath.flatMap({ URL(fileURLWithPath: $0) }) else {
+            self.logger.warning("localPath not available for \(fileId), skipping thumbnails")
+            return
+        }
+
+        // Infer MIME type from filename extension
+        let mimeType = Self.mimeType(for: file.filename)
+
+        // For now, use fileId as the encryption key (ideally this should be the per-file key)
+        // In production, retrieve the actual file encryption key
+        guard let thumbnailKey = try? VaultCrypto.deriveKey(from: fileId) else {
+            self.logger.error("Failed to derive thumbnail key for \(fileId)")
+            return
+        }
+
+        // Generate encrypted thumbnails
+        do {
+            let encrypted = try ThumbnailGenerator.generateEncryptedThumbnails(
+                sourceURL: sourceURL,
+                thumbnailKey: thumbnailKey,
+                mimeType: mimeType
+            )
+
+            // Upload thumbnails to Garage
+            for (label, data) in encrypted {
+                let thumbnailKey = "\(fileId)/\(label).enc"
+                Task {
+                    do {
+                        try await self.apiClient.uploadThumbnail(fileId: fileId, key: thumbnailKey, data: data.encryptedData)
+                        self.logger.info("Uploaded thumbnail \(label) for \(fileId)")
+                    } catch {
+                        self.logger.warning("Failed to upload thumbnail \(label): \(error.localizedDescription)")
+                    }
+                }
+            }
+        } catch {
+            self.logger.warning("Failed to generate thumbnails for \(fileId): \(error.localizedDescription)")
+        }
+    }
+
+    /// Determine MIME type from filename extension
+    private static func mimeType(for filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        let mimeTypes: [String: String] = [
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "heic": "image/heic",
+            "heif": "image/heif",
+            "webp": "image/webp",
+            "mov": "video/quicktime",
+            "mp4": "video/mp4",
+            "m4v": "video/mp4",
+        ]
+        return mimeTypes[ext] ?? "application/octet-stream"
     }
 }
 
