@@ -35,7 +35,6 @@ struct OnboardingView: View {
             case .recoveryKit:
                 RecoveryKitView(
                     masterKey: services.masterKey,
-                    sigilID: services.sigilID ?? "",
                     vaultEndpoint: "vault.katafract.com"
                 ) {
                     recoveryKitConfirmed = true
