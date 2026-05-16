@@ -38,10 +38,12 @@ public final class VaultServices: ObservableObject {
         do {
             // Use App Group container for FileProvider extension access
             let containerUrl: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave")
-            var modelConfig = ModelConfiguration(schema: schema)
+            var modelConfig: ModelConfiguration
             if let containerUrl = containerUrl {
                 let storeUrl = containerUrl.appendingPathComponent("vault.sqlite")
-                modelConfig.url = storeUrl
+                modelConfig = ModelConfiguration(schema: schema, url: storeUrl)
+            } else {
+                modelConfig = ModelConfiguration(schema: schema)
             }
             container = try ModelContainer(for: schema, configurations: [modelConfig])
         } catch {
@@ -65,10 +67,12 @@ public final class VaultServices: ObservableObject {
             }
             do {
                 let containerUrl: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave")
-                var modelConfig = ModelConfiguration(schema: schema)
+                var modelConfig: ModelConfiguration
                 if let containerUrl = containerUrl {
                     let storeUrl = containerUrl.appendingPathComponent("vault.sqlite")
-                    modelConfig.url = storeUrl
+                    modelConfig = ModelConfiguration(schema: schema, url: storeUrl)
+                } else {
+                    modelConfig = ModelConfiguration(schema: schema)
                 }
                 container = try ModelContainer(for: schema, configurations: [modelConfig])
             } catch let retryError {
