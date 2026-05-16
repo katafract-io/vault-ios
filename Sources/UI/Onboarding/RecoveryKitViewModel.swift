@@ -64,7 +64,8 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
 
         // Animate progress and mix entropy periodically
         let startTime = Date()
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        var timer: Timer?
+        timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             let elapsed = Date().timeIntervalSince(startTime)
             let progress = min(elapsed / duration, 1.0)
 
@@ -74,7 +75,7 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
             }
 
             if progress >= 1.0 {
-                timer.invalidate()
+                timer?.invalidate()
                 DispatchQueue.main.async {
                     self?.motionManager.stopAccelerometerUpdates()
                     self?.finalizeEntropy()
