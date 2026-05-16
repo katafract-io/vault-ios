@@ -94,6 +94,31 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         PRODUCT_NAME: VaultShare
 
+  VaultFileProvider:
+    type: app-extension
+    platform: iOS
+    bundleId: com.katafract.vault.fileprovider
+    sources:
+      - path: FileProvider
+        excludes:
+          - "**/.DS_Store"
+      - path: Sources/Models
+        excludes:
+          - "**/.DS_Store"
+    entitlements:
+      path: FileProvider/VaultFileProvider.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.katafract.enclave
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault.fileprovider
+        INFOPLIST_FILE: FileProvider/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        PRODUCT_NAME: VaultFileProvider
+    frameworks:
+      - FileProvider
+
   VaultyxUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -114,6 +139,7 @@ schemes:
         Vaultyx: all
         VaultShare: all
         VaultyxLiveActivity: all
+        VaultFileProvider: all
     run:
       config: Debug
       executable: Vaultyx

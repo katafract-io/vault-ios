@@ -1,14 +1,20 @@
 import FileProvider
 import Foundation
+import SwiftData
 
 /// NSFileProviderReplicatedExtension — integrates Vault with Files.app (iOS) and Finder (macOS).
 /// Files appear as placeholders until downloaded; tapping materializes and decrypts them.
 final class VaultFileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
-    let domain: NSFileProviderDomain
+    let modelContainer: ModelContainer
 
     required init(domain: NSFileProviderDomain) {
-        self.domain = domain
+        let schema = Schema([LocalFile.self, LocalFolder.self, VaultFolder.self, BackedUpAsset.self])
+        let config = ModelConfiguration(
+            schema: schema,
+            groupContainer: .identifier("group.com.katafract.enclave")
+        )
+        self.modelContainer = try! ModelContainer(for: schema, configurations: [config])
         super.init()
     }
 
@@ -20,12 +26,7 @@ final class VaultFileProviderExtension: NSObject, NSFileProviderReplicatedExtens
 
     func enumerator(for containerItemIdentifier: NSFileProviderItemIdentifier,
                     request: NSFileProviderRequest) throws -> NSFileProviderEnumerator {
-        switch containerItemIdentifier {
-        case .rootContainer, .workingSet:
-            return VaultEnumerator(identifier: containerItemIdentifier)
-        default:
-            return VaultEnumerator(identifier: containerItemIdentifier)
-        }
+        return VaultEnumerator(modelContainer: modelContainer, containerIdentifier: containerItemIdentifier)
     }
 
     // MARK: - Item lookup

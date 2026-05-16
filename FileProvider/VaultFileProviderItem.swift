@@ -8,20 +8,23 @@ final class VaultFileProviderItem: NSObject, NSFileProviderItem {
     let filename: String
     let isDirectory: Bool
     let fileSizeBytes: Int
+    let parentFolderId: NSFileProviderItemIdentifier?
 
     init(identifier: NSFileProviderItemIdentifier,
          filename: String,
          isDirectory: Bool,
-         sizeBytes: Int) {
+         sizeBytes: Int,
+         parentFolderId: NSFileProviderItemIdentifier? = nil) {
         self.itemIdentifier = identifier
         self.filename = filename
         self.isDirectory = isDirectory
         self.fileSizeBytes = sizeBytes
+        self.parentFolderId = parentFolderId
         super.init()
     }
 
     var parentItemIdentifier: NSFileProviderItemIdentifier {
-        .rootContainer
+        parentFolderId ?? .rootContainer
     }
 
     var capabilities: NSFileProviderItemCapabilities {
