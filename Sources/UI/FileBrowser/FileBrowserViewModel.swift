@@ -98,7 +98,7 @@ class FileBrowserViewModel: ObservableObject {
         }
     }
 
-    /// Re-query SwiftData and rebuild `items` from VaultIndexItem.
+    /// Re-query SwiftData and rebuild `items` from VaultIndexItem + LocalFile.
     /// Called after load, uploads, deletes, and background sync.
     /// Sorts folders first (isFolder DESC), then by name (ASC).
     func refreshFromCache() {
@@ -119,7 +119,7 @@ class FileBrowserViewModel: ObservableObject {
         let indexItems = (try? context.fetch(descriptor)) ?? []
         dlog("refreshFromCache: fetched \(indexItems.count) item(s) for parent=\(currentFolderId ?? "root")", category: "ui", level: .info)
 
-        let items = indexItems.map { item -> VaultFileItem in
+        let folderItems = indexItems.map { item -> VaultFileItem in
             VaultFileItem(
                 id: item.id.uuidString,
                 name: item.name,
@@ -127,31 +127,37 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: Int64(item.sizeBytes),
                 modifiedAt: item.modifiedAt,
                 syncState: .synced,
-                isPinned: false)
+                isPinned: false,
+                isStar: false)
         }
-        let fileItems = files.map { row in
-            let syncDisplay: VaultFileItem.SyncStateDisplay
-            switch row.syncState {
-            case "pending_upload":   syncDisplay = .pendingUpload
-            case "partial":          syncDisplay = .partial
-            case "uploading":        syncDisplay = .uploading(0)
-            case "downloading":      syncDisplay = .downloading(0)
-            case "manifest_pending": syncDisplay = .uploading(0)
-            case "manifest_failed":  syncDisplay = .conflict
-            case "conflict":         syncDisplay = .conflict
-            default:                 syncDisplay = .synced
+
+        // Fetch LocalFile records for this folder
+        let fileRows = (try? context.fetch(FetchDescriptor<LocalFile>())) ?? []
+        let fileItems = fileRows
+            .filter { $0.parentFolderId == currentFolderId && $0.syncState != "deleted" }
+            .map { row in
+                let syncDisplay: VaultFileItem.SyncStateDisplay
+                switch row.syncState {
+                case "pending_upload":   syncDisplay = .pendingUpload
+                case "partial":          syncDisplay = .partial
+                case "uploading":        syncDisplay = .uploading(0)
+                case "downloading":      syncDisplay = .downloading(0)
+                case "manifest_pending": syncDisplay = .uploading(0)
+                case "manifest_failed":  syncDisplay = .conflict
+                case "conflict":         syncDisplay = .conflict
+                default:                 syncDisplay = .synced
+                }
+                return VaultFileItem(
+                    id: row.fileId,
+                    name: row.filename,
+                    isFolder: false,
+                    sizeBytes: row.sizeBytes,
+                    modifiedAt: row.modifiedAt,
+                    syncState: syncDisplay,
+                    isPinned: row.isPinned,
+                    isStar: row.isStar)
             }
-            return VaultFileItem(
-                id: row.fileId,
-                name: row.filename,
-                isFolder: false,
-                sizeBytes: row.sizeBytes,
-                modifiedAt: row.modifiedAt,
-                syncState: syncDisplay,
-                isPinned: row.isPinned,
-                isStar: row.isStar)
-        }
-        items = folderItems + fileItems
+        self.items = folderItems + fileItems
     }
 
     /// Encrypt + chunk + upload the user-picked URLs, then persist display
@@ -464,6 +470,7 @@ class FileBrowserViewModel: ObservableObject {
                         modifiedAt: updated.modifiedAt,
                         syncState: updated.syncState,
                         isPinned: updated.isPinned,
+                        isStar: updated.isStar,
                         thumbnailImage: updated.thumbnailImage)
                 }
             } catch {
@@ -586,6 +593,7 @@ class FileBrowserViewModel: ObservableObject {
                 modifiedAt: updated.modifiedAt,
                 syncState: updated.syncState,
                 isPinned: !updated.isPinned,
+                isStar: updated.isStar,
                 thumbnailImage: updated.thumbnailImage)
         }
     }
@@ -690,7 +698,8 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: 0,
                 modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...30)),
                 syncState: .synced,
-                isPinned: false
+                isPinned: false,
+                isStar: false
             ))
         }
 
@@ -710,7 +719,8 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: Int64(sizeBytes),
                 modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...60)),
                 syncState: state,
-                isPinned: isPinned
+                isPinned: isPinned,
+                isStar: false
             ))
         }
 
