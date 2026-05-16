@@ -1,5 +1,4 @@
 import SwiftUI
-import KatafractStyle
 import TimelineView
 
 /// Full Recovery Kit onboarding ceremony: entropy animation, phrase display,
@@ -63,11 +62,11 @@ struct RecoveryKitView: View {
                     .opacity(1.0 - viewModel.entropyProgress * 0.3)
 
                 Text("Gathering Entropy")
-                    .font(.kataDisplay(24, weight: .semibold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(.white)
 
                 Text("Move your device naturally. This adds randomness to your recovery key.")
-                    .font(.kataBody(14))
+                    .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.72))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
@@ -92,7 +91,7 @@ struct RecoveryKitView: View {
 
                     VStack(spacing: 4) {
                         Text("\(Int(viewModel.entropyProgress * 100))%")
-                            .font(.kataHeadline(18, weight: .semibold))
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                 }
@@ -115,11 +114,11 @@ struct RecoveryKitView: View {
                         .foregroundStyle(Color.kataGold)
 
                     Text("Your Recovery Phrase")
-                        .font(.kataDisplay(28, weight: .semibold))
+                        .font(.system(size: 28, weight: .semibold))
                         .foregroundStyle(.white)
 
                     Text("Write these 24 words on paper and store them somewhere safe. Do NOT share or photograph them.")
-                        .font(.kataBody(14))
+                        .font(.system(size: 14))
                         .foregroundStyle(.white.opacity(0.72))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
@@ -134,7 +133,7 @@ struct RecoveryKitView: View {
                         KataHaptic.tap.fire()
                     } label: {
                         Label("Copy", systemImage: "doc.on.doc")
-                            .font(.kataCaption(13, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.85))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
@@ -150,7 +149,7 @@ struct RecoveryKitView: View {
                         }
                     } label: {
                         Label("Save as PDF", systemImage: "doc.fill")
-                            .font(.kataCaption(13, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.white.opacity(0.85))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
@@ -163,7 +162,7 @@ struct RecoveryKitView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Color.kataGold.opacity(0.75))
                     Text("Screenshots are discouraged. A photo is a key to your vault.")
-                        .font(.kataCaption(11))
+                        .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.6))
                         .multilineTextAlignment(.leading)
                     Spacer(minLength: 0)
@@ -182,7 +181,7 @@ struct RecoveryKitView: View {
                     }
                 } label: {
                     Text("Confirm Phrase")
-                        .font(.kataHeadline(16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(Color.kataPremiumGradient)
@@ -205,7 +204,7 @@ struct RecoveryKitView: View {
             ForEach(Array(viewModel.phrase.enumerated()), id: \.offset) { idx, word in
                 HStack(spacing: 6) {
                     Text(String(format: "%02d", idx + 1))
-                        .font(.kataCaption(10, weight: .regular).monospacedDigit())
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
                         .foregroundStyle(Color.kataGold.opacity(0.65))
                         .frame(width: 20, alignment: .trailing)
                     Text(word)
@@ -233,11 +232,11 @@ struct RecoveryKitView: View {
                     .foregroundStyle(Color.kataGold)
 
                 Text("Confirm Your Phrase")
-                    .font(.kataDisplay(24, weight: .semibold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(.white)
 
                 Text("Tap the correct words in order to verify you've saved them correctly.")
-                    .font(.kataBody(14))
+                    .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.72))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
@@ -255,13 +254,13 @@ struct RecoveryKitView: View {
                                         : Color.kataSapphire.opacity(0.25)
                                 )
                             Text(String(i + 1))
-                                .font(.kataCaption(14, weight: .bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(i < viewModel.selectedConfirmations.count ? .black : .white)
                         }
                         .frame(width: 40, height: 40)
 
                         Text(i < viewModel.selectedConfirmations.count ? "✓ Selected" : "Word #\(viewModel.quizWords[i].index + 1)")
-                            .font(.kataBody(14))
+                            .font(.system(size: 14))
                             .foregroundStyle(.white)
 
                         Spacer()
@@ -280,7 +279,7 @@ struct RecoveryKitView: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.red)
                     Text(msg)
-                        .font(.kataBody(13))
+                        .font(.system(size: 13))
                         .foregroundStyle(.white)
                 }
                 .padding(12)
@@ -293,7 +292,7 @@ struct RecoveryKitView: View {
             // All 24 words as selectable buttons
             VStack(spacing: 12) {
                 Text("Select from your phrase:")
-                    .font(.kataCaption(12, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.7))
 
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
@@ -302,7 +301,7 @@ struct RecoveryKitView: View {
                             viewModel.selectQuizWord(at: idx)
                         } label: {
                             Text(viewModel.phrase[idx])
-                                .font(.kataCaption(12, weight: .medium))
+                                .font(.system(size: 12, weight: .medium))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(
@@ -326,7 +325,7 @@ struct RecoveryKitView: View {
                     viewModel.retryConfirmation()
                 } label: {
                     Text("Try Again")
-                        .font(.kataHeadline(16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(Color.kataSapphire.opacity(0.3))
@@ -352,11 +351,11 @@ struct RecoveryKitView: View {
                     .foregroundStyle(Color.kataGold)
 
                 Text("Recovery Kit Confirmed")
-                    .font(.kataDisplay(24, weight: .semibold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(.white)
 
                 Text("Your recovery phrase has been verified and secured. You can now access your vault.")
-                    .font(.kataBody(14))
+                    .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.72))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
@@ -372,7 +371,7 @@ struct RecoveryKitView: View {
                     }
                 } label: {
                     Label("Download Recovery Kit PDF", systemImage: "arrow.down.doc")
-                        .font(.kataHeadline(14, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(Color.kataSapphire.opacity(0.3))
@@ -387,7 +386,7 @@ struct RecoveryKitView: View {
                     dismiss()
                 } label: {
                     Text("Continue to Vault")
-                        .font(.kataHeadline(16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(Color.kataPremiumGradient)

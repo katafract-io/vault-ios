@@ -190,6 +190,7 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
             salt: saltData,
             keySize: 32
         ) else {
+            print("PBKDF2 failed")
             return nil
         }
 
