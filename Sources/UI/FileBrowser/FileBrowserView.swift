@@ -31,6 +31,9 @@ struct FileBrowserView: View {
     @State private var moveTarget: VaultFileItem?
     @State private var showBulkMoveSheet = false
     @State private var selectedCategory: FileCategory = .all
+    @State private var detailFile: VaultFileItem?
+    @State private var isDetailFileCached = false
+    @State private var cachedFileIds: Set<String> = []
 
     let folderId: String?  // nil = root
     var isReadOnly: Bool = false
@@ -119,6 +122,9 @@ struct FileBrowserView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Background upload queue banner — persists across app backgrounding
+            VaultUploadBanner()
+
             // Single banner instance — hoisting outside the branch selector
             // prevents the spring transition from re-firing when items.isEmpty
             // or viewMode flips (which would swap branches, animating the
@@ -382,6 +388,21 @@ struct FileBrowserView: View {
                     }
             }
         }
+        .onChange(of: detailFile) { oldValue, newValue in
+            if let file = newValue {
+                Task {
+                    isDetailFileCached = await OfflineCacheManager.shared.isCached(file.id)
+                }
+            }
+        }
+        .sheet(item: $detailFile) { file in
+            FileDetailSheet(item: file, isCached: isDetailFileCached, onKeepOffline: {
+                Task {
+                    await viewModel.keepOffline(file)
+                    isDetailFileCached = await OfflineCacheManager.shared.isCached(file.id)
+                }
+            })
+        }
         .alert("Can't open file",
                isPresented: Binding(
                    get: { viewModel.error != nil },
@@ -473,7 +494,8 @@ struct FileBrowserView: View {
                     onDelete: { softDelete(item) },
                     onShare: { shareFile = item },
                     onPin: { viewModel.togglePin(item) },
-                    onMove: { moveTarget = item }
+                    onMove: { moveTarget = item },
+                    onDetails: { detailFile = item }
                 )
             }
         }

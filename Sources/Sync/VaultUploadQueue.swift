@@ -2,84 +2,152 @@ import Foundation
 import SwiftData
 
 /// Singleton manager for the persistent background upload queue.
-/// Wraps ChunkUploadQueue (@Model) and provides clean APIs for enqueueing,
-/// monitoring, and clearing uploads.
+/// Backed by FileUploadQueue SwiftData @Model.
 ///
-/// Thread-safe: all mutations go through MainActor via the shared ModelContext.
+/// Provides file-level upload tracking with progress (chunks_done / total_chunks).
+/// Thread-safe: all mutations via MainActor.
 public final class VaultUploadQueue: @unchecked Sendable {
     public static let shared = VaultUploadQueue()
-    
+
     private let modelContainer: ModelContainer
     private var _context: ModelContext?
-    
+
     private var context: ModelContext {
         if let ctx = _context { return ctx }
         let ctx = ModelContext(modelContainer)
         _context = ctx
         return ctx
     }
-    
+
     private init() {
         do {
-            // Reuse the shared container from VaultServices if available;
-            // fall back to default if not initialized yet (tests, early bootstrap).
             if let services = VaultServices.shared {
                 self.modelContainer = services.modelContainer
             } else {
-                self.modelContainer = try ModelContainer(for: ChunkUploadQueue.self)
+                self.modelContainer = try ModelContainer(for: FileUploadQueue.self)
             }
         } catch {
             fatalError("VaultUploadQueue init failed: \(error)")
         }
     }
-    
-    /// Look up a chunk row by (fileId, chunkHash). Returns nil if not found.
-    nonisolated func row(fileId: String, chunkHash: String) -> ChunkUploadQueue? {
+
+    /// Enqueue a file for background upload.
+    nonisolated func enqueue(
+        localPath: String,
+        destKey: String,
+        totalChunks: Int,
+        chunkSize: Int64 = 5_242_880
+    ) -> FileUploadQueue {
+        let entry = FileUploadQueue(
+            localPath: localPath,
+            destKey: destKey,
+            chunkSize: chunkSize,
+            chunksDone: 0,
+            totalChunks: totalChunks,
+            state: "pending",
+            retryCount: 0,
+            createdAt: Date()
+        )
+        MainActor.assumeIsolated {
+            self.context.insert(entry)
+            try? self.context.save()
+        }
+        return entry
+    }
+
+    /// Fetch upload entry by ID.
+    nonisolated func entry(id: UUID) -> FileUploadQueue? {
         let ctx = MainActor.assumeIsolated { self.context }
-        let desc = FetchDescriptor<ChunkUploadQueue>(
-            predicate: #Predicate { $0.fileId == fileId && $0.chunkHash == chunkHash }
+        let desc = FetchDescriptor<FileUploadQueue>(
+            predicate: #Predicate { $0.id == id }
         )
         return (try? ctx.fetch(desc))?.first
     }
-    
-    /// Fetch all queued chunks (not yet done) for a file, ordered by chunk hash.
-    nonisolated func pendingChunks(fileId: String) -> [ChunkUploadQueue] {
+
+    /// Fetch all pending/uploading entries (not yet completed).
+    nonisolated func activeUploads() -> [FileUploadQueue] {
         let ctx = MainActor.assumeIsolated { self.context }
-        let desc = FetchDescriptor<ChunkUploadQueue>(
-            predicate: #Predicate { $0.fileId == fileId && $0.doneAt == nil },
-            sortBy: [SortDescriptor(\.chunkHash)]
+        let desc = FetchDescriptor<FileUploadQueue>(
+            predicate: #Predicate { $0.state != "completed" && $0.state != "failed" },
+            sortBy: [SortDescriptor(\.createdAt)]
         )
         return (try? ctx.fetch(desc)) ?? []
     }
-    
-    /// Count of all queued uploads across all files.
-    nonisolated func queueSize() -> Int {
+
+    /// Count of active uploads.
+    nonisolated func activeCount() -> Int {
         let ctx = MainActor.assumeIsolated { self.context }
-        let desc = FetchDescriptor<ChunkUploadQueue>(
-            predicate: #Predicate { $0.doneAt == nil }
+        let desc = FetchDescriptor<FileUploadQueue>(
+            predicate: #Predicate { $0.state != "completed" && $0.state != "failed" }
         )
         return (try? ctx.fetchCount(desc)) ?? 0
     }
-    
-    /// Total bytes of unconfirmed (queued + in-flight) chunks.
-    nonisolated func queuedBytes() -> Int64 {
-        let ctx = MainActor.assumeIsolated { self.context }
-        let desc = FetchDescriptor<ChunkUploadQueue>(
-            predicate: #Predicate { $0.doneAt == nil }
-        )
-        guard let rows = try? ctx.fetch(desc) else { return 0 }
-        return rows.reduce(0) { $0 + $1.size }
+
+    /// Total bytes still pending across all uploads.
+    nonisolated func pendingBytes() -> Int64 {
+        activeUploads().reduce(0) { total, entry in
+            let done = Int64(entry.chunksDone) * entry.chunkSize
+            let total_bytes = Int64(entry.totalChunks) * entry.chunkSize
+            return total + (total_bytes - done)
+        }
     }
-    
-    /// Clear all queued chunks for a file.
-    nonisolated func clearFile(fileId: String) async {
-        await MainActor.run {
+
+    /// Update upload progress.
+    nonisolated func updateProgress(id: UUID, chunksDone: Int) {
+        MainActor.assumeIsolated {
             let ctx = self.context
-            let desc = FetchDescriptor<ChunkUploadQueue>(
-                predicate: #Predicate { $0.fileId == fileId && $0.doneAt == nil }
+            let desc = FetchDescriptor<FileUploadQueue>(
+                predicate: #Predicate { $0.id == id }
             )
-            guard let rows = try? ctx.fetch(desc) else { return }
-            rows.forEach { ctx.delete($0) }
+            guard let entry = (try? ctx.fetch(desc))?.first else { return }
+            entry.chunksDone = chunksDone
+            if chunksDone >= entry.totalChunks {
+                entry.state = "completed"
+            }
+            try? ctx.save()
+        }
+    }
+
+    /// Mark upload as completed.
+    nonisolated func markCompleted(id: UUID) {
+        MainActor.assumeIsolated {
+            let ctx = self.context
+            let desc = FetchDescriptor<FileUploadQueue>(
+                predicate: #Predicate { $0.id == id }
+            )
+            guard let entry = (try? ctx.fetch(desc))?.first else { return }
+            entry.state = "completed"
+            try? ctx.save()
+        }
+    }
+
+    /// Mark upload as failed and increment retry count.
+    nonisolated func markFailed(id: UUID) {
+        MainActor.assumeIsolated {
+            let ctx = self.context
+            let desc = FetchDescriptor<FileUploadQueue>(
+                predicate: #Predicate { $0.id == id }
+            )
+            guard let entry = (try? ctx.fetch(desc))?.first else { return }
+            entry.retryCount += 1
+            if entry.retryCount >= 3 {
+                entry.state = "failed"
+            } else {
+                entry.state = "pending"
+            }
+            try? ctx.save()
+        }
+    }
+
+    /// Remove completed/failed upload.
+    nonisolated func remove(id: UUID) {
+        MainActor.assumeIsolated {
+            let ctx = self.context
+            let desc = FetchDescriptor<FileUploadQueue>(
+                predicate: #Predicate { $0.id == id }
+            )
+            guard let entry = (try? ctx.fetch(desc))?.first else { return }
+            ctx.delete(entry)
             try? ctx.save()
         }
     }

@@ -552,6 +552,26 @@ class FileBrowserViewModel: ObservableObject {
         }
     }
 
+    /// Toggle offline caching for a file. If cached, remove it; if not cached,
+    /// download and cache it for offline access.
+    func keepOffline(_ item: VaultFileItem) async {
+        guard let services else { return }
+
+        let isCached = await OfflineCacheManager.shared.isCached(item.id)
+
+        if isCached {
+            // Remove from offline cache
+            await OfflineCacheManager.shared.removeCached(item.id)
+        } else {
+            // Download and cache
+            if let url = await materializeLocalURL(for: item) {
+                _ = await OfflineCacheManager.shared.cacheFile(url, for: item.id, fileName: item.name)
+            } else {
+                error = "Couldn't cache \(item.name)"
+            }
+        }
+    }
+
     func togglePin(_ item: VaultFileItem) {
         guard let services else { return }
         let context = ModelContext(services.modelContainer)

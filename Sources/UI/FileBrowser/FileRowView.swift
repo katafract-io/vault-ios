@@ -17,6 +17,9 @@ struct FileRowView: View {
     var onDelete: () -> Void = {}
     var onShare: () -> Void = {}
     var onPin: () -> Void = {}
+    var onKeepOffline: () -> Void = {}
+    var onShowDetails: () -> Void = {}
+    var isCached: Bool = false
 
     // Celebration state: when the sync transitions from uploading → synced
     // within this row's lifetime, flip to "sealed" for 1.5s then fall back
@@ -51,6 +54,11 @@ struct FileRowView: View {
             Spacer()
 
             VStack(spacing: 6) {
+                if isCached {
+                    Image(systemName: "cloud.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.kataGold)
+                }
                 CustodyBadge(state: item.custodyState)
                 trailingBadge
             }
@@ -62,22 +70,6 @@ struct FileRowView: View {
         .accessibilityLabel(accessibilityLabel)
         .onChange(of: item.syncState) { oldValue, newValue in
             handleSyncTransition(from: oldValue, to: newValue)
-        }
-        .contextMenu {
-            Button(action: { onShare() }) {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-            Button(action: onPin) {
-                Label(item.isPinned ? "Unpin" : "Keep Offline",
-                      systemImage: item.isPinned ? "pin.slash" : "pin")
-            }
-            Divider()
-            Button(action: { onRename(item.name) }) {
-                Label("Rename", systemImage: "pencil")
-            }
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete", systemImage: "trash")
-            }
         }
     }
 

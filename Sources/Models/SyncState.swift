@@ -184,3 +184,41 @@ import Foundation
     /// until the next drain cycle resets backoff.
     var isDone: Bool { doneAt != nil }
 }
+
+/// File-level upload queue entry for background upload tracking.
+/// Tracks a single file upload with progress (chunks_done / total_chunks).
+///
+/// States: pending, uploading, completed, failed
+@Model class FileUploadQueue {
+    var id: UUID
+    var localPath: String           // local file path
+    var destKey: String             // destination key/path on server
+    var chunkSize: Int64            // bytes per chunk
+    var chunksDone: Int             // number of chunks uploaded
+    var totalChunks: Int            // total chunks needed
+    var state: String               // pending | uploading | completed | failed
+    var retryCount: Int
+    var createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        localPath: String,
+        destKey: String,
+        chunkSize: Int64 = 5_242_880,  // 5MB default
+        chunksDone: Int = 0,
+        totalChunks: Int = 0,
+        state: String = "pending",
+        retryCount: Int = 0,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.localPath = localPath
+        self.destKey = destKey
+        self.chunkSize = chunkSize
+        self.chunksDone = chunksDone
+        self.totalChunks = totalChunks
+        self.state = state
+        self.retryCount = retryCount
+        self.createdAt = createdAt
+    }
+}

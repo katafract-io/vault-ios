@@ -30,6 +30,7 @@ struct FileBrowserListRow: View {
     let onShare: () -> Void
     let onPin: () -> Void
     let onMove: () -> Void
+    let onDetails: () -> Void
 
     var body: some View {
         Group {
@@ -56,6 +57,9 @@ struct FileBrowserListRow: View {
                 .contextMenu {
                     Button(action: onShare) {
                         Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    Button(action: onDetails) {
+                        Label("Info & Offline", systemImage: "info.circle")
                     }
                     Button(action: onRename) {
                         Label("Rename", systemImage: "pencil")
