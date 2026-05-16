@@ -320,7 +320,7 @@ struct PhotoGridSection: View {
                                 isCloudOnly: photo.isCloudOnly)
                         }
                         .overlay(alignment: .bottomTrailing) {
-                            CustodyBadge(state: photo.custodyState)
+                            CustodyBadge(state: photo.isCloudOnly ? .inVault : [.inVault, .onDevice])
                                 .padding(4)
                         }
                         .overlay(alignment: .topTrailing) {
