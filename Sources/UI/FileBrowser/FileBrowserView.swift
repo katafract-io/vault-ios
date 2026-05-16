@@ -596,7 +596,8 @@ struct FileBrowserView: View {
                             .opacity(0)
                     }
                 }
-
+            }
+        }
     }
 
     @ViewBuilder
