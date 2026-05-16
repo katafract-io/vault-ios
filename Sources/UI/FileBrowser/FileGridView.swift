@@ -23,11 +23,12 @@ struct GridView: View {
 
 struct GridItemView: View {
     let item: VaultFileItem
+    @State private var loadedThumbnail: UIImage?
 
     var body: some View {
         VStack(spacing: 4) {
             ZStack(alignment: .bottomTrailing) {
-                if let thumb = item.thumbnailImage {
+                if let thumb = loadedThumbnail ?? item.thumbnailImage {
                     Image(uiImage: thumb)
                         .resizable()
                         .aspectRatio(1, contentMode: .fill)
@@ -47,6 +48,46 @@ struct GridItemView: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
         }
+        .task {
+            await loadThumbnail()
+        }
+    }
+
+    private func loadThumbnail() async {
+        guard !item.isFolder else { return }
+        guard loadedThumbnail == nil else { return }
+
+        do {
+            let thumbKey = try VaultCrypto.deriveKey(from: item.id)
+            let mimeType = Self.mimeType(for: item.name)
+
+            let thumb = await ThumbLoader.shared.loadThumbnail(
+                fileId: item.id,
+                size: .small,
+                thumbKey: thumbKey,
+                mimeType: mimeType
+            )
+            loadedThumbnail = thumb
+        } catch {
+            print("[GridItemView] thumbnail load error: \(error)")
+        }
+    }
+
+    private static func mimeType(for filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        let mimeTypes: [String: String] = [
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "heic": "image/heic",
+            "heif": "image/heif",
+            "webp": "image/webp",
+            "mov": "video/quicktime",
+            "mp4": "video/mp4",
+            "m4v": "video/mp4",
+        ]
+        return mimeTypes[ext] ?? "application/octet-stream"
     }
 }
 

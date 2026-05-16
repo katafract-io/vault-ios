@@ -130,6 +130,30 @@ public actor VaultAPIClient {
         _ = try await post("/v1/vault/manifest", body: body, authOverride: nil) as ManifestResponse
     }
 
+    // MARK: - Thumbnails
+
+    /// Upload an encrypted thumbnail to Garage S3. Uses presigned URL.
+    /// key should be in format: "{fileId}/thumb_256.enc" etc.
+    public func uploadThumbnail(fileId: String, key: String, data: Data) async throws {
+        let url = try await presignPut(fileId: fileId, chunkHash: key)
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.httpBody = data
+        let (_, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfHTTPError(data: Data(), response: response)
+    }
+
+    /// Download an encrypted object from Garage S3. Uses presigned URL.
+    /// key should be in format: "{fileId}/thumb_256.enc" or "{fileId}/chunk_{hash}"
+    public func downloadObject(fileId: String, key: String) async throws -> Data {
+        let url = try await presignGet(fileId: fileId, chunkHash: key)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfHTTPError(data: data, response: response)
+        return data
+    }
+
     // MARK: - Trash / restore / purge
 
     public func listTrashFiles(offset: Int = 0, limit: Int = 1000) async throws -> TrashFilesResponse {
