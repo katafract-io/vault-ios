@@ -74,7 +74,7 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
             }
 
             if progress >= 1.0 {
-                $0.invalidate()
+                timer.invalidate()
                 DispatchQueue.main.async {
                     self?.motionManager.stopAccelerometerUpdates()
                     self?.finalizeEntropy()

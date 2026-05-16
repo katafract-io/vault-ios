@@ -1,5 +1,4 @@
 import SwiftUI
-import TimelineView
 
 /// Full Recovery Kit onboarding ceremony: entropy animation, phrase display,
 /// confirmation quiz, and PDF generation.
