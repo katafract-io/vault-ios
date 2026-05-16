@@ -43,6 +43,7 @@ targets:
         PRIVACY_MANIFEST_FILE: Sources/App/PrivacyInfo.xcprivacy
         PRODUCT_NAME: Vaultyx
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Vaultyx-Bridging-Header.h
+        OTHER_LDFLAGS: -lsqlite3
     dependencies:
       - target: VaultShare
       - target: VaultyxLiveActivity

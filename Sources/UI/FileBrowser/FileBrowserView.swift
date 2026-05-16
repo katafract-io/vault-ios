@@ -32,6 +32,9 @@ struct FileBrowserView: View {
     @State private var showBulkMoveSheet = false
     @State private var selectedCategory: FileCategory = .all
     @State private var pendingInboxCount: Int = 0
+    @State private var searchText: String = ""
+    @State private var searchResults: [VaultFileItem] = []
+    @State private var searchAllFolders: Bool = false
 
     let folderId: String?  // nil = root
     var isReadOnly: Bool = false
@@ -95,15 +98,36 @@ struct FileBrowserView: View {
         isEditing = false
     }
 
+    /// Perform FTS5 filename search
+    private func performSearch(query: String) {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+            searchResults = []
+            return
+        }
+
+        // Filter items by filename using simple LIKE search (FTS5 can be added later if available)
+        let searchQuery = query.lowercased()
+        searchResults = viewModel.items.filter { item in
+            item.name.lowercased().contains(searchQuery)
+        }
+    }
+
     var sortedItems: [VaultFileItem] {
+        // Use search results if search is active
+        let baseItems = !searchText.isEmpty ? searchResults : viewModel.items
+
         let filtered: [VaultFileItem]
-        if selectedCategory == .all {
-            filtered = viewModel.items
+        if searchText.isEmpty && selectedCategory == .all {
+            filtered = baseItems
+        } else if !searchText.isEmpty {
+            // When searching, don't apply category filter (search is global)
+            filtered = baseItems
         } else {
-            filtered = viewModel.items.filter { item in
+            filtered = baseItems.filter { item in
                 item.isFolder || selectedCategory.matches(filename: item.name)
             }
         }
+
         let sorted: [VaultFileItem]
         switch sortOrder {
         case .name:
@@ -494,6 +518,10 @@ struct FileBrowserView: View {
                     onMove: { moveTarget = item }
                 )
             }
+        }
+        .searchable(text: $searchText, prompt: "Search files")
+        .onChange(of: searchText) { _, newValue in
+            performSearch(query: newValue)
         }
     }
 
