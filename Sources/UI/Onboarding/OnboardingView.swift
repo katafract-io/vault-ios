@@ -71,10 +71,8 @@ struct OnboardingView: View {
                 TierPickerStep { tier in
                     tierChosen = true
                 }
-            }
         }
     }
-
     var body: some View {
         stepView
             .navigationBarBackButtonHidden(true)
