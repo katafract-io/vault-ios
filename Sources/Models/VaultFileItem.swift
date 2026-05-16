@@ -8,7 +8,7 @@ struct VaultFileItem: Identifiable, Hashable {
     let modifiedAt: Date
     let syncState: SyncStateDisplay
     let isPinned: Bool
-    let isStar: Bool = false
+    var isStar: Bool = false
     var thumbnailImage: UIImage?
     var custodyState: CustodyState = []
 

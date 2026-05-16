@@ -127,8 +127,7 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: Int64(item.sizeBytes),
                 modifiedAt: item.modifiedAt,
                 syncState: .synced,
-                isPinned: false,
-                isStar: false)
+                isPinned: false)
         }
 
         // Fetch LocalFile records for this folder
@@ -698,8 +697,7 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: 0,
                 modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...30)),
                 syncState: .synced,
-                isPinned: false,
-                isStar: false
+                isPinned: false
             ))
         }
 
@@ -719,8 +717,7 @@ class FileBrowserViewModel: ObservableObject {
                 sizeBytes: Int64(sizeBytes),
                 modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...60)),
                 syncState: state,
-                isPinned: isPinned,
-                isStar: false
+                isPinned: isPinned
             ))
         }
 
