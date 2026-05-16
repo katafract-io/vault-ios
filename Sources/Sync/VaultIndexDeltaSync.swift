@@ -18,7 +18,8 @@ actor VaultIndexDeltaSync {
         // Process deletions first
         for deletedId in delta.deletedIds {
             guard let uuidId = UUID(uuidString: deletedId) else { continue }
-            let descriptor = FetchDescriptor<VaultIndexItem>(predicate: #Predicate { $0.id == uuidId })
+            var descriptor = FetchDescriptor<VaultIndexItem>()
+            descriptor.predicate = NSPredicate(format: "id == %@", uuidId as CVarArg)
             if let item = try modelContext.fetch(descriptor).first {
                 item.isDeleted = true
                 item.deletedAt = Date()
@@ -27,8 +28,8 @@ actor VaultIndexDeltaSync {
 
         // Then upsert items
         for deltaItem in delta.items {
-            let itemId = deltaItem.id
-            let descriptor = FetchDescriptor<VaultIndexItem>(predicate: #Predicate { $0.id == itemId })
+            var descriptor = FetchDescriptor<VaultIndexItem>()
+            descriptor.predicate = NSPredicate(format: "id == %@", deltaItem.id as CVarArg)
             let existingItem = try modelContext.fetch(descriptor).first
 
             if let existing = existingItem {
