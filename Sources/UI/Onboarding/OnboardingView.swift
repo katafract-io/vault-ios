@@ -3,7 +3,7 @@ import SwiftUI
 struct OnboardingView: View {
     @EnvironmentObject private var services: VaultServices
     @AppStorage("vaultyx.onboarding.welcomed") private var welcomed = false
-    @AppStorage("vaultyx.onboarding.phrase_confirmed") private var phraseConfirmed = false
+    @AppStorage("vaultyx.onboarding.recovery_kit_confirmed") private var recoveryKitConfirmed = false
     @AppStorage("vaultyx.onboarding.photos_prompted") private var photosPrompted = false
     @AppStorage("vaultyx.onboarding.notifications_prompted") private var notificationsPrompted = false
     @AppStorage("vaultyx.onboarding.tier_chosen") private var tierChosen = false
@@ -13,14 +13,14 @@ struct OnboardingView: View {
 
     enum OnboardingStep: Int, CaseIterable {
         case welcome
-        case recoveryPhrase
+        case recoveryKit
         case photosPermission
         case notificationsPermission
         case tierPicker
     }
 
     var onboardingComplete: Bool {
-        welcomed && phraseConfirmed && photosPrompted && notificationsPrompted && tierChosen
+        welcomed && recoveryKitConfirmed && photosPrompted && notificationsPrompted && tierChosen
     }
 
     var body: some View {
@@ -29,17 +29,18 @@ struct OnboardingView: View {
             case .welcome:
                 WelcomeStep {
                     welcomed = true
-                    currentStep = .recoveryPhrase
+                    currentStep = .recoveryKit
                 }
 
-            case .recoveryPhrase:
-                RecoveryPhraseView(
-                    phrase: RecoveryPhrase.phrase(for: services.masterKey),
-                    mode: .onboarding {
-                        phraseConfirmed = true
-                        currentStep = .photosPermission
-                    }
-                )
+            case .recoveryKit:
+                RecoveryKitView(
+                    masterKey: services.masterKey,
+                    sigilID: services.sigilID ?? "",
+                    vaultEndpoint: "vault.katafract.com"
+                ) {
+                    recoveryKitConfirmed = true
+                    currentStep = .photosPermission
+                }
                 .interactiveDismissDisabled(true)
 
             case .photosPermission:
