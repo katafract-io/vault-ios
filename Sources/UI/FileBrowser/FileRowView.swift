@@ -141,7 +141,8 @@ struct FileRowView: View {
             sizeBytes: 2_400_000,
             modifiedAt: Date().addingTimeInterval(-3600),
             syncState: .synced,
-            isPinned: true
+            isPinned: true,
+            isStar: false
         )
         item1.custodyState = .inVault
         FileRowView(item: item1)
@@ -153,7 +154,8 @@ struct FileRowView: View {
             sizeBytes: 0,
             modifiedAt: Date().addingTimeInterval(-86400),
             syncState: .synced,
-            isPinned: false
+            isPinned: false,
+            isStar: false
         )
         item2.custodyState = .verified
         FileRowView(item: item2)
@@ -165,7 +167,8 @@ struct FileRowView: View {
             sizeBytes: 240_000_000,
             modifiedAt: Date(),
             syncState: .uploading(0.42),
-            isPinned: false
+            isPinned: false,
+            isStar: false
         )
         item3.custodyState = [.stripped, .inVault]
         FileRowView(item: item3)

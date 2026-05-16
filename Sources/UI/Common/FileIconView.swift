@@ -183,13 +183,13 @@ struct CircularProgressView: View {
     VStack(spacing: 20) {
         FileIconView(item: VaultFileItem(
             id: "1", name: "document.pdf", isFolder: false,
-            sizeBytes: 1000, modifiedAt: Date(), syncState: .synced, isPinned: false
+            sizeBytes: 1000, modifiedAt: Date(), syncState: .synced, isPinned: false, isStar: false
         ))
         .frame(width: 40, height: 40)
 
         FileIconView(item: VaultFileItem(
             id: "2", name: "Photos", isFolder: true,
-            sizeBytes: 0, modifiedAt: Date(), syncState: .synced, isPinned: false
+            sizeBytes: 0, modifiedAt: Date(), syncState: .synced, isPinned: false, isStar: false
         ))
         .frame(width: 40, height: 40)
 
