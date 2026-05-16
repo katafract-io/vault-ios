@@ -96,7 +96,7 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
                 let y = UInt8(bitPattern: Int8(sample.y * 127))
                 let z = UInt8(bitPattern: Int8(sample.z * 127))
                 for i in 0..<min(3, mixed.count) {
-                    mixed[i] = mixed[i] &^ x &^ y &^ z
+                    mixed[i] = mixed[i] ^ x ^ y ^ z
                 }
             }
             entropy = mixed
