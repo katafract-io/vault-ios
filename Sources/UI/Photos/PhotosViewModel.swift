@@ -385,6 +385,40 @@ class PhotosViewModel: ObservableObject {
         }
     }
 
+    /// Back up a single pending photo.
+    /// - Parameter photo: The photo to back up (typically in .localOnly state)
+    func backupSinglePhoto(_ photo: BackedUpPhoto) {
+        guard let services = self.services else {
+            logger.error("backupSinglePhoto called before VaultServices was wired")
+            return
+        }
+
+        let assetId = photo.id
+        Task { @MainActor in
+            // Mark as syncing
+            updateAssetState(id: assetId, to: .syncing(0.0))
+
+            // Resolve PHAsset by localIdentifier.
+            let fetchOpts = PHFetchOptions()
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: fetchOpts)
+            guard let asset = assets.firstObject else {
+                logger.error("PHAsset \(assetId, privacy: .public) not found in library")
+                updateAssetState(id: assetId, to: .localOnly)
+                return
+            }
+
+            do {
+                _ = try await services.photoBackup.enqueueAsset(asset)
+                updateAssetState(id: assetId, to: .syncedAndLocal)
+                logger.info("single photo backed up: \(assetId, privacy: .public)")
+                allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
+            } catch {
+                logger.error("single photo backup failed for \(assetId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                updateAssetState(id: assetId, to: .localOnly)
+            }
+        }
+    }
+
     /// Remove a backed-up photo from the vault. Soft-deletes the encrypted
     /// file on the server, deletes the matching `BackedUpAsset` record, and
     /// flips the row back to `.pending` so the grid badge updates.
