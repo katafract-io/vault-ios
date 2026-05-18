@@ -32,6 +32,7 @@ struct FileBrowserView: View {
     @State private var showBulkMoveSheet = false
     @State private var selectedCategory: FileCategory = .all
     @State private var pendingInboxCount: Int = 0
+    @State private var showStuckItems = false
 
     let folderId: String?  // nil = root
     var isReadOnly: Bool = false
@@ -217,6 +218,29 @@ struct FileBrowserView: View {
                     }
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
+                if viewModel.stuckCount > 0 {
+                    Button(action: { showStuckItems = true }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "exclamation.circle.fill")
+                                .font(.system(size: 16))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(viewModel.stuckCount) upload\(viewModel.stuckCount == 1 ? "" : "s") failed")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Tap to fix")
+                                    .font(.system(size: 12))
+                                    .opacity(0.85)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color.red)
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 if viewModel.items.isEmpty && !viewModel.isLoading {
                     EmptyFolderView(
                         onUpload: { gate { uploadSource = .files } },
@@ -230,6 +254,9 @@ struct FileBrowserView: View {
             }
             .navigationDestination(for: VaultFileItem.self) { item in
                 FileBrowserView(folderId: item.id)
+            }
+            .navigationDestination(isPresented: $showStuckItems) {
+                StuckItemsView()
             }
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
@@ -514,6 +541,7 @@ struct FileBrowserView: View {
             viewModel.configure(services: services)
             await viewModel.load(folderId: folderId)
             pendingInboxCount = services.pendingInboxCount()
+            viewModel.refreshStuckCount()
         }
         .task {
             while !Task.isCancelled {
@@ -527,6 +555,7 @@ struct FileBrowserView: View {
             // sync badge transitions from .pendingUpload → .synced without
             // waiting for the user to navigate away and back.
             viewModel.refreshFromCache()
+            // stuckCount is updated within refreshFromCache
         }
         .refreshable {
             // Pull-to-refresh: run the full sync inline (user-initiated, so
@@ -538,6 +567,7 @@ struct FileBrowserView: View {
                 viewModel.error = "Sync failed: \(error.localizedDescription)"
             }
             await viewModel.load(folderId: folderId)
+            viewModel.refreshStuckCount()
         }
     }
 

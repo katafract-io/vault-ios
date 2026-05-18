@@ -23,6 +23,9 @@ class FileBrowserViewModel: ObservableObject {
     @Published var downloadFilename: String = ""
     @Published var showPaywall: Bool = false
 
+    // Stuck items count — drives the red banner on Files tab
+    @Published var stuckCount: Int = 0
+
     private weak var services: VaultServices?
     private var rootFolderId: String?
     private var uploadTask: Task<Void, Never>?
@@ -157,6 +160,21 @@ class FileBrowserViewModel: ObservableObject {
                     isStar: row.isStar)
             }
         self.items = folderItems + fileItems
+        refreshStuckCount()
+    }
+
+    /// Count LocalFile rows with manifest_failed or conflict state.
+    /// Called after refreshFromCache to update the banner count.
+    func refreshStuckCount() {
+        guard let services else { return }
+        let context = ModelContext(services.modelContainer)
+        let descriptor = FetchDescriptor<LocalFile>(
+            predicate: #Predicate {
+                $0.syncState == "manifest_failed" || $0.syncState == "conflict"
+            }
+        )
+        let stuckFiles = (try? context.fetch(descriptor)) ?? []
+        self.stuckCount = stuckFiles.count
     }
 
     /// Encrypt + chunk + upload the user-picked URLs, then persist display
