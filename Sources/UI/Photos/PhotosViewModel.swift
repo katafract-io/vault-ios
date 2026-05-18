@@ -54,6 +54,13 @@ class PhotosViewModel: ObservableObject {
     @Published var bulkBackupProgress: Double = 0
     @Published var bulkBackupRemaining = 0
 
+    // Pagination state
+    @Published var isLoadingMore = false
+    @Published var hasMorePhotos = true
+    private var currentOffset = 0
+    private let paginationBatchSize = 60
+    private let maxVisiblePhotos = 600
+
     var totalBackedUpCount: Int {
         backedUpPhotos.filter { $0.backupState == .syncedAndLocal }.count
     }
@@ -74,11 +81,14 @@ class PhotosViewModel: ObservableObject {
         self.services = services
     }
 
-    /// Load recent photos from VaultIndex (limit 60, sorted by date descending),
+    /// Load recent photos from VaultIndex (with pagination support),
     /// plus cloud-only photos (in vault but deleted from device).
     /// Queries the local SwiftData cache for VaultIndexItem rows with mime LIKE 'image/%'.
     /// In ScreenshotMode, injects synthetic seed photos instead.
-    func loadRecentPhotos() async {
+    ///
+    /// When called with offset=0 (default), resets the pagination state and loads
+    /// the first batch. When called with offset>0, appends new photos (pagination).
+    func loadRecentPhotos(offset: Int = 0) async {
         if ScreenshotMode.seedData != nil {
             injectSeedPhotos()
             return
@@ -90,8 +100,16 @@ class PhotosViewModel: ObservableObject {
             return
         }
 
+        // Reset pagination on initial load
+        if offset == 0 {
+            currentOffset = 0
+            backedUpPhotos = []
+            hasMorePhotos = true
+        }
+
         let context = ModelContext(services.modelContainer)
-        dlog("loadRecentPhotos: querying VaultIndexItem for recent images", category: "photos", level: .info)
+        let logMsg = offset == 0 ? "initial load" : "pagination (offset: \(offset))"
+        dlog("loadRecentPhotos: \(logMsg) querying VaultIndexItem for recent images", category: "photos", level: .info)
 
         var descriptor = FetchDescriptor<VaultIndexItem>(
             predicate: #Predicate { item in
@@ -99,16 +117,23 @@ class PhotosViewModel: ObservableObject {
             },
             sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]
         )
-        descriptor.fetchLimit = 60
+
+        // Fetch extra to detect if there are more items beyond what we'll show
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = paginationBatchSize + 1
 
         do {
             let items = try context.fetch(descriptor)
-            dlog("loadRecentPhotos: fetched \(items.count) image item(s)", category: "photos", level: .info)
+            dlog("loadRecentPhotos: fetched \(items.count) image item(s) at offset \(offset)", category: "photos", level: .info)
 
-            var photos: [BackedUpPhoto] = []
-            photos.reserveCapacity(items.count)
-            for item in items {
-                photos.append(BackedUpPhoto(
+            // Check if there are more photos beyond this batch
+            hasMorePhotos = items.count > paginationBatchSize
+            let itemsToProcess = Array(items.prefix(paginationBatchSize))
+
+            var newPhotos: [BackedUpPhoto] = []
+            newPhotos.reserveCapacity(itemsToProcess.count)
+            for item in itemsToProcess {
+                newPhotos.append(BackedUpPhoto(
                     id: item.assetIdentifier ?? item.id.uuidString,
                     filename: item.name,
                     sizeBytes: item.sizeBytes,
@@ -118,24 +143,48 @@ class PhotosViewModel: ObservableObject {
                 ))
             }
 
-            // Query cloud-only photos — BackedUpAssets whose assetIdentifier
-            // doesn't resolve to a live PHAsset (user deleted from device).
-            let localAssetIds = Set(items.compactMap { $0.assetIdentifier })
-            let cloudOnlyPhotos = await fetchCloudOnlyPhotos(
-                excludeLocalIds: localAssetIds, modelContainer: services.modelContainer)
+            // On initial load, include cloud-only photos
+            if offset == 0 {
+                let localAssetIds = Set(itemsToProcess.compactMap { $0.assetIdentifier })
+                let cloudOnlyPhotos = await fetchCloudOnlyPhotos(
+                    excludeLocalIds: localAssetIds, modelContainer: services.modelContainer)
+                newPhotos.append(contentsOf: cloudOnlyPhotos)
 
-            photos.append(contentsOf: cloudOnlyPhotos)
+                // Sort all items newest-first by takenAt for initial display
+                newPhotos.sort { ($0.takenAt) > ($1.takenAt) }
+                backedUpPhotos = newPhotos
+            } else {
+                // Append to existing photos during pagination
+                backedUpPhotos.append(contentsOf: newPhotos)
+            }
 
-            // Sort all items newest-first by takenAt.
-            photos.sort { ($0.takenAt) > ($1.takenAt) }
+            currentOffset = offset + paginationBatchSize
 
-            backedUpPhotos = photos
-            allBackedUp = !photos.isEmpty && photos.allSatisfy { $0.backupState == .syncedAndLocal }
+            // Apply memory cap: keep only the latest 600 items
+            if backedUpPhotos.count > maxVisiblePhotos {
+                backedUpPhotos = Array(backedUpPhotos.prefix(maxVisiblePhotos))
+            }
+
+            allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
         } catch {
             dlog("loadRecentPhotos: fetch failed: \(error.localizedDescription)", category: "photos", level: .error)
-            backedUpPhotos = []
+            if offset == 0 {
+                backedUpPhotos = []
+            }
             allBackedUp = false
         }
+    }
+
+    /// Load more photos when user scrolls past the last visible item.
+    /// Called from UI when the last photo appears on screen.
+    /// Only loads if not already loading and more photos exist.
+    func loadMore() async {
+        guard !isLoadingMore && hasMorePhotos else { return }
+
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+
+        await loadRecentPhotos(offset: currentOffset)
     }
 
     /// Fetch BackedUpAssets whose assetIdentifiers don't resolve to live PHAssets.

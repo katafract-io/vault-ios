@@ -80,7 +80,13 @@ struct PhotosView: View {
                     } else {
                         PhotoGridSection(
                             photos: viewModel.backedUpPhotos,
-                            onPhotoTap: { viewModel.selectedPhoto = $0 }
+                            onPhotoTap: { viewModel.selectedPhoto = $0 },
+                            onLastPhotoAppear: {
+                                Task {
+                                    await viewModel.loadMore()
+                                }
+                            },
+                            isLoadingMore: viewModel.isLoadingMore
                         )
                     }
                 }
@@ -292,6 +298,8 @@ struct BackupCompleteBanner: View {
 struct PhotoGridSection: View {
     let photos: [BackedUpPhoto]
     var onPhotoTap: (BackedUpPhoto) -> Void
+    var onLastPhotoAppear: (() -> Void)? = nil
+    var isLoadingMore: Bool = false
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
 
     private var backedUpCount: Int {
@@ -307,7 +315,7 @@ struct PhotoGridSection: View {
                 .padding(.top, 8)
 
             LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(photos) { photo in
+                ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
                     // Fixed-aspect container. PhotoThumbnailView fills and
                     // clips itself internally, so there's no nested
                     // aspect-ratio fight when the image arrives.
@@ -329,7 +337,25 @@ struct PhotoGridSection: View {
                         }
                         .contentShape(Rectangle())
                         .onTapGesture { onPhotoTap(photo) }
+                        .onAppear {
+                            // Trigger loadMore when user scrolls to the last or near-last item
+                            // Load when within 10 items of the end to fetch proactively
+                            if index >= photos.count - 10 {
+                                onLastPhotoAppear?()
+                            }
+                        }
                 }
+            }
+
+            // Loading indicator when pagination is in progress
+            if isLoadingMore {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Spacer()
+                }
+                .padding()
             }
         }
     }
