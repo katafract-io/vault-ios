@@ -578,5 +578,48 @@ class PhotosViewModel: ObservableObject {
         backedUpPhotos = seedPhotos
         allBackedUp = seedPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
     }
+
+    /// Groups recently backed up photos (last 7 days) by date category.
+    /// Returns a dictionary mapping category names (Today, Yesterday, This Week)
+    /// to arrays of photos, sorted by date descending within each group.
+    var recentlyBackedUpByDate: [String: [BackedUpPhoto]] {
+        let now = Date()
+        let calendar = Calendar.current
+        let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+
+        // Filter photos from last 7 days that are backed up
+        let recent = backedUpPhotos.filter { photo in
+            photo.takenAt >= sevenDaysAgo && photo.takenAt <= now &&
+            photo.backupState == .syncedAndLocal
+        }
+
+        var grouped: [String: [BackedUpPhoto]] = [:]
+
+        for photo in recent {
+            let category = dateCategory(for: photo.takenAt, now: now, calendar: calendar)
+            if grouped[category] == nil {
+                grouped[category] = []
+            }
+            grouped[category]?.append(photo)
+        }
+
+        // Sort photos within each group by date descending
+        for key in grouped.keys {
+            grouped[key]?.sort { $0.takenAt > $1.takenAt }
+        }
+
+        return grouped
+    }
+
+    /// Determines the category label for a given date relative to now.
+    private func dateCategory(for date: Date, now: Date, calendar: Calendar) -> String {
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            return "This Week"
+        }
+    }
 }
 
