@@ -130,9 +130,18 @@ struct PhotosView: View {
                 await viewModel.loadRecentPhotos()
             }
             .sheet(item: $viewModel.selectedPhoto) { photo in
-                PhotoDetailView(photo: photo, onDelete: {
-                    viewModel.removeFromBackup(photo)
-                })
+                PhotoDetailView(
+                    photo: photo,
+                    onDelete: {
+                        viewModel.removeFromBackup(photo)
+                    },
+                    onBackupNow: {
+                        // Back up this single photo
+                        Task {
+                            viewModel.backupSinglePhoto(photo)
+                        }
+                    }
+                )
             }
             .sheet(isPresented: $showAlbumsSheet) {
                 AlbumPickerSheet(onSave: {
@@ -401,18 +410,29 @@ struct PhotoDetailView: View {
     /// Invoked when the user taps Delete. Caller is responsible for the
     /// soft-delete + BackedUpAsset removal; this view only requests it.
     var onDelete: (() -> Void)? = nil
+    /// Invoked to back up a single pending photo.
+    var onBackupNow: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete = false
 
     var body: some View {
         NavigationStack {
-            PhotoThumbnailView(
-                assetLocalIdentifier: photo.isCloudOnly ? nil : photo.id,
-                targetSize: UIScreen.main.bounds.size,
-                contentMode: .aspectFit,
-                isCloudOnly: photo.isCloudOnly
-            )
-            .ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Sync state header
+                syncStateHeader
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    .background(Color(.systemGray6))
+
+                // Photo viewer
+                PhotoThumbnailView(
+                    assetLocalIdentifier: photo.isCloudOnly ? nil : photo.id,
+                    targetSize: UIScreen.main.bounds.size,
+                    contentMode: .aspectFit,
+                    isCloudOnly: photo.isCloudOnly
+                )
+                .ignoresSafeArea()
+            }
             .navigationTitle(photo.filename)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -443,6 +463,99 @@ struct PhotoDetailView: View {
             } message: {
                 Text("The encrypted backup will be moved to the recycle bin. The photo on this device is not affected.")
             }
+        }
+    }
+
+    private var syncStateHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch photo.backupState {
+            case .syncedAndLocal:
+                syncedState
+
+            case .localOnly:
+                localOnlyState
+
+            case .syncing(let progress):
+                syncingState(progress: progress)
+
+            case .cloudOnly:
+                cloudOnlyState
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var syncedState: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.kataGold)
+                Text("Backed up")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+            Text("\(ByteCountFormatter.string(fromByteCount: Int64(photo.sizeBytes), countStyle: .file)) encrypted")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var localOnlyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "icloud.slash")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text("Pending")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+            Button(action: { onBackupNow?() }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.up.circle.fill")
+                    Text("Back up now")
+                }
+                .font(.caption)
+                .foregroundStyle(Color.black.opacity(0.85))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color.kataGold)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+        }
+    }
+
+    private func syncingState(progress: Double) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                KataProgressRing(progress: progress, size: 16)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Uploading")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var cloudOnlyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+                Text("Cloud only")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+            Text("This photo was deleted from your device")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
