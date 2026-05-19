@@ -210,15 +210,16 @@ struct StuckItemsView: View {
 
         modelContext.delete(file)
 
+        let orphanFileId = file.fileId
         let backedUpDescriptor = FetchDescriptor<BackedUpAsset>(
-            predicate: #Predicate { $0.fileId == file.fileId }
+            predicate: #Predicate { $0.fileId == orphanFileId }
         )
-        if let backedUp = (try? modelContext.fetch(backedUpDescriptor)).first {
+        if let backedUp = (try? modelContext.fetch(backedUpDescriptor))?.first {
             modelContext.delete(backedUp)
         }
 
         let chunkDescriptor = FetchDescriptor<ChunkUploadQueue>(
-            predicate: #Predicate { $0.fileId == file.fileId }
+            predicate: #Predicate { $0.fileId == orphanFileId }
         )
         let chunks = (try? modelContext.fetch(chunkDescriptor)) ?? []
         for chunk in chunks {
