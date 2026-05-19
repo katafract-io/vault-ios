@@ -645,7 +645,13 @@ struct FileBrowserView: View {
                         onDuplicate: { viewModel.duplicateItem(item) },
                         onToggleStar: { viewModel.toggleStar(item) },
                         onToggleOffline: { viewModel.toggleOffline(item) },
-                        onDragExport: { await dragExportFile(item) }
+                        onDragExport: {
+                            #if targetEnvironment(macCatalyst)
+                            return await dragExportFile(item)
+                            #else
+                            return nil
+                            #endif
+                        }
                     )
                     if item.isFolder && !isEditing {
                         NavigationLink(value: item) { EmptyView() }
