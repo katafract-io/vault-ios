@@ -154,6 +154,57 @@ public final class VaultServices: ObservableObject {
         }
     }
 
+    /// Export a decrypted copy of a file to a temporary location for drag-out
+    /// and sharing on macOS. Creates vault_exports/ in caches directory.
+    /// Returns the URL of the decrypted file copy.
+    ///
+    /// - Parameters:
+    ///   - localFile: The LocalFile to export
+    ///   - folderId: The parent folder ID (for decryption key)
+    ///
+    /// - Returns: URL to the decrypted file in vault_exports/
+    /// - Throws: Encryption/decryption errors, I/O errors
+    #if targetEnvironment(macCatalyst)
+    @MainActor
+    func exportDecryptedCopy(for localFile: LocalFile, folderId: String) async throws -> URL {
+        // Create vault_exports cache directory
+        let fm = FileManager.default
+        guard let cacheDir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "VaultExport", code: -1, userInfo: [NSLocalizedDescriptionKey: "Cache directory not found"])
+        }
+        let exportsURL = cacheDir.appendingPathComponent("vault_exports", isDirectory: true)
+        if !fm.fileExists(atPath: exportsURL.path) {
+            try fm.createDirectory(at: exportsURL, withIntermediateDirectories: true)
+        }
+
+        // Download and decrypt the file
+        let folderKey = try await keyManager.getOrCreateFolderKey(folderId: folderId)
+        let plaintext = try await syncEngine.downloadFile(
+            fileId: localFile.fileId,
+            folderKey: folderKey,
+            progress: { _ in }
+        )
+
+        // Write decrypted copy to vault_exports
+        let filename = localFile.filename
+        let destURL = exportsURL.appendingPathComponent(filename)
+
+        // Remove any existing file with the same name
+        if fm.fileExists(atPath: destURL.path) {
+            try fm.removeItem(at: destURL)
+        }
+
+        // Write the plaintext data
+        try plaintext.write(to: destURL, options: [.atomic])
+
+        // Set file protection
+        try? (destURL as NSURL).setResourceValue(
+            URLFileProtection.completeUntilFirstUserAuthentication, forKey: .fileProtectionKey)
+
+        return destURL
+    }
+    #endif
+
     /// Populate demo seed data for screenshot capture.
     /// Preset "sovereign-demo" creates a folder hierarchy with realistic document files.
     #if DEBUG
