@@ -115,6 +115,17 @@ class FileVersionsViewModel: ObservableObject {
     @Published var versions: [FileVersion] = []
 
     func load(fileId: String) async {
+        if ScreenshotMode.isActive {
+            versions = [
+                FileVersion(id: UUID().uuidString, version: 3, sizeBytes: 145_024,
+                            modifiedAt: Date(timeIntervalSinceNow: -3_600)),
+                FileVersion(id: UUID().uuidString, version: 2, sizeBytes: 141_312,
+                            modifiedAt: Date(timeIntervalSinceNow: -86_400 * 5)),
+                FileVersion(id: UUID().uuidString, version: 1, sizeBytes: 138_240,
+                            modifiedAt: Date(timeIntervalSinceNow: -86_400 * 30)),
+            ]
+            return
+        }
         // TODO: GET /v1/vault/versions/{fileId}
     }
 

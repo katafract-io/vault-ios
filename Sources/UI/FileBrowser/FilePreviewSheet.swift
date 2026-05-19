@@ -38,6 +38,8 @@ struct FilePreviewSheet: View {
         if let fileURL {
             QuickLookPreview(url: fileURL)
                 .ignoresSafeArea()
+        } else if ScreenshotMode.isActive {
+            mockDocumentPreview
         } else if let errorMessage {
             VStack(spacing: 16) {
                 Image(systemName: "exclamationmark.triangle")
@@ -59,6 +61,62 @@ struct FilePreviewSheet: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    @ViewBuilder
+    private var mockDocumentPreview: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Document header block
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        RoundedRectangle(cornerRadius: 2).fill(Color(.systemGray3))
+                            .frame(width: 200, height: 16)
+                        RoundedRectangle(cornerRadius: 2).fill(Color(.systemGray4))
+                            .frame(width: 140, height: 11)
+                        RoundedRectangle(cornerRadius: 2).fill(Color(.systemGray5))
+                            .frame(width: 100, height: 11)
+                    }
+                    Spacer()
+                    RoundedRectangle(cornerRadius: 4).fill(Color(.systemGray4))
+                        .frame(width: 56, height: 56)
+                }
+                .padding(.bottom, 20)
+                Divider().padding(.bottom, 16)
+                // Body text lines
+                ForEach(0..<5, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 2).fill(Color(.systemGray5))
+                        .frame(maxWidth: i == 4 ? 220 : .infinity)
+                        .frame(height: 11)
+                        .padding(.bottom, 8)
+                }
+                Divider().padding(.vertical, 16)
+                // Two-column section
+                HStack(alignment: .top, spacing: 20) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 2).fill(Color(.systemGray3))
+                                .frame(height: 12)
+                            ForEach(0..<3, id: \.self) { _ in
+                                RoundedRectangle(cornerRadius: 2).fill(Color(.systemGray5))
+                                    .frame(height: 10)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.bottom, 20)
+                // Footer lines
+                ForEach(0..<3, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 2).fill(Color(.systemGray5))
+                        .frame(maxWidth: i == 2 ? 160 : .infinity)
+                        .frame(height: 10)
+                        .padding(.bottom, 7)
+                }
+            }
+            .padding(28)
+        }
+        .background(Color(.systemBackground))
     }
 }
 

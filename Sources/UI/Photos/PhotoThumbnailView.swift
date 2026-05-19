@@ -45,6 +45,15 @@ struct PhotoThumbnailView: View {
                 Image(systemName: "shield.fill")
                     .font(.system(size: 40))
                     .foregroundStyle(.secondary)
+            } else if ScreenshotMode.isActive, let localId = assetLocalIdentifier {
+                // Render deterministic gradient directly at body time — bypasses the
+                // PHAsset → requestImage → @State async cycle which races the snapshot.
+                Image(uiImage: Self.mockThumbnail(for: localId, size: targetSize))
+                    .resizable()
+                    .aspectRatio(
+                        contentMode: contentMode == .aspectFill ? .fill : .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transaction { $0.animation = nil }
             } else if let image {
                 Image(uiImage: image)
                     .resizable()
