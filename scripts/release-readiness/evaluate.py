@@ -394,7 +394,7 @@ def gate_marketing_truth_audit(cfg: dict) -> tuple[str, str]:
     app_id = cfg["asc"]["app_id"]
     versions = asc_get(
         f"/v1/apps/{app_id}/appStoreVersions"
-        f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,READY_FOR_DISTRIBUTION"
+        f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,READY_FOR_SALE"
         f"&limit=1",
         jwt,
     )["data"]
@@ -642,7 +642,7 @@ def gate_apple_review_policy_check(cfg: dict) -> tuple[str, str]:
 
     versions = asc_get(
         f"/v1/apps/{app_id}/appStoreVersions"
-        f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,READY_FOR_DISTRIBUTION"
+        f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,READY_FOR_SALE"
         f"&limit=1",
         jwt,
     )["data"]
