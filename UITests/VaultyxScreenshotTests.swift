@@ -59,7 +59,7 @@ final class VaultyxScreenshotTests: XCTestCase {
     func testCaptureVersions() {
         let app = launch(flags: defaultFlags + ["--auto-open-versions", "Will_and_Trust.pdf"])
         sleep(3)
-        snapshot("05-versions")
+        snapshot("07-versions")
     }
 
     // MARK: - Frame 06: Paywall Yearly (unsubscribed, yearly tile default)
@@ -72,7 +72,7 @@ final class VaultyxScreenshotTests: XCTestCase {
         sleep(3)
         triggerPaywall(app: app)
         sleep(3)
-        snapshot("06-paywall-yearly")
+        snapshot("08-paywall-yearly")
     }
 
     // MARK: - Frame 07: Paywall Monthly (subscription-review-only asset)
@@ -90,7 +90,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             monthlyTile.tap()
             sleep(1)
         }
-        snapshot("07-paywall-monthly")
+        snapshot("11-paywall-monthly")
     }
 
     // MARK: - Frame 08: Capacity 100GB Monthly (IAP review SKU)
@@ -117,7 +117,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             gb100Text.tap()
             sleep(1)
         }
-        snapshot("08-capacity-100gb-monthly")
+        snapshot("12-capacity-100gb-monthly")
     }
 
     // MARK: - Frame 09: Capacity 100GB Yearly (IAP review SKU)
@@ -144,7 +144,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             gb100Text.tap()
             sleep(1)
         }
-        snapshot("09-capacity-100gb-yearly")
+        snapshot("13-capacity-100gb-yearly")
     }
 
     // MARK: - Frame 10: Capacity 1TB Monthly (IAP review SKU)
@@ -171,7 +171,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             tb1Text.tap()
             sleep(1)
         }
-        snapshot("10-capacity-1tb-monthly")
+        snapshot("14-capacity-1tb-monthly")
     }
 
     // MARK: - Frame 11: Capacity 1TB Yearly (IAP review SKU)
@@ -198,7 +198,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             tb1Text.tap()
             sleep(1)
         }
-        snapshot("11-capacity-1tb-yearly")
+        snapshot("15-capacity-1tb-yearly")
     }
 
     // MARK: - Frame 12: Capacity 5TB Monthly (IAP review SKU)
@@ -225,7 +225,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             tb5Text.tap()
             sleep(1)
         }
-        snapshot("12-capacity-5tb-monthly")
+        snapshot("16-capacity-5tb-monthly")
     }
 
     // MARK: - Frame 13: Capacity 5TB Yearly (IAP review SKU)
@@ -252,7 +252,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             tb5Text.tap()
             sleep(1)
         }
-        snapshot("13-capacity-5tb-yearly")
+        snapshot("17-capacity-5tb-yearly")
     }
 
     // MARK: - Frame 14: Photos tab — grid with active backup states
@@ -265,7 +265,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             photosTab.tap()
             sleep(3)
         }
-        snapshot("14-photos-grid")
+        snapshot("05-photos-grid")
     }
 
     // MARK: - Frame 15: Photos tab — sealed-album empty state
@@ -281,7 +281,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             photosTab.tap()
             sleep(3)
         }
-        snapshot("15-photos-empty")
+        snapshot("06-photos-empty")
     }
 
     // MARK: - Frame 16: Upload source menu sheet (Files "+" button)
@@ -295,7 +295,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             plusButton.tap()
             sleep(2)
         }
-        snapshot("16-upload-source-sheet")
+        snapshot("09-upload-source-sheet")
     }
 
     // MARK: - Frame 17: Photos tab — album selection / choose-albums state
@@ -311,7 +311,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             photosTab.tap()
             sleep(3)
         }
-        snapshot("17-album-selection")
+        snapshot("10-album-selection")
     }
 
     // MARK: - Helpers
@@ -336,13 +336,8 @@ final class VaultyxScreenshotTests: XCTestCase {
     }
 
     private func triggerPaywall(app: XCUIApplication) {
-        let plusButton = app.buttons.matching(identifier: "plus").firstMatch
-        if plusButton.waitForExistence(timeout: 5) {
-            plusButton.tap()
-            return
-        }
-        let uploadBtn = app.buttons["Upload Files"].firstMatch
-        if uploadBtn.waitForExistence(timeout: 3) {
+        let uploadBtn = app.buttons["vault-upload-btn"].firstMatch
+        if uploadBtn.waitForExistence(timeout: 5) {
             uploadBtn.tap()
         }
     }

@@ -137,7 +137,8 @@ jobs:
           export PATH="$(dirname "$RUBY_BIN"):$PATH"
           OUTFILE=$(mktemp)
           $RUBY_BIN -S bundle exec fastlane "${FASTLANE_LANE}" 2>&1 | tee "$OUTFILE"
-          SHOT_COUNT=$(grep -c "screenshot uploaded" "$OUTFILE" || echo "0")
+          SHOT_COUNT=$(grep -c "screenshot uploaded" "$OUTFILE" || true)
+          SHOT_COUNT=${SHOT_COUNT:-0}
           echo "shot_count=${SHOT_COUNT}" >> "$GITHUB_OUTPUT"
 
       - name: Frame screenshots with device bezels + marketing banners

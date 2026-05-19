@@ -33,6 +33,7 @@ struct FileBrowserView: View {
     @State private var selectedCategory: FileCategory = .all
     @State private var pendingInboxCount: Int = 0
     @State private var showStuckItems = false
+    @State private var versionsFile: VaultFileItem?
 
     let folderId: String?  // nil = root
     var isReadOnly: Bool = false
@@ -214,48 +215,9 @@ struct FileBrowserView: View {
                     Divider()
                 }
 
-                // Single banner instance — hoisting outside the branch selector
-                // prevents the spring transition from re-firing when items.isEmpty
-                // or viewMode flips (which would swap branches, animating the
-                // banner out and back in on every state change).
-                if viewModel.uploadInProgress {
-                    FileUploadProgressBanner(
-                        fileIndex: viewModel.batchFileIndex,
-                        totalFiles: viewModel.batchTotalFiles,
-                        bytesUploaded: viewModel.batchBytesUploaded,
-                        totalBytes: viewModel.batchTotalBytes,
-                        onCancel: viewModel.cancelUpload
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if viewModel.downloadInProgress {
-                    FileDownloadProgressBanner(
-                        filename: viewModel.downloadFilename,
-                        progress: viewModel.downloadProgress,
-                        onCancel: { viewModel.cancelDownload(); selectedFile = nil }
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if pendingInboxCount > 0 {
-                    PendingShareBanner(count: pendingInboxCount) {
-                        Task {
-                            await services.drainShareExtensionInbox()
-                            pendingInboxCount = services.pendingInboxCount()
-                        }
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
+                progressBanners
                 stuckItemsBanner
-                if viewModel.items.isEmpty && !viewModel.isLoading {
-                    EmptyFolderView(
-                        onUpload: { gate { uploadSource = .files } },
-                        onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
-                    )
-                } else if viewMode == .list {
-                    listContent
-                } else {
-                    gridContent
-                }
+                folderContent
             }
             .navigationDestination(for: VaultFileItem.self) { item in
                 FileBrowserView(folderId: item.id)
@@ -266,58 +228,7 @@ struct FileBrowserView: View {
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
         .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
-        .safeAreaInset(edge: .bottom) {
-            if isEditing && !selectedIds.isEmpty {
-                VStack(spacing: 0) {
-                    Divider()
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 24) {
-                            Button(action: { showDeleteConfirmation = true }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "trash")
-                                    Text("Delete")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.red)
-
-                            Button(action: { showBulkMoveSheet = true }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "folder")
-                                    Text("Move")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.kataSapphire)
-
-                            Button(action: { bulkToggleStar() }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "star")
-                                    Text("Star")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.kataGold)
-
-                            Button(action: { bulkToggleOffline() }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "pin")
-                                    Text("Offline")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.kataGold)
-
-                            Spacer()
-                                .frame(width: 1)
-                        }
-                        .padding()
-                    }
-                }
-                .background(Color.kataNavy.opacity(0.95))
-                .foregroundColor(.white)
-            }
-        }
+        .safeAreaInset(edge: .bottom) { bulkActionBar }
         .overlay { UndoToast(model: undo) }
         .navigationTitle(isEditing && !selectedIds.isEmpty ? "\(selectedIds.count) selected" : viewModel.folderName)
         .confirmationDialog(
@@ -361,6 +272,7 @@ struct FileBrowserView: View {
                     Button(action: { gate { uploadSource = .files } }) {
                         Image(systemName: "plus")
                     }
+                    .accessibilityIdentifier("vault-upload-btn")
                     .disabled(isReadOnly)
                     Button(action: { isEditing = true }) {
                         Image(systemName: "checkmark.circle")
@@ -516,6 +428,9 @@ struct FileBrowserView: View {
                     }
             }
         }
+        .sheet(item: $versionsFile) { file in
+            FileVersionsView(fileId: file.id, filename: file.name)
+        }
         .alert("Can't open file",
                isPresented: Binding(
                    get: { viewModel.error != nil },
@@ -547,6 +462,14 @@ struct FileBrowserView: View {
             await viewModel.load(folderId: folderId)
             pendingInboxCount = services.pendingInboxCount()
             viewModel.refreshStuckCount()
+            let nonFolderItems = viewModel.items.filter { !$0.isFolder }
+            if ScreenshotMode.autoOpenFile != nil {
+                let name = ScreenshotMode.autoOpenFile!
+                selectedFile = nonFolderItems.first(where: { $0.name == name }) ?? nonFolderItems.first
+            } else if ScreenshotMode.autoOpenVersions != nil {
+                let name = ScreenshotMode.autoOpenVersions!
+                versionsFile = nonFolderItems.first(where: { $0.name == name }) ?? nonFolderItems.first
+            }
         }
         .task {
             while !Task.isCancelled {
@@ -573,6 +496,96 @@ struct FileBrowserView: View {
             }
             await viewModel.load(folderId: folderId)
             viewModel.refreshStuckCount()
+        }
+    }
+
+    @ViewBuilder
+    private var progressBanners: some View {
+        if viewModel.uploadInProgress {
+            FileUploadProgressBanner(
+                fileIndex: viewModel.batchFileIndex,
+                totalFiles: viewModel.batchTotalFiles,
+                bytesUploaded: viewModel.batchBytesUploaded,
+                totalBytes: viewModel.batchTotalBytes,
+                onCancel: viewModel.cancelUpload
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+        if viewModel.downloadInProgress {
+            FileDownloadProgressBanner(
+                filename: viewModel.downloadFilename,
+                progress: viewModel.downloadProgress,
+                onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+        if pendingInboxCount > 0 {
+            PendingShareBanner(count: pendingInboxCount) {
+                Task {
+                    await services.drainShareExtensionInbox()
+                    pendingInboxCount = services.pendingInboxCount()
+                }
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var folderContent: some View {
+        if viewModel.items.isEmpty && !viewModel.isLoading {
+            EmptyFolderView(
+                onUpload: { gate { uploadSource = .files } },
+                onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
+            )
+        } else if viewMode == .list {
+            listContent
+        } else {
+            gridContent
+        }
+    }
+
+    @ViewBuilder
+    private var bulkActionBar: some View {
+        if isEditing && !selectedIds.isEmpty {
+            VStack(spacing: 0) {
+                Divider()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 24) {
+                        Button(action: { showDeleteConfirmation = true }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "trash")
+                                Text("Delete").font(.caption)
+                            }
+                        }
+                        .foregroundColor(.red)
+                        Button(action: { showBulkMoveSheet = true }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "folder")
+                                Text("Move").font(.caption)
+                            }
+                        }
+                        .foregroundColor(.kataSapphire)
+                        Button(action: { bulkToggleStar() }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "star")
+                                Text("Star").font(.caption)
+                            }
+                        }
+                        .foregroundColor(.kataGold)
+                        Button(action: { bulkToggleOffline() }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "pin")
+                                Text("Offline").font(.caption)
+                            }
+                        }
+                        .foregroundColor(.kataGold)
+                        Spacer().frame(width: 1)
+                    }
+                    .padding()
+                }
+            }
+            .background(Color.kataNavy.opacity(0.95))
+            .foregroundColor(.white)
         }
     }
 
