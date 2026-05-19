@@ -175,6 +175,33 @@ struct FileBrowserView: View {
         return sorted
     }
 
+    @ViewBuilder
+    private var stuckItemsBanner: some View {
+        if viewModel.stuckCount > 0 {
+            Button(action: { showStuckItems = true }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamation.circle.fill")
+                        .font(.system(size: 16))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.stuckCount == 1 ? "1 upload failed" : "\(viewModel.stuckCount) uploads failed")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Tap to fix")
+                            .font(.system(size: 12))
+                            .opacity(0.85)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.red)
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
     var body: some View {
         NavigationStack(path: $viewModel.navPath) {
             VStack(spacing: 0) {
@@ -218,29 +245,7 @@ struct FileBrowserView: View {
                     }
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                if viewModel.stuckCount > 0 {
-                    Button(action: { showStuckItems = true }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "exclamation.circle.fill")
-                                .font(.system(size: 16))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(viewModel.stuckCount == 1 ? "1 upload failed" : "\(viewModel.stuckCount) uploads failed")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Tap to fix")
-                                    .font(.system(size: 12))
-                                    .opacity(0.85)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(Color.red)
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
+                stuckItemsBanner
                 if viewModel.items.isEmpty && !viewModel.isLoading {
                     EmptyFolderView(
                         onUpload: { gate { uploadSource = .files } },
