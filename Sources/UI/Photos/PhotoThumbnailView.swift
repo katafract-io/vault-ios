@@ -62,16 +62,18 @@ struct PhotoThumbnailView: View {
     private func fetch() {
         guard image == nil, !isCloudOnly else { return }
         guard let localId = assetLocalIdentifier else { return }
-        let fetchResult = PHAsset.fetchAssets(
-            withLocalIdentifiers: [localId], options: nil)
-        guard let asset = fetchResult.firstObject else {
-            if ScreenshotMode.isActive {
-                DispatchQueue.main.async {
-                    self.image = Self.mockThumbnail(for: localId, size: self.targetSize)
-                }
+        // In screenshot mode skip PHAsset lookup entirely — the simulator
+        // photo library has no real images, so requestImage returns a gray
+        // placeholder regardless of whether the asset record exists.
+        if ScreenshotMode.isActive {
+            DispatchQueue.main.async {
+                self.image = Self.mockThumbnail(for: localId, size: self.targetSize)
             }
             return
         }
+        let fetchResult = PHAsset.fetchAssets(
+            withLocalIdentifiers: [localId], options: nil)
+        guard let asset = fetchResult.firstObject else { return }
 
         let opts = PHImageRequestOptions()
         opts.isNetworkAccessAllowed = true

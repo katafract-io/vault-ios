@@ -501,12 +501,13 @@ struct FileBrowserView: View {
             await viewModel.load(folderId: folderId)
             pendingInboxCount = services.pendingInboxCount()
             viewModel.refreshStuckCount()
-            if let name = ScreenshotMode.autoOpenFile,
-               let item = viewModel.items.first(where: { $0.name == name && !$0.isFolder }) {
-                selectedFile = item
-            } else if let name = ScreenshotMode.autoOpenVersions,
-                      let item = viewModel.items.first(where: { $0.name == name && !$0.isFolder }) {
-                versionsFile = item
+            let nonFolderItems = viewModel.items.filter { !$0.isFolder }
+            if ScreenshotMode.autoOpenFile != nil {
+                let name = ScreenshotMode.autoOpenFile!
+                selectedFile = nonFolderItems.first(where: { $0.name == name }) ?? nonFolderItems.first
+            } else if ScreenshotMode.autoOpenVersions != nil {
+                let name = ScreenshotMode.autoOpenVersions!
+                versionsFile = nonFolderItems.first(where: { $0.name == name }) ?? nonFolderItems.first
             }
         }
         .task {
