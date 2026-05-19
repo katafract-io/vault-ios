@@ -1120,6 +1120,8 @@ public extension Notification.Name {
     static let vaultyxDrainRequested = Notification.Name("VaultyxDrainRequested")
     /// Posted when iOS is about to expire the drain BGProcessingTask.
     static let vaultyxDrainExpired = Notification.Name("VaultyxDrainExpired")
+    /// Posted when File > Open menu command is triggered on Mac Catalyst.
+    static let vaultOpenDocumentFromMenu = Notification.Name("VaultOpenDocumentFromMenu")
 }
 
 // MARK: - Local encrypted-chunk cache

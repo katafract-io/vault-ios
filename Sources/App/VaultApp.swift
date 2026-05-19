@@ -94,6 +94,14 @@ struct VaultApp: App {
             await coordinator.reconcileOnLaunch()
         }
 
+        // Reconcile orphan LocalFile rows — mark files with missing disk paths
+        // or deleted on-disk content as syncState='orphan' so the user can
+        // purge them from the UI. Called once per app launch.
+        let engine = services.syncEngine
+        Task.detached {
+            await engine.reconcileOrphans()
+        }
+
         // Start network reachability monitoring.
         Task { @MainActor in
             NetworkReachability.shared.startMonitoring()
@@ -216,5 +224,15 @@ struct VaultApp: App {
             @unknown default: break
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Open File...") {
+                    NotificationCenter.default.post(name: .vaultOpenDocumentFromMenu, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+        }
+        #endif
     }
 }

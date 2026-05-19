@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct FileBrowserView: View {
     @Environment(\.modelContext) private var modelContext
@@ -562,6 +563,50 @@ struct FileBrowserView: View {
             viewModel.refreshFromCache()
             // stuckCount is updated within refreshFromCache
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name.vaultOpenDocumentFromMenu)) { _ in
+            // File > Open menu command on Mac Catalyst
+            #if targetEnvironment(macCatalyst)
+            if subscriptionStore.isSubscribed {
+                showDocumentPicker = true
+            } else {
+                showPaywall = true
+            }
+            #endif
+        }
+        #if targetEnvironment(macCatalyst)
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            // Drag-and-drop file import on Mac Catalyst
+            guard subscriptionStore.isSubscribed else {
+                showPaywall = true
+                return false
+            }
+
+            var dropped = false
+            for provider in providers {
+                if provider.canLoadObject(ofClass: URL.self) {
+                    _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                        guard let url = url else { return }
+                        // Drop file(s) into the import inbox
+                        Task {
+                            do {
+                                try ImportInbox.drop(
+                                    originalName: url.lastPathComponent,
+                                    parentFolderId: self.viewModel.currentFolderId,
+                                    from: url
+                                )
+                                // Trigger immediate drain
+                                await services.drainShareExtensionInbox()
+                            } catch {
+                                dlog("Failed to import dropped file: \(error)", category: "ui", level: .error)
+                            }
+                        }
+                    }
+                    dropped = true
+                }
+            }
+            return dropped
+        }
+        #endif
         .refreshable {
             // Pull-to-refresh: run the full sync inline (user-initiated, so
             // we can block the spinner on the network round-trip) rather
