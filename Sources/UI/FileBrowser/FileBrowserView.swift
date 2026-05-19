@@ -33,6 +33,7 @@ struct FileBrowserView: View {
     @State private var selectedCategory: FileCategory = .all
     @State private var pendingInboxCount: Int = 0
     @State private var showStuckItems = false
+    @State private var versionsFile: VaultFileItem?
 
     let folderId: String?  // nil = root
     var isReadOnly: Bool = false
@@ -361,6 +362,7 @@ struct FileBrowserView: View {
                     Button(action: { gate { uploadSource = .files } }) {
                         Image(systemName: "plus")
                     }
+                    .accessibilityIdentifier("vault-upload-btn")
                     .disabled(isReadOnly)
                     Button(action: { isEditing = true }) {
                         Image(systemName: "checkmark.circle")
@@ -516,6 +518,9 @@ struct FileBrowserView: View {
                     }
             }
         }
+        .sheet(item: $versionsFile) { file in
+            FileVersionsView(fileId: file.id, filename: file.name)
+        }
         .alert("Can't open file",
                isPresented: Binding(
                    get: { viewModel.error != nil },
@@ -547,6 +552,13 @@ struct FileBrowserView: View {
             await viewModel.load(folderId: folderId)
             pendingInboxCount = services.pendingInboxCount()
             viewModel.refreshStuckCount()
+            if let name = ScreenshotMode.autoOpenFile,
+               let item = viewModel.items.first(where: { $0.name == name && !$0.isFolder }) {
+                selectedFile = item
+            } else if let name = ScreenshotMode.autoOpenVersions,
+                      let item = viewModel.items.first(where: { $0.name == name && !$0.isFolder }) {
+                versionsFile = item
+            }
         }
         .task {
             while !Task.isCancelled {
