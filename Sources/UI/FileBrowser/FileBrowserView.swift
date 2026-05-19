@@ -562,6 +562,15 @@ struct FileBrowserView: View {
             viewModel.refreshFromCache()
             // stuckCount is updated within refreshFromCache
         }
+        #if targetEnvironment(macCatalyst)
+        .onReceive(NotificationCenter.default.publisher(for: .vaultNewFolder)) { _ in
+            gate { showNewFolder = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaultFindActivated)) { _ in
+            // Placeholder for Find functionality — toggle search UI when implemented
+            dlog("Find activated", category: "mac")
+        }
+        #endif
         .refreshable {
             // Pull-to-refresh: run the full sync inline (user-initiated, so
             // we can block the spinner on the network round-trip) rather

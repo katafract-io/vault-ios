@@ -12,6 +12,9 @@ struct MainTabView: View {
     }
 
     var body: some View {
+        #if targetEnvironment(macCatalyst)
+        MacRootView()
+        #else
         TabView {
             NavigationStack {
                 FileBrowserView(folderId: nil, isReadOnly: isReadOnly)
@@ -81,6 +84,7 @@ struct MainTabView: View {
             }
             .interactiveDismissDisabled()
         }
+        #endif
     }
 }
 
