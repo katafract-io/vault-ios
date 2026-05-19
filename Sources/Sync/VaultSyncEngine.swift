@@ -117,6 +117,35 @@ public class VaultSyncEngine: ObservableObject {
         self.remoteQuotaBytes = quotaBytes
     }
 
+    public func reconcileOrphans() async {
+        dlog("reconcileOrphans: scanning for stuck/missing files", category: "sync", level: .info)
+        let context = modelContext
+        do {
+            let descriptor = FetchDescriptor<LocalFile>(
+                predicate: #Predicate {
+                    $0.syncState == "pending_upload" || $0.syncState == "partial"
+                    || $0.syncState == "manifest_pending" || $0.syncState == "manifest_failed"
+                }
+            )
+            let candidates = try context.fetch(descriptor)
+            var orphanCount = 0
+            for lf in candidates {
+                let isOrphan = lf.localPath == nil || !FileManager.default.fileExists(atPath: lf.localPath ?? "")
+                if isOrphan {
+                    dlog("reconcileOrphans: marking \(lf.filename) (id: \(lf.fileId)) as orphan", category: "sync", level: .info)
+                    lf.syncState = "orphan"
+                    orphanCount += 1
+                }
+            }
+            if orphanCount > 0 {
+                try context.save()
+                dlog("reconcileOrphans: marked \(orphanCount) orphan file(s)", category: "sync", level: .info)
+            }
+        } catch {
+            logger.error("reconcileOrphans: fetch/save failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     // MARK: - Import (fast path)
 
     /// Import a file instantly. Chunks, encrypts, and caches locally; schedules

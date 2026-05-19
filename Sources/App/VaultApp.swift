@@ -94,6 +94,11 @@ struct VaultApp: App {
             await coordinator.reconcileOnLaunch()
         }
 
+        let engine = services.syncEngine
+        Task.detached {
+            await engine.reconcileOrphans()
+        }
+
         // Start network reachability monitoring.
         Task { @MainActor in
             NetworkReachability.shared.startMonitoring()
