@@ -67,6 +67,17 @@ struct PhotosView: View {
 
                     Divider().padding(.vertical, 8)
 
+                    // Recently Backed Up section (last 7 days)
+                    if !viewModel.recentlyBackedUpByDate.isEmpty {
+                        RecentlyBackedUpSection(
+                            groupedPhotos: viewModel.recentlyBackedUpByDate,
+                            onPhotoTap: { viewModel.selectedPhoto = $0 }
+                        )
+                        .padding(.bottom, 12)
+
+                        Divider().padding(.vertical, 8)
+                    }
+
                     // Photo grid OR empty state
                     if showEmptyState {
                         PhotosEmptyStateView(onBackupTap: {
@@ -556,6 +567,77 @@ struct PhotoDetailView: View {
             Text("This photo was deleted from your device")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Recently Backed Up Section
+
+struct RecentlyBackedUpSection: View {
+    let groupedPhotos: [String: [BackedUpPhoto]]
+    var onPhotoTap: (BackedUpPhoto) -> Void
+
+    private let categories = ["Today", "Yesterday", "This Week"]
+    private let horizontalSpacing: CGFloat = 8
+    private let thumbnailSize: CGFloat = 80
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("RECENTLY BACKED UP")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
+
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(categories, id: \.self) { category in
+                    if let photos = groupedPhotos[category], !photos.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(category)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: horizontalSpacing) {
+                                    ForEach(photos, id: \.id) { photo in
+                                        VStack(spacing: 4) {
+                                            ZStack {
+                                                Color.clear
+                                                    .aspectRatio(1, contentMode: .fit)
+                                                    .frame(width: thumbnailSize, height: thumbnailSize)
+                                                    .overlay {
+                                                        PhotoThumbnailView(
+                                                            assetLocalIdentifier: photo.isCloudOnly ? nil : photo.id,
+                                                            targetSize: CGSize(width: thumbnailSize, height: thumbnailSize),
+                                                            isCloudOnly: photo.isCloudOnly
+                                                        )
+                                                    }
+                                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                                    .contentShape(Rectangle())
+                                                    .onTapGesture {
+                                                        onPhotoTap(photo)
+                                                    }
+                                            }
+
+                                            Text(photo.takenAt, style: .time)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .frame(width: thumbnailSize)
+                                                .lineLimit(1)
+                                        }
+                                        .frame(width: thumbnailSize)
+                                    }
+
+                                    Spacer()
+                                        .frame(width: 1)
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
