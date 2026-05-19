@@ -267,58 +267,7 @@ struct FileBrowserView: View {
         }
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
         .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
-        .safeAreaInset(edge: .bottom) {
-            if isEditing && !selectedIds.isEmpty {
-                VStack(spacing: 0) {
-                    Divider()
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 24) {
-                            Button(action: { showDeleteConfirmation = true }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "trash")
-                                    Text("Delete")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.red)
-
-                            Button(action: { showBulkMoveSheet = true }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "folder")
-                                    Text("Move")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.kataSapphire)
-
-                            Button(action: { bulkToggleStar() }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "star")
-                                    Text("Star")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.kataGold)
-
-                            Button(action: { bulkToggleOffline() }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "pin")
-                                    Text("Offline")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.kataGold)
-
-                            Spacer()
-                                .frame(width: 1)
-                        }
-                        .padding()
-                    }
-                }
-                .background(Color.kataNavy.opacity(0.95))
-                .foregroundColor(.white)
-            }
-        }
+        .safeAreaInset(edge: .bottom) { bulkActionBar }
         .overlay { UndoToast(model: undo) }
         .navigationTitle(isEditing && !selectedIds.isEmpty ? "\(selectedIds.count) selected" : viewModel.folderName)
         .confirmationDialog(
@@ -585,6 +534,51 @@ struct FileBrowserView: View {
             }
             await viewModel.load(folderId: folderId)
             viewModel.refreshStuckCount()
+        }
+    }
+
+    @ViewBuilder
+    private var bulkActionBar: some View {
+        if isEditing && !selectedIds.isEmpty {
+            VStack(spacing: 0) {
+                Divider()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 24) {
+                        Button(action: { showDeleteConfirmation = true }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "trash")
+                                Text("Delete").font(.caption)
+                            }
+                        }
+                        .foregroundColor(.red)
+                        Button(action: { showBulkMoveSheet = true }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "folder")
+                                Text("Move").font(.caption)
+                            }
+                        }
+                        .foregroundColor(.kataSapphire)
+                        Button(action: { bulkToggleStar() }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "star")
+                                Text("Star").font(.caption)
+                            }
+                        }
+                        .foregroundColor(.kataGold)
+                        Button(action: { bulkToggleOffline() }) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "pin")
+                                Text("Offline").font(.caption)
+                            }
+                        }
+                        .foregroundColor(.kataGold)
+                        Spacer().frame(width: 1)
+                    }
+                    .padding()
+                }
+            }
+            .background(Color.kataNavy.opacity(0.95))
+            .foregroundColor(.white)
         }
     }
 
