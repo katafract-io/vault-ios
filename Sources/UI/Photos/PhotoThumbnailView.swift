@@ -64,7 +64,14 @@ struct PhotoThumbnailView: View {
         guard let localId = assetLocalIdentifier else { return }
         let fetchResult = PHAsset.fetchAssets(
             withLocalIdentifiers: [localId], options: nil)
-        guard let asset = fetchResult.firstObject else { return }
+        guard let asset = fetchResult.firstObject else {
+            if ScreenshotMode.isActive {
+                DispatchQueue.main.async {
+                    self.image = Self.mockThumbnail(for: localId, size: self.targetSize)
+                }
+            }
+            return
+        }
 
         let opts = PHImageRequestOptions()
         opts.isNetworkAccessAllowed = true
@@ -87,6 +94,57 @@ struct PhotoThumbnailView: View {
                 // State update must be on main; explicitly dispatch.
                 DispatchQueue.main.async { self.image = result }
             }
+        }
+    }
+
+    private static func mockThumbnail(for id: String, size: CGSize) -> UIImage {
+        let palette: [UIColor] = [
+            UIColor(red: 0.22, green: 0.42, blue: 0.78, alpha: 1),  // sapphire
+            UIColor(red: 0.20, green: 0.62, blue: 0.45, alpha: 1),  // teal
+            UIColor(red: 0.72, green: 0.35, blue: 0.20, alpha: 1),  // terracotta
+            UIColor(red: 0.48, green: 0.28, blue: 0.70, alpha: 1),  // violet
+            UIColor(red: 0.22, green: 0.52, blue: 0.42, alpha: 1),  // forest
+            UIColor(red: 0.65, green: 0.30, blue: 0.42, alpha: 1),  // rose
+            UIColor(red: 0.28, green: 0.46, blue: 0.62, alpha: 1),  // slate
+            UIColor(red: 0.70, green: 0.50, blue: 0.18, alpha: 1),  // amber
+            UIColor(red: 0.32, green: 0.58, blue: 0.35, alpha: 1),  // sage
+            UIColor(red: 0.55, green: 0.25, blue: 0.60, alpha: 1),  // plum
+        ]
+        let base = palette[abs(id.hashValue) % palette.count]
+        let lighter = base.withAlphaComponent(0.6)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { ctx in
+            let cgCtx = ctx.cgContext
+            // Gradient fill
+            let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [base.cgColor, lighter.cgColor] as CFArray,
+                locations: [0.0, 1.0]
+            )!
+            cgCtx.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: 0, y: 0),
+                end: CGPoint(x: 0, y: size.height),
+                options: []
+            )
+            // Mountain-silhouette watermark
+            UIColor.white.withAlphaComponent(0.18).setFill()
+            let m = min(size.width, size.height)
+            let path = UIBezierPath()
+            path.move(to: CGPoint(x: 0, y: size.height))
+            path.addLine(to: CGPoint(x: m * 0.25, y: size.height * 0.45))
+            path.addLine(to: CGPoint(x: m * 0.45, y: size.height * 0.62))
+            path.addLine(to: CGPoint(x: m * 0.60, y: size.height * 0.30))
+            path.addLine(to: CGPoint(x: m * 0.80, y: size.height * 0.55))
+            path.addLine(to: CGPoint(x: size.width, y: size.height))
+            path.close()
+            path.fill()
+            // Sun circle
+            UIColor.white.withAlphaComponent(0.22).setFill()
+            let sunR = m * 0.10
+            let sunCenter = CGPoint(x: size.width * 0.72, y: size.height * 0.22)
+            UIBezierPath(ovalIn: CGRect(x: sunCenter.x - sunR, y: sunCenter.y - sunR,
+                                        width: sunR * 2, height: sunR * 2)).fill()
         }
     }
 

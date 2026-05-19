@@ -45,9 +45,9 @@ final class VaultyxScreenshotTests: XCTestCase {
         if settingsTab.waitForExistence(timeout: 5) {
             settingsTab.tap()
             sleep(2)
-            let recycleBinButton = app.buttons["Recycle Bin"].firstMatch
-            if recycleBinButton.waitForExistence(timeout: 3) {
-                recycleBinButton.tap()
+            let recycleBinCell = app.staticTexts["Recycle Bin"].firstMatch
+            if recycleBinCell.waitForExistence(timeout: 3) {
+                recycleBinCell.tap()
                 sleep(2)
             }
         }
