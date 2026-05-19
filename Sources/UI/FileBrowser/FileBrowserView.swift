@@ -224,7 +224,7 @@ struct FileBrowserView: View {
                             Image(systemName: "exclamation.circle.fill")
                                 .font(.system(size: 16))
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(viewModel.stuckCount) upload\(viewModel.stuckCount == 1 ? "" : "s") failed")
+                                Text(viewModel.stuckCount == 1 ? "1 upload failed" : "\(viewModel.stuckCount) uploads failed")
                                     .font(.system(size: 14, weight: .semibold))
                                 Text("Tap to fix")
                                     .font(.system(size: 12))
