@@ -215,48 +215,9 @@ struct FileBrowserView: View {
                     Divider()
                 }
 
-                // Single banner instance — hoisting outside the branch selector
-                // prevents the spring transition from re-firing when items.isEmpty
-                // or viewMode flips (which would swap branches, animating the
-                // banner out and back in on every state change).
-                if viewModel.uploadInProgress {
-                    FileUploadProgressBanner(
-                        fileIndex: viewModel.batchFileIndex,
-                        totalFiles: viewModel.batchTotalFiles,
-                        bytesUploaded: viewModel.batchBytesUploaded,
-                        totalBytes: viewModel.batchTotalBytes,
-                        onCancel: viewModel.cancelUpload
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if viewModel.downloadInProgress {
-                    FileDownloadProgressBanner(
-                        filename: viewModel.downloadFilename,
-                        progress: viewModel.downloadProgress,
-                        onCancel: { viewModel.cancelDownload(); selectedFile = nil }
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if pendingInboxCount > 0 {
-                    PendingShareBanner(count: pendingInboxCount) {
-                        Task {
-                            await services.drainShareExtensionInbox()
-                            pendingInboxCount = services.pendingInboxCount()
-                        }
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
+                progressBanners
                 stuckItemsBanner
-                if viewModel.items.isEmpty && !viewModel.isLoading {
-                    EmptyFolderView(
-                        onUpload: { gate { uploadSource = .files } },
-                        onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
-                    )
-                } else if viewMode == .list {
-                    listContent
-                } else {
-                    gridContent
-                }
+                folderContent
             }
             .navigationDestination(for: VaultFileItem.self) { item in
                 FileBrowserView(folderId: item.id)
@@ -535,6 +496,51 @@ struct FileBrowserView: View {
             }
             await viewModel.load(folderId: folderId)
             viewModel.refreshStuckCount()
+        }
+    }
+
+    @ViewBuilder
+    private var progressBanners: some View {
+        if viewModel.uploadInProgress {
+            FileUploadProgressBanner(
+                fileIndex: viewModel.batchFileIndex,
+                totalFiles: viewModel.batchTotalFiles,
+                bytesUploaded: viewModel.batchBytesUploaded,
+                totalBytes: viewModel.batchTotalBytes,
+                onCancel: viewModel.cancelUpload
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+        if viewModel.downloadInProgress {
+            FileDownloadProgressBanner(
+                filename: viewModel.downloadFilename,
+                progress: viewModel.downloadProgress,
+                onCancel: { viewModel.cancelDownload(); selectedFile = nil }
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+        if pendingInboxCount > 0 {
+            PendingShareBanner(count: pendingInboxCount) {
+                Task {
+                    await services.drainShareExtensionInbox()
+                    pendingInboxCount = services.pendingInboxCount()
+                }
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var folderContent: some View {
+        if viewModel.items.isEmpty && !viewModel.isLoading {
+            EmptyFolderView(
+                onUpload: { gate { uploadSource = .files } },
+                onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
+            )
+        } else if viewMode == .list {
+            listContent
+        } else {
+            gridContent
         }
     }
 
