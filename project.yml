@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.katafract
   deploymentTarget:
     iOS: "17.0"
+    macOS: "14.0"
   createIntermediateGroups: true
 
 settings:
@@ -43,6 +44,11 @@ targets:
         PRIVACY_MANIFEST_FILE: Sources/App/PrivacyInfo.xcprivacy
         PRODUCT_NAME: Vaultyx
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Vaultyx-Bridging-Header.h
+        SUPPORTS_MACCATALYST: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: Sources/App/VaultyxMac.entitlements
     dependencies:
       - target: VaultShare
       - target: VaultyxLiveActivity
@@ -73,6 +79,7 @@ targets:
         PRODUCT_NAME: VaultyxLiveActivity
         SWIFT_VERSION: "5.10"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        SUPPORTS_MACCATALYST: NO
 
   VaultShare:
     type: app-extension
@@ -93,6 +100,7 @@ targets:
         INFOPLIST_FILE: ShareExtension/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         PRODUCT_NAME: VaultShare
+        SUPPORTS_MACCATALYST: NO
 
   VaultFileProvider:
     type: app-extension
@@ -116,6 +124,7 @@ targets:
         INFOPLIST_FILE: FileProvider/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         PRODUCT_NAME: VaultFileProvider
+        SUPPORTS_MACCATALYST: NO
     frameworks:
       - FileProvider
 

@@ -279,6 +279,7 @@
 		F57C404ABEC3E05EC6128B26 /* RecoveryPhraseVerifyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseVerifyView.swift; sourceTree = "<group>"; };
 		F636B91FAABC34F1A337444B /* CustodyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustodyState.swift; sourceTree = "<group>"; };
 		F830083E2B12A292C784C99C /* VaultEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultEnumerator.swift; sourceTree = "<group>"; };
+		F9936769FF03DD285C4170BF /* VaultyxMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VaultyxMac.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -433,6 +434,7 @@
 				E99F9D00876693B1D808BA2C /* VaultApp.swift */,
 				AF366EE5FA273857E1DB4409 /* VaultServices.swift */,
 				934B71E7AE2335EB96BE6F9E /* Vaultyx.entitlements */,
+				F9936769FF03DD285C4170BF /* VaultyxMac.entitlements */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -984,6 +986,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault.share;
 				PRODUCT_NAME = VaultShare;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -1003,6 +1006,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault.liveactivity;
 				PRODUCT_NAME = VaultyxLiveActivity;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 5.10;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1022,6 +1026,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault.share;
 				PRODUCT_NAME = VaultShare;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -1031,17 +1036,22 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/App/Vaultyx.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Sources/App/VaultyxMac.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRIVACY_MANIFEST_FILE = Sources/App/PrivacyInfo.xcprivacy;
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault;
 				PRODUCT_NAME = Vaultyx;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Vaultyx-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1113,6 +1123,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.5;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -1138,6 +1149,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault.fileprovider;
 				PRODUCT_NAME = VaultFileProvider;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -1147,17 +1159,22 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/App/Vaultyx.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Sources/App/VaultyxMac.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Sources/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRIVACY_MANIFEST_FILE = Sources/App/PrivacyInfo.xcprivacy;
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault;
 				PRODUCT_NAME = Vaultyx;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/Vaultyx-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1177,6 +1194,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault.fileprovider;
 				PRODUCT_NAME = VaultFileProvider;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -1196,6 +1214,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault.liveactivity;
 				PRODUCT_NAME = VaultyxLiveActivity;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 5.10;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1273,6 +1292,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0.5;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
