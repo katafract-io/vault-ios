@@ -54,6 +54,11 @@ class PhotosViewModel: ObservableObject {
     @Published var bulkBackupProgress: Double = 0
     @Published var bulkBackupRemaining = 0
 
+    // Backup filter state
+    @Published var filterStartDate: Date?
+    @Published var filterEndDate: Date?
+    @Published var selectedMediaTypes: Set<String> = []
+
     // Pagination state
     @Published var isLoadingMore = false
     @Published var hasMorePhotos = true
@@ -77,8 +82,27 @@ class PhotosViewModel: ObservableObject {
     /// Recents-only.
     private let enabledAlbumsKey = "enabledAlbumIds"
 
+    private let filterStartDateKey = "backupFilterStartDate"
+    private let filterEndDateKey = "backupFilterEndDate"
+    private let selectedMediaTypesKey = "backupSelectedMediaTypes"
+
     func configure(services: VaultServices) {
         self.services = services
+        loadFiltersFromUserDefaults()
+    }
+
+    private func loadFiltersFromUserDefaults() {
+        let defaults = UserDefaults.standard
+        filterStartDate = defaults.object(forKey: filterStartDateKey) as? Date
+        filterEndDate = defaults.object(forKey: filterEndDateKey) as? Date
+        selectedMediaTypes = Set(defaults.stringArray(forKey: selectedMediaTypesKey) ?? [])
+    }
+
+    func persistFilters() {
+        let defaults = UserDefaults.standard
+        defaults.set(filterStartDate, forKey: filterStartDateKey)
+        defaults.set(filterEndDate, forKey: filterEndDateKey)
+        defaults.set(Array(selectedMediaTypes), forKey: selectedMediaTypesKey)
     }
 
     /// Load recent photos from VaultIndex (with pagination support),
@@ -112,9 +136,7 @@ class PhotosViewModel: ObservableObject {
         dlog("loadRecentPhotos: \(logMsg) querying VaultIndexItem for recent images", category: "photos", level: .info)
 
         var descriptor = FetchDescriptor<VaultIndexItem>(
-            predicate: #Predicate { item in
-                !item.isDeleted && item.mime.starts(with: "image/")
-            },
+            predicate: buildPhotoFilterPredicate(),
             sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]
         )
 
@@ -185,6 +207,57 @@ class PhotosViewModel: ObservableObject {
         defer { isLoadingMore = false }
 
         await loadRecentPhotos(offset: currentOffset)
+    }
+
+    /// Build a predicate that filters photos by date range and media type.
+    /// Returns all images if no filters are applied.
+    @Sendable
+    private func buildPhotoFilterPredicate() -> Predicate<VaultIndexItem> {
+        #Predicate { item in
+            let notDeleted = !item.isDeleted
+            let isMediaFile = item.mime.starts(with: "image/") || item.mime.starts(with: "video/")
+
+            let dateRangeMatch: Bool
+            if let startDate = filterStartDate, let endDate = filterEndDate {
+                dateRangeMatch = item.modifiedAt >= startDate && item.modifiedAt <= endDate
+            } else if let startDate = filterStartDate {
+                dateRangeMatch = item.modifiedAt >= startDate
+            } else if let endDate = filterEndDate {
+                dateRangeMatch = item.modifiedAt <= endDate
+            } else {
+                dateRangeMatch = true
+            }
+
+            let mediaTypeMatch: Bool
+            if selectedMediaTypes.isEmpty {
+                mediaTypeMatch = true
+            } else {
+                mediaTypeMatch = selectedMediaTypes.contains { mediaType in
+                    matchesMediaType(item: item, type: mediaType)
+                }
+            }
+
+            return notDeleted && isMediaFile && dateRangeMatch && mediaTypeMatch
+        }
+    }
+
+    @Sendable
+    private func matchesMediaType(item: VaultIndexItem, type: String) -> Bool {
+        switch type {
+        case "photo":
+            return item.mime.starts(with: "image/") &&
+                   !item.name.lowercased().contains("screenshot")
+        case "video":
+            return item.mime.starts(with: "video/")
+        case "livephoto":
+            return item.mime.starts(with: "image/") && item.name.hasSuffix(".heic")
+        case "screenshot":
+            return item.name.lowercased().contains("screenshot")
+        case "selfie":
+            return item.mime.starts(with: "image/") && item.name.lowercased().contains("selfie")
+        default:
+            return false
+        }
     }
 
     /// Fetch BackedUpAssets whose assetIdentifiers don't resolve to live PHAssets.
