@@ -41,20 +41,12 @@ asc:
       role: tier
       family_sharable: true
       stripe_price: price_1TOOpEFwP12m7QTrD0eqFpO8
-    - product_id: com.katafract.vault.sovereign.forever
-      role: tier_lifetime
-      type: non_consumable
-      family_sharable: true
-    - product_id: com.katafract.vault.100gb.monthly
-      role: capacity_addon
-      family_sharable: true
     - product_id: com.katafract.vault.1tb.monthly
       role: capacity_addon
       family_sharable: true
-    - product_id: com.katafract.vault.5tb.monthly
+    - product_id: com.katafract.vault.1tb.yearly
       role: capacity_addon
       family_sharable: true
-    # yearly capacity addons same shape — omitted for draft brevity
 
   iaps: []
 

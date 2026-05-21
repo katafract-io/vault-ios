@@ -155,18 +155,28 @@ def gate_asc_version_metadata_complete(cfg: dict) -> tuple[str, str]:
         return "yellow", "no draft or in-review version found"
     v = versions[0]
     vid = v["id"]
+    vstr = v["attributes"].get("versionString", "?")
+
+    # whatsNew is not settable (and not shown by Apple) for first-time submissions.
+    # Skip it if no prior READY_FOR_SALE version exists.
+    prior_released = asc_get(
+        f"/v1/apps/{app_id}/appStoreVersions?filter[appStoreState]=READY_FOR_SALE&limit=1",
+        jwt,
+    )["data"]
+    required_fields = ["description", "keywords"] + (["whatsNew"] if prior_released else [])
+
     locs = asc_get(f"/v1/appStoreVersions/{vid}/appStoreVersionLocalizations", jwt)["data"]
     if not locs:
-        return "red", f"version {v['attributes']['versionString']} has no localizations"
+        return "red", f"version {vstr} has no localizations"
     missing = []
     for loc in locs:
         a = loc["attributes"]
-        for k in ("description", "keywords", "whatsNew"):
+        for k in required_fields:
             if not a.get(k):
                 missing.append(f"{a.get('locale','?')}.{k}")
     if missing:
         return "red", f"missing fields: {', '.join(missing[:5])}{'…' if len(missing) > 5 else ''}"
-    return "green", f"version {v['attributes']['versionString']} metadata complete in {len(locs)} loc(s)"
+    return "green", f"version {vstr} metadata complete in {len(locs)} loc(s)"
 
 
 def gate_asc_iap_metadata_complete(cfg: dict) -> tuple[str, str]:
@@ -190,9 +200,11 @@ def gate_asc_iap_metadata_complete(cfg: dict) -> tuple[str, str]:
                 found_subs[pid] = s
     missing_subs = expected_subs - set(found_subs)
 
-    # In-app purchases (v2 endpoint)
-    iaps = asc_get(f"/v2/apps/{app_id}/inAppPurchases?limit=200", jwt)["data"]
-    found_iaps = {i["attributes"].get("productId"): i for i in iaps}
+    # In-app purchases (v2 endpoint) — only hit if any IAPs are configured
+    found_iaps: dict[str, dict] = {}
+    if expected_iaps:
+        iaps = asc_get(f"/v2/apps/{app_id}/inAppPurchases?limit=200", jwt)["data"]
+        found_iaps = {i["attributes"].get("productId"): i for i in iaps}
     missing_iaps = expected_iaps - set(found_iaps)
 
     issues: list[str] = []
@@ -244,7 +256,7 @@ def gate_screenshots_fresh(cfg: dict) -> tuple[str, str]:
     vstr = v["attributes"].get("versionString", "?")
 
     # Freshness via lastModifiedDate of the version (best proxy without per-screenshot upload date)
-    last_modified = v["attributes"].get("createdDate") or v["attributes"].get("lastModifiedDate")
+    last_modified = v["attributes"].get("lastModifiedDate") or v["attributes"].get("createdDate")
     age_days_label = ""
     if last_modified:
         d = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
@@ -602,6 +614,13 @@ def gate_subscription_disclosure_check(cfg: dict) -> tuple[str, str]:
                 issues.append(f"{pid}: no en localization")
                 continue
             desc = (en["attributes"].get("description") or "").lower()
+
+            # APPROVED subs have immutable localizations via ASC API; Apple
+            # already reviewed and accepted their descriptions. Skip disclosure
+            # check — changing them requires a new editorial submission.
+            sub_state = (s["attributes"].get("state") or "").upper()
+            if sub_state == "APPROVED":
+                continue
 
             # Auto-renew language required
             if not any(t in desc for t in auto_renew_terms):
