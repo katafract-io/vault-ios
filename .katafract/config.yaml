@@ -85,7 +85,7 @@ ci:
 
 # ---- Content ----
 screenshots:
-  devices: [iphone-67, iphone-65, ipad-13]
+  devices: [iphone-67, ipad-13]
   locales: [en-US]
   freshness_days: 30
   iap_review_screenshots_on_demand: true
