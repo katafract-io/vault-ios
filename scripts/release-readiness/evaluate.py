@@ -148,7 +148,7 @@ def gate_asc_version_metadata_complete(cfg: dict) -> tuple[str, str]:
     versions = asc_get(
         f"/v1/apps/{app_id}/appStoreVersions"
         f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW"
-        f"&limit=5",
+        f"&filter[platform]=IOS&limit=5",
         jwt,
     )["data"]
     if not versions:
@@ -160,7 +160,7 @@ def gate_asc_version_metadata_complete(cfg: dict) -> tuple[str, str]:
     # whatsNew is not settable (and not shown by Apple) for first-time submissions.
     # Skip it if no prior READY_FOR_SALE version exists.
     prior_released = asc_get(
-        f"/v1/apps/{app_id}/appStoreVersions?filter[appStoreState]=READY_FOR_SALE&limit=1",
+        f"/v1/apps/{app_id}/appStoreVersions?filter[appStoreState]=READY_FOR_SALE&filter[platform]=IOS&limit=1",
         jwt,
     )["data"]
     required_fields = ["description", "keywords"] + (["whatsNew"] if prior_released else [])
@@ -246,7 +246,7 @@ def gate_screenshots_fresh(cfg: dict) -> tuple[str, str]:
     versions = asc_get(
         f"/v1/apps/{app_id}/appStoreVersions"
         f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW"
-        f"&limit=1",
+        f"&filter[platform]=IOS&limit=1",
         jwt,
     )["data"]
     if not versions:
@@ -407,7 +407,7 @@ def gate_marketing_truth_audit(cfg: dict) -> tuple[str, str]:
     versions = asc_get(
         f"/v1/apps/{app_id}/appStoreVersions"
         f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,READY_FOR_SALE"
-        f"&limit=1",
+        f"&filter[platform]=IOS&limit=1",
         jwt,
     )["data"]
     if not versions:
@@ -662,7 +662,7 @@ def gate_apple_review_policy_check(cfg: dict) -> tuple[str, str]:
     versions = asc_get(
         f"/v1/apps/{app_id}/appStoreVersions"
         f"?filter[appStoreState]=PREPARE_FOR_SUBMISSION,READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,READY_FOR_SALE"
-        f"&limit=1",
+        f"&filter[platform]=IOS&limit=1",
         jwt,
     )["data"]
     if not versions:
