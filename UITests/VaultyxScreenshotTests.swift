@@ -7,25 +7,23 @@ final class VaultyxScreenshotTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    // MARK: - Frame 01: Recovery Phrase (unsubscribed, onboarding forced, dark mode)
-
-    func testCaptureRecoveryPhrase() {
-        _ = launch(flags: [
-            "--screenshots", "--mock-unsubscribed", "--mock-prices",
-            "--force-onboarding", "--force-dark-mode",
-        ])
-        sleep(4)
-        snapshot("01-recovery-phrase")
-    }
-
-    // MARK: - Frame 02: File Browser (subscribed, seeded data)
-
+    // MARK: - Frame 01 (HERO): File Browser — populated, zero-knowledge vault
+    //
+    // ASO HERO. This is frame 1 of the App Store set (shown in search results).
+    // It MUST be the full, in-use, encrypted vault — a list of files + folders,
+    // each carrying a custody (lock) badge, under the zero-knowledge banner.
+    // NOT onboarding, NOT a login wall, NOT a paywall. Seed data is injected by
+    // FileBrowserViewModel.injectSeedData() under `--seed-data sovereign-demo`.
     func testCaptureFileBrowserSeeded() {
         let app = launch(flags: defaultFlags)
         sleep(3)
+        // Anchor on the seeded "LLC" folder so we never capture an empty list.
         let llcRow = app.staticTexts["LLC"].firstMatch
-        _ = llcRow.waitForExistence(timeout: 5)
-        snapshot("02-files-browser")
+        XCTAssertTrue(
+            llcRow.waitForExistence(timeout: 8),
+            "HERO seed data missing — refusing to capture an empty vault as frame 1"
+        )
+        snapshot("01-files-browser")
     }
 
     // MARK: - Frame 03: File Preview (auto-open specific file)
@@ -33,10 +31,24 @@ final class VaultyxScreenshotTests: XCTestCase {
     func testCaptureFilePreview() {
         let app = launch(flags: defaultFlags + ["--auto-open-file", "LLC_Operating_Agreement.pdf"])
         sleep(3)
-        snapshot("03-file-preview")
+        snapshot("02-file-preview")
     }
 
-    // MARK: - Frame 04: Recycle Bin (navigate via Settings)
+    // MARK: - Frame 05: Recovery Phrase (unsubscribed, onboarding forced, dark mode)
+    //
+    // Demoted from frame 1 → frame 5 (2026-05-31 ASO review): an onboarding /
+    // recovery-phrase screen must never be the search-result hero. Retained as a
+    // mid-set trust frame.
+    func testCaptureRecoveryPhrase() {
+        _ = launch(flags: [
+            "--screenshots", "--mock-unsubscribed", "--mock-prices",
+            "--force-onboarding", "--force-dark-mode",
+        ])
+        sleep(4)
+        snapshot("05-recovery-phrase")
+    }
+
+    // MARK: - Frame 06: Recycle Bin (navigate via Settings)
 
     func testCaptureRecycleBin() {
         let app = launch(flags: defaultFlags)
@@ -51,15 +63,15 @@ final class VaultyxScreenshotTests: XCTestCase {
                 sleep(2)
             }
         }
-        snapshot("04-recycle-bin")
+        snapshot("06-recycle-bin")
     }
 
-    // MARK: - Frame 05: File Versions (auto-open versions for specific file)
+    // MARK: - Frame 04: File Versions (auto-open versions for specific file)
 
     func testCaptureVersions() {
         let app = launch(flags: defaultFlags + ["--auto-open-versions", "Will_and_Trust.pdf"])
         sleep(3)
-        snapshot("07-versions")
+        snapshot("04-versions")
     }
 
     // MARK: - Frame 06: Paywall Yearly (unsubscribed, yearly tile default)
@@ -255,8 +267,10 @@ final class VaultyxScreenshotTests: XCTestCase {
         snapshot("17-capacity-5tb-yearly")
     }
 
-    // MARK: - Frame 14: Photos tab — grid with active backup states
-
+    // MARK: - Frame 03: Photos tab — grid with active backup states
+    //
+    // Promoted into the converting block (was frame 14). Encrypted photo grid
+    // with custody badges; "your photos, documents, backups — sealed".
     func testCapturePhotosGrid() {
         let app = launch(flags: defaultFlags)
         sleep(3)
@@ -265,7 +279,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             photosTab.tap()
             sleep(3)
         }
-        snapshot("05-photos-grid")
+        snapshot("03-photos-grid")
     }
 
     // MARK: - Frame 15: Photos tab — sealed-album empty state
@@ -281,7 +295,7 @@ final class VaultyxScreenshotTests: XCTestCase {
             photosTab.tap()
             sleep(3)
         }
-        snapshot("06-photos-empty")
+        snapshot("07-photos-empty")
     }
 
     // MARK: - Frame 16: Upload source menu sheet (Files "+" button)
