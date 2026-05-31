@@ -697,46 +697,74 @@ class FileBrowserViewModel: ObservableObject {
 
     /// Injects synthetic seed data for XCUITest screenshot runs.
     /// Bypasses all API calls and live sync.
+    ///
+    /// ASO HERO: this is the screen captured as frame 1 of the App Store set.
+    /// It must read as a FULL, IN-USE, zero-knowledge vault — a grid/list of
+    /// encrypted files + folders, each carrying a custody (lock) badge — NOT an
+    /// empty state. Deterministic dates/order keep the capture stable across
+    /// CI runs (no `Date.random`, no shuffled IDs). See ASO doctrine
+    /// `.doctrine/screenshot-pipeline.md` and creative brief in the PR.
     #if DEBUG
     private func injectSeedData() {
+        // Label the navigation title so the hero reads as a real, named vault.
+        folderName = "My Vault"
+
         var seededItems: [VaultFileItem] = []
 
-        // Seed folders
-        let folders = [
-            ("Tax Returns", UUID().uuidString.lowercased()),
-            ("Family Photos", UUID().uuidString.lowercased()),
-            ("Passports", UUID().uuidString.lowercased()),
+        // Stable reference date so capture is byte-for-byte deterministic.
+        let now = Date(timeIntervalSince1970: 1_748_649_600) // 2025-05-31 fixed
+
+        // Seed folders — each already sealed in the vault (lock badge visible).
+        // Folder index 0 = "LLC" so the screenshot test's staticTexts["LLC"]
+        // wait target exists and the list is anchored on a recognizable item.
+        let folders: [(String, Int, CustodyState)] = [
+            ("LLC", 3, .inVault),
+            ("Tax Returns", 12, .verified),
+            ("Family Photos", 27, [.stripped, .inVault]),
+            ("Passports", 6, .verified),
         ]
-        for (name, id) in folders {
-            seededItems.append(VaultFileItem(
-                id: id,
+        for (idx, folder) in folders.enumerated() {
+            let (name, daysAgo, custody) = folder
+            var item = VaultFileItem(
+                id: "seed-folder-\(idx)",
                 name: name,
                 isFolder: true,
                 sizeBytes: 0,
-                modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...30)),
+                modifiedAt: now.addingTimeInterval(-86400 * Double(daysAgo)),
                 syncState: .synced,
-                isPinned: false
-            ))
+                isPinned: idx == 0
+            )
+            item.custodyState = custody
+            seededItems.append(item)
         }
 
-        // Seed files with varied types, sizes, and states
-        let files = [
-            ("2024 W-2.pdf", 145 * 1024, false, VaultFileItem.SyncStateDisplay.synced),
-            ("Vacation Album.zip", 48_300 * 1024, false, VaultFileItem.SyncStateDisplay.synced),
-            ("Driver License.heic", 2_100 * 1024, true, VaultFileItem.SyncStateDisplay.synced),
-            ("Mortgage Notes.docx", 87 * 1024, false, VaultFileItem.SyncStateDisplay.pendingUpload),
-            ("Garden Shed Receipt.pdf", 612 * 1024, false, VaultFileItem.SyncStateDisplay.synced),
+        // Seed files with varied types, sizes, sync + custody states.
+        // Every item carries a custody badge so the hero shows lock glyphs on
+        // each row — the visible proof that storage is encrypted/zero-knowledge.
+        let files: [(String, Int, Int, Bool, Bool, VaultFileItem.SyncStateDisplay, CustodyState)] = [
+            // name, sizeKB, daysAgo, isPinned, isStar, syncState, custody
+            ("LLC_Operating_Agreement.pdf", 1_840, 2, true, true, .synced, [.sealed, .inVault]),
+            ("Will_and_Trust.pdf", 980, 5, true, false, .synced, .verified),
+            ("Passport — Renewal 2025.heic", 2_100, 8, false, false, .synced, [.stripped, .inVault]),
+            ("2024 W-2.pdf", 145, 11, false, false, .synced, .inVault),
+            ("Kyoto Trip 2025.zip", 240_000, 14, false, true, .synced, [.stripped, .inVault]),
+            ("Insurance — Homeowners.pdf", 612, 19, false, false, .synced, .verified),
+            ("Mortgage Notes.docx", 87, 1, false, false, .pendingUpload, .onDevice),
         ]
-        for (name, sizeBytes, isPinned, state) in files {
-            seededItems.append(VaultFileItem(
-                id: UUID().uuidString.lowercased(),
+        for (idx, file) in files.enumerated() {
+            let (name, sizeKB, daysAgo, isPinned, isStar, state, custody) = file
+            var item = VaultFileItem(
+                id: "seed-file-\(idx)",
                 name: name,
                 isFolder: false,
-                sizeBytes: Int64(sizeBytes),
-                modifiedAt: Date(timeIntervalSinceNow: -86400 * Double.random(in: 1...60)),
+                sizeBytes: Int64(sizeKB) * 1024,
+                modifiedAt: now.addingTimeInterval(-86400 * Double(daysAgo)),
                 syncState: state,
                 isPinned: isPinned
-            ))
+            )
+            item.isStar = isStar
+            item.custodyState = custody
+            seededItems.append(item)
         }
 
         items = seededItems

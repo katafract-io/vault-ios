@@ -1,38 +1,61 @@
-"01-recovery-phrase.png-keyword" = "Your keys. Your device. Forever.";
-"01-recovery-phrase.png" = "Recovery phrases never leave your phone. Lost device means lost access.";
+// Caption overlay copy for the App Store screenshot set.
+// Keyed by captured PNG filename (numeric prefix = display order in ASC).
+// Reworked 2026-05-31 (ASO hero fix): frame 1 is now the populated vault,
+// not the recovery-phrase onboarding screen. Benefit-led, high-contrast copy.
 
-"02-files-browser.png-keyword" = "Files you actually need.";
-"02-files-browser.png" = "Encrypted storage. Folders you create. Always in your control.";
+// --- Hero / converting block (frames 01–03) ---
 
-"03-file-preview.png-keyword" = "Decrypted only here.";
-"03-file-preview.png" = "Files remain encrypted in transit and at rest. Your device is the only place they become readable.";
+"01-files-browser.png-keyword" = "Storage that can't read you.";
+"01-files-browser.png" = "Storage that literally cannot read your files.";
 
-"04-recycle-bin.png-keyword" = "Recovery is possible.";
-"04-recycle-bin.png" = "Deleted files stay recoverable for 30 days. Permanent erasure is your choice.";
+"02-file-preview.png-keyword" = "Readable only on your device.";
+"02-file-preview.png" = "Encrypted on your device before it ever leaves.";
 
-"05-versions.png-keyword" = "Every upload, kept.";
-"05-versions.png" = "Re-upload a file and the prior version is sealed. Roll back any time.";
+"03-photos-grid.png-keyword" = "Photos, docs, backups — sealed.";
+"03-photos-grid.png" = "Your photos, documents, backups — sealed.";
 
-"06-paywall-yearly.png-keyword" = "1 TB encrypted. Yearly.";
-"06-paywall-yearly.png" = "Yearly plan. 1 TB included. Redundantly replicated across our datacenter cluster.";
+// --- Supporting frames ---
 
-"07-paywall-monthly.png-keyword" = "1 TB encrypted. Month to month.";
-"07-paywall-monthly.png" = "Monthly option. Same encryption, same storage, same zero-knowledge architecture.";
+"04-versions.png-keyword" = "Every upload, kept.";
+"04-versions.png" = "Re-upload a file and the prior version is sealed. Roll back any time.";
 
-"08-capacity-100gb-monthly.png-keyword" = "Start small. Encrypted the same.";
-"08-capacity-100gb-monthly.png" = "100 GB monthly. Same AES-256-GCM encryption as larger tiers.";
+"05-recovery-phrase.png-keyword" = "Your keys. Your device. Forever.";
+"05-recovery-phrase.png" = "Recovery phrases never leave your phone. Only you hold the key.";
 
-"09-capacity-100gb-yearly.png-keyword" = "100 GB. Locked in.";
-"09-capacity-100gb-yearly.png" = "100 GB yearly. Same encryption, smaller cost.";
+"06-recycle-bin.png-keyword" = "Recovery is possible.";
+"06-recycle-bin.png" = "Deleted files stay recoverable for 30 days. Permanent erasure is your choice.";
 
-"10-capacity-1tb-monthly.png-keyword" = "1 TB. Month to month.";
-"10-capacity-1tb-monthly.png" = "1 TB monthly. Most popular choice. Upgrade anytime.";
+"07-photos-empty.png-keyword" = "An album, sealed shut.";
+"07-photos-empty.png" = "Back up an album and it's sealed — encrypted before a single photo leaves your phone.";
 
-"11-capacity-1tb-yearly.png-keyword" = "1 TB. Better yearly rate.";
-"11-capacity-1tb-yearly.png" = "1 TB yearly. Best value. Redundantly replicated across our datacenter cluster.";
+// --- Paywall + capacity (subscription / IAP review frames) ---
 
-"12-capacity-5tb-monthly.png-keyword" = "5 TB encrypted. Flexible.";
-"12-capacity-5tb-monthly.png" = "5 TB monthly. For families. Same zero-knowledge architecture as every size.";
+"08-paywall-yearly.png-keyword" = "1 TB encrypted. Yearly.";
+"08-paywall-yearly.png" = "Yearly plan. 1 TB included. Redundantly replicated across our datacenter cluster.";
 
-"13-capacity-5tb-yearly.png-keyword" = "5 TB. Committed.";
-"13-capacity-5tb-yearly.png" = "5 TB yearly. Deepest discount. Encrypted, redundantly replicated across our cluster.";
+"09-upload-source-sheet.png-keyword" = "Add anything, encrypted.";
+"09-upload-source-sheet.png" = "Files, photos, or scans — every source is sealed on device first.";
+
+"10-album-selection.png-keyword" = "Choose what to seal.";
+"10-album-selection.png" = "Pick the albums to back up. Each photo is encrypted before upload.";
+
+"11-paywall-monthly.png-keyword" = "1 TB encrypted. Month to month.";
+"11-paywall-monthly.png" = "Monthly option. Same encryption, same storage, same zero-knowledge architecture.";
+
+"12-capacity-100gb-monthly.png-keyword" = "Start small. Encrypted the same.";
+"12-capacity-100gb-monthly.png" = "100 GB monthly. Same AES-256-GCM encryption as larger tiers.";
+
+"13-capacity-100gb-yearly.png-keyword" = "100 GB. Locked in.";
+"13-capacity-100gb-yearly.png" = "100 GB yearly. Same encryption, smaller cost.";
+
+"14-capacity-1tb-monthly.png-keyword" = "1 TB. Month to month.";
+"14-capacity-1tb-monthly.png" = "1 TB monthly. Most popular choice. Upgrade anytime.";
+
+"15-capacity-1tb-yearly.png-keyword" = "1 TB. Better yearly rate.";
+"15-capacity-1tb-yearly.png" = "1 TB yearly. Best value. Redundantly replicated across our datacenter cluster.";
+
+"16-capacity-5tb-monthly.png-keyword" = "5 TB encrypted. Flexible.";
+"16-capacity-5tb-monthly.png" = "5 TB monthly. For families. Same zero-knowledge architecture as every size.";
+
+"17-capacity-5tb-yearly.png-keyword" = "5 TB. Committed.";
+"17-capacity-5tb-yearly.png" = "5 TB yearly. Deepest discount. Encrypted, redundantly replicated across our cluster.";

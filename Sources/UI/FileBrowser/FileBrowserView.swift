@@ -592,6 +592,7 @@ struct FileBrowserView: View {
     @ViewBuilder
     private var listContent: some View {
         VStack(spacing: 0) {
+            ZeroKnowledgeBanner()
             CategoryFilterBar(selected: $selectedCategory)
             listView
         }
@@ -651,6 +652,7 @@ struct FileBrowserView: View {
     @ViewBuilder
     private var gridContent: some View {
         VStack(spacing: 0) {
+            ZeroKnowledgeBanner()
             CategoryFilterBar(selected: $selectedCategory)
             gridView
         }
@@ -736,6 +738,39 @@ struct BreadcrumbNavigation: View {
             }
             .padding(.horizontal)
         }
+    }
+}
+
+/// Zero-knowledge trust banner shown above the file list/grid.
+///
+/// This is the value-prop affordance that turns the populated vault into a
+/// "converting" hero screen for the App Store: it states, in-product, that the
+/// server cannot read the user's files. Pairs with the per-row custody (lock)
+/// badges to make encryption visible at a glance.
+struct ZeroKnowledgeBanner: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.kataGold)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Zero-knowledge encryption")
+                    .font(.kataBody(14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text("Encrypted on this device — our servers can't read your files.")
+                    .font(.kataCaption(12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.kataSapphire.opacity(0.12))
+        .overlay(alignment: .bottom) { Divider() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Zero-knowledge encryption. Encrypted on this device. Our servers cannot read your files.")
     }
 }
 
