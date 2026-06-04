@@ -8,9 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		0305A5B60CA6C09957087A9C /* VaultyxLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D088B5DC02E6D99790A3EC67 /* VaultyxLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		04B9A21242B7AC587B3031C1 /* MacWindowToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 500EDCEDA52A8F59F986276F /* MacWindowToolbar.swift */; };
 		073F804BFFBCDEE74E4C1F02 /* NetworkReachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = D59C341B4DEB829E14D32C09 /* NetworkReachability.swift */; };
 		0768763F3FE4FA32EB871EF8 /* FileRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 146D2F29BD1A1DD1665C5BE7 /* FileRowView.swift */; };
 		08202F7049DAE17F872DED02 /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D995CE496B48FA55FD9DEF6A /* FileBrowserViewModel.swift */; };
+		090C6A25FA7D56F5A0881AB9 /* MacScreenLockObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AF98C9B971B86E57EE6DD5 /* MacScreenLockObserver.swift */; };
 		0ABDF00DE0E41618712B96BB /* VaultCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DF96E9D3C1E121B1E96E5F4 /* VaultCrypto.swift */; };
 		0B14464E34124455D8BF8D87 /* PhotosViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E8E9F8455365798092C4DFB /* PhotosViewModel.swift */; };
 		0C0E5E9208BCB9FBFBBD910B /* VaultFileItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42209600639B9C22079E9670 /* VaultFileItem.swift */; };
@@ -192,8 +194,10 @@
 		3E845B566D3BF6AC839915C0 /* StorageQuotaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageQuotaView.swift; sourceTree = "<group>"; };
 		42209600639B9C22079E9670 /* VaultFileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileItem.swift; sourceTree = "<group>"; };
 		4268CF30E37E0AE6CE1601AF /* MockDataSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockDataSeeder.swift; sourceTree = "<group>"; };
+		43AF98C9B971B86E57EE6DD5 /* MacScreenLockObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacScreenLockObserver.swift; sourceTree = "<group>"; };
 		4D6EB55A307D831805926CED /* VaultyxScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultyxScreenshotTests.swift; sourceTree = "<group>"; };
 		4D7E32478B8C080D9B0A28A2 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
+		500EDCEDA52A8F59F986276F /* MacWindowToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWindowToolbar.swift; sourceTree = "<group>"; };
 		5202E341C8D1959F0077CB3E /* SubscriptionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionStore.swift; sourceTree = "<group>"; };
 		531CA19E4AC38184A6DA199A /* SyncObjCBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SyncObjCBridge.h; sourceTree = "<group>"; };
 		55F5AFB6114E3960224F542B /* AppGroupDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupDiagnosticsView.swift; sourceTree = "<group>"; };
@@ -424,6 +428,8 @@
 				5D2D0C8F6A636C6333585B7F /* Info.plist */,
 				07525D43D25B96B5AC51046D /* KeychainBootstrapErrorView.swift */,
 				A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */,
+				43AF98C9B971B86E57EE6DD5 /* MacScreenLockObserver.swift */,
+				500EDCEDA52A8F59F986276F /* MacWindowToolbar.swift */,
 				56EFC2D4148C3F943FD1145C /* MasterKeyBootstrap.swift */,
 				4268CF30E37E0AE6CE1601AF /* MockDataSeeder.swift */,
 				E98056E4C01AFD60B8DCBB12 /* ModelContextExtensions.swift */,
@@ -887,6 +893,8 @@
 				B749CA7CED96D4EAF34515B5 /* KeychainBootstrapErrorView.swift in Sources */,
 				9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */,
 				E66703D0A812B99E037A6F5C /* LockScreenView.swift in Sources */,
+				090C6A25FA7D56F5A0881AB9 /* MacScreenLockObserver.swift in Sources */,
+				04B9A21242B7AC587B3031C1 /* MacWindowToolbar.swift in Sources */,
 				DC7744F9666277289AFB7642 /* MainTabView.swift in Sources */,
 				686E81F9A034C5FD34908239 /* MasterKeyBootstrap.swift in Sources */,
 				F4BCC9DC279C951A1C71425C /* MockDataSeeder.swift in Sources */,
