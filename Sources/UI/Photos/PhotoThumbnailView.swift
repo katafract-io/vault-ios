@@ -109,6 +109,19 @@ struct PhotoThumbnailView: View {
     }
 
     private static func mockThumbnail(for id: String, size: CGSize) -> UIImage {
+        // Prefer bundled landscape photos (mock_photo_1...mock_photo_6) so the
+        // screenshot grid shows real-looking photography — fake data, real
+        // screens. Deterministic per asset id; gradient below stays as fallback.
+        let idx = (abs(id.hashValue) % 6) + 1
+        if let photo = UIImage(named: "mock_photo_\(idx)") {
+            let renderer = UIGraphicsImageRenderer(size: size)
+            return renderer.image { _ in
+                let scale = max(size.width / photo.size.width, size.height / photo.size.height)
+                let w = photo.size.width * scale
+                let h = photo.size.height * scale
+                photo.draw(in: CGRect(x: (size.width - w) / 2, y: (size.height - h) / 2, width: w, height: h))
+            }
+        }
         let palette: [UIColor] = [
             UIColor(red: 0.22, green: 0.42, blue: 0.78, alpha: 1),  // sapphire
             UIColor(red: 0.20, green: 0.62, blue: 0.45, alpha: 1),  // teal

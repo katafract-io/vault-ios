@@ -344,7 +344,11 @@ public final class SubscriptionStore: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            let storeProducts = try await Product.products(for: ProductID.all)
+            // Display products = the sovereign pair only. Entitlement scanning
+            // (refreshEntitlements) still checks ProductID.all so legacy SKU
+            // purchasers stay entitled.
+            let storeProducts = try await Product.products(
+                for: [ProductID.sovereignMonthly, ProductID.sovereignYearly])
             products = storeProducts.sorted { $0.price < $1.price }
         } catch {
             purchaseError = "Couldn't load subscription options: \(error.localizedDescription)"
