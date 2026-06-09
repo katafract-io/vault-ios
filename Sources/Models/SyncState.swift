@@ -15,7 +15,7 @@ import Foundation
     var chunkHashes: [String]       // ordered list of chunk hashes
     var sizeBytes: Int64
     var modifiedAt: Date
-    var syncState: String           // synced | uploading | downloading | conflict | deleted | pending | pending_upload | manifest_pending | manifest_failed | partial
+    var syncState: String           // synced | uploading | downloading | conflict | deleted | pending | pending_upload | manifest_pending | manifest_failed | partial | orphan
     var isPinned: Bool              // pinned for offline access
     var isStar: Bool                // starred by user
     var thumbnailPath: String?      // local thumbnail cache path
