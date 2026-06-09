@@ -59,7 +59,7 @@ struct MainTabView: View {
                 VStack(spacing: 24) {
                     Spacer()
 
-                    CapacityPickerView()
+                    PaywallView(capacity: .tb1)
 
                     Spacer()
 
@@ -615,7 +615,7 @@ struct SettingsView: View {
             RestoreFromPhraseView()
         }
         .sheet(isPresented: $showPaywall) {
-            CapacityPickerView()
+            PaywallView(capacity: .tb1)
         }
     }
 

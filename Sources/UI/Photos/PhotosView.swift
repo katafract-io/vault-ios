@@ -162,7 +162,7 @@ struct PhotosView: View {
                 })
             }
             .sheet(isPresented: $showPaywall) {
-                CapacityPickerView()
+                PaywallView(capacity: .tb1)
             }
         }
     }

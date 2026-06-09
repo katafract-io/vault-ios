@@ -141,6 +141,18 @@ targets:
         TEST_TARGET_NAME: Vaultyx
         GENERATE_INFOPLIST_FILE: YES
 
+  VaultyxTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: VaultyxTests
+    dependencies:
+      - target: Vaultyx
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.katafract.vault.unittests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   Vaultyx:
     build:
@@ -156,6 +168,7 @@ schemes:
     test:
       config: Debug
       targets:
+        - VaultyxTests
         - VaultyxUITests
     profile:
       config: Release

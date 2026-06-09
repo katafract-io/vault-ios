@@ -19,6 +19,7 @@
 		137A3CB27F8EEE16D7AE3A88 /* PhotosPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3455D2D54E1882A2C67EBA8 /* PhotosPermissionStep.swift */; };
 		1529D9338CD8D591980B8E64 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B45DCA47E925C170193E244 /* OnboardingView.swift */; };
 		168FABFD234FAE229D465E39 /* RecycleBinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88A2A54A57CEADCA403804E1 /* RecycleBinView.swift */; };
+		174C5F3B6BC59D3AF65E7095 /* RecoveryRoundTripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D3D01BB41C6D2A5909C4800 /* RecoveryRoundTripTests.swift */; };
 		180C0378CDEADF6688701252 /* FastCDC.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCBEFBBE8AC2609E25215F /* FastCDC.swift */; };
 		19130481F0ED671B155F817F /* VaultShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3D0EFA9CC6E443C612546AFC /* VaultShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		1DF994B4ACF9ADAAD07B9D8D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7E32478B8C080D9B0A28A2 /* PaywallView.swift */; };
@@ -145,6 +146,13 @@
 			remoteGlobalIDString = AEC930061EE8CD5509DBD17A;
 			remoteInfo = VaultyxLiveActivity;
 		};
+		B3B25D3E6DA7766261F7ABB8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6726577CA9BEF50368DB229B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4C1FEDC6D48618F38825A460;
+			remoteInfo = Vaultyx;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -169,6 +177,7 @@
 		0A8556A97A4E3B84F26823AA /* PhotosView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosView.swift; sourceTree = "<group>"; };
 		0A9ABEC3D2B5EA6F32464CD7 /* DebugLog+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DebugLog+UI.swift"; sourceTree = "<group>"; };
 		0C3576C399AF300EC808B34A /* FilePreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewSheet.swift; sourceTree = "<group>"; };
+		0D3D01BB41C6D2A5909C4800 /* RecoveryRoundTripTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryRoundTripTests.swift; sourceTree = "<group>"; };
 		0D461713C802E4DC32C773D2 /* RecoveryKitViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryKitViewModel.swift; sourceTree = "<group>"; };
 		0E11BD8069366B6D702F962F /* VaultActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultActivityManager.swift; sourceTree = "<group>"; };
 		12BBAB89BCE582F967D69A4D /* UploadSourcePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadSourcePicker.swift; sourceTree = "<group>"; };
@@ -268,6 +277,7 @@
 		DDEE00DCCBEBF9B2575EEBFE /* TokenRedemptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRedemptionView.swift; sourceTree = "<group>"; };
 		DF0D147A45D3B32DB20CE38C /* FileDownloadProgressBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileDownloadProgressBanner.swift; sourceTree = "<group>"; };
 		DF3B86B15A9A6ECF514C534E /* FolderPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderPickerSheet.swift; sourceTree = "<group>"; };
+		DF895D3DCB720B89F0F5FAF8 /* VaultyxTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VaultyxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E2BCBEFBBE8AC2609E25215F /* FastCDC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastCDC.swift; sourceTree = "<group>"; };
 		E6224F29A715A5E7D5B92110 /* VaultShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VaultShare.entitlements; sourceTree = "<group>"; };
 		E6689E73FC23CF8E1C76216D /* VaultFileProviderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileProviderItem.swift; sourceTree = "<group>"; };
@@ -500,6 +510,7 @@
 				953E4AA777F643C1DC0FE09C /* Sources */,
 				E013B80AC71124C74DE2B55D /* UITests */,
 				3D3A1FD2183C857158A62230 /* VaultyxLiveActivity */,
+				B161C15C0F66B768508B90B1 /* VaultyxTests */,
 				A6E36D091AF0E1C6BC0EFA1B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -511,9 +522,18 @@
 				3D0EFA9CC6E443C612546AFC /* VaultShare.appex */,
 				2F3EC444FCA480154B1E7818 /* Vaultyx.app */,
 				D088B5DC02E6D99790A3EC67 /* VaultyxLiveActivity.appex */,
+				DF895D3DCB720B89F0F5FAF8 /* VaultyxTests.xctest */,
 				707B03DB138F4BCB577609CF /* VaultyxUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B161C15C0F66B768508B90B1 /* VaultyxTests */ = {
+			isa = PBXGroup;
+			children = (
+				0D3D01BB41C6D2A5909C4800 /* RecoveryRoundTripTests.swift */,
+			);
+			path = VaultyxTests;
 			sourceTree = "<group>";
 		};
 		B18EFB34E6FC343BF89F04A8 /* Chunker */ = {
@@ -729,6 +749,24 @@
 			productReference = D088B5DC02E6D99790A3EC67 /* VaultyxLiveActivity.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		F963380CBA7092F248B014F1 /* VaultyxTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 079395B1C5E0B8161315F698 /* Build configuration list for PBXNativeTarget "VaultyxTests" */;
+			buildPhases = (
+				DBB21D8EF97E2022D83763FA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C4ED97649522B18B36FB70E6 /* PBXTargetDependency */,
+			);
+			name = VaultyxTests;
+			packageProductDependencies = (
+			);
+			productName = VaultyxTests;
+			productReference = DF895D3DCB720B89F0F5FAF8 /* VaultyxTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -759,6 +797,10 @@
 						DevelopmentTeam = 2SGGP65W6C;
 						ProvisioningStyle = Automatic;
 					};
+					F963380CBA7092F248B014F1 = {
+						DevelopmentTeam = 2SGGP65W6C;
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = 7B085974777A404875EE55AC /* Build configuration list for PBXProject "Vaultyx" */;
@@ -782,6 +824,7 @@
 				87C2025DA51B22B4CC6AE675 /* VaultShare */,
 				4C1FEDC6D48618F38825A460 /* Vaultyx */,
 				AEC930061EE8CD5509DBD17A /* VaultyxLiveActivity */,
+				F963380CBA7092F248B014F1 /* VaultyxTests */,
 				0C3A387E25CA827AD2C7B92D /* VaultyxUITests */,
 			);
 		};
@@ -951,6 +994,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DBB21D8EF97E2022D83763FA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				174C5F3B6BC59D3AF65E7095 /* RecoveryRoundTripTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -958,6 +1009,11 @@
 			isa = PBXTargetDependency;
 			target = AEC930061EE8CD5509DBD17A /* VaultyxLiveActivity */;
 			targetProxy = 77E190F36C2DC8404A37AAEB /* PBXContainerItemProxy */;
+		};
+		C4ED97649522B18B36FB70E6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4C1FEDC6D48618F38825A460 /* Vaultyx */;
+			targetProxy = B3B25D3E6DA7766261F7ABB8 /* PBXContainerItemProxy */;
 		};
 		CAFBCDEF8F153D855A2A3876 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1056,6 +1112,23 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
+		};
+		658CA2737FE98A6C3219EAA7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault.unittests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Vaultyx.app/Vaultyx";
+			};
+			name = Release;
 		};
 		7B48B59FBEA91684EAFEF601 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -1179,6 +1252,23 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
+		};
+		B93E9DBDA43045B0799F092C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.katafract.vault.unittests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Vaultyx.app/Vaultyx";
+			};
+			name = Debug;
 		};
 		CD81CFF5D413BD7FE103C5E1 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -1308,6 +1398,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		079395B1C5E0B8161315F698 /* Build configuration list for PBXNativeTarget "VaultyxTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B93E9DBDA43045B0799F092C /* Debug */,
+				658CA2737FE98A6C3219EAA7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		1D4309A56B3A73C0936B4E13 /* Build configuration list for PBXNativeTarget "Vaultyx" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
