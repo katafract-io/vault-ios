@@ -28,9 +28,8 @@ final class VaultFileProviderItem: NSObject, NSFileProviderItem {
     }
 
     var capabilities: NSFileProviderItemCapabilities {
-        isDirectory
-            ? [.allowsAddingSubItems, .allowsContentEnumerating, .allowsReading, .allowsDeleting, .allowsRenaming]
-            : [.allowsReading, .allowsWriting, .allowsDeleting, .allowsRenaming, .allowsReparenting]
+        // Phase 1: read-only (browse). Write/delete/rename land in Phase 3.
+        isDirectory ? [.allowsContentEnumerating, .allowsReading] : [.allowsReading]
     }
 
     var contentType: UTType {

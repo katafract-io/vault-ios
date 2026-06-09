@@ -203,6 +203,9 @@ struct VaultApp: App {
                     services.logQueueSummary()
                     await services.drainShareExtensionInbox()
                     await services.syncEngine.syncPending()
+                    // Make Vaultyx appear as a source in Files.app and refresh it.
+                    await VaultFileProviderDomain.ensureRegistered()
+                    VaultFileProviderDomain.signalChange()
                 }
                 let engine = services.syncEngine
                 drainTicker?.cancel()

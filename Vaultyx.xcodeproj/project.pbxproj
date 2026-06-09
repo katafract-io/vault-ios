@@ -119,6 +119,7 @@
 		E86A967D031B67F4AAF9D387 /* VaultIndexDeltaSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FA672892FCE157DA46E160 /* VaultIndexDeltaSync.swift */; };
 		F458FECDE0791AE6B7923125 /* RecoveryPhrase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */; };
 		F4BCC9DC279C951A1C71425C /* MockDataSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4268CF30E37E0AE6CE1601AF /* MockDataSeeder.swift */; };
+		F65F1D719509E9505B9B9663 /* VaultFileProviderDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9105049EC27233A2E946FDC4 /* VaultFileProviderDomain.swift */; };
 		F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842697680013FF51CC00E52D /* FounderRedeemSheet.swift */; };
 		FB46001769638E198B22A126 /* Will_and_Trust.pdf in Resources */ = {isa = PBXBuildFile; fileRef = D8E40E271AE6A915C4DAE7DE /* Will_and_Trust.pdf */; };
 		FDD97B0168192EC903D8F70A /* DocArmorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A1424DE4DC3454E083764A /* DocArmorBridge.swift */; };
@@ -232,6 +233,7 @@
 		8B45DCA47E925C170193E244 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		8F5518D1D71455747EBB3FF8 /* ThumbLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbLoader.swift; sourceTree = "<group>"; };
 		901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotMode.swift; sourceTree = "<group>"; };
+		9105049EC27233A2E946FDC4 /* VaultFileProviderDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileProviderDomain.swift; sourceTree = "<group>"; };
 		934B71E7AE2335EB96BE6F9E /* Vaultyx.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Vaultyx.entitlements; sourceTree = "<group>"; };
 		94C764086C160239DF5BEBF5 /* UndoToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoToast.swift; sourceTree = "<group>"; };
 		9666910505BD37658AE382BF /* RecoveryPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseView.swift; sourceTree = "<group>"; };
@@ -382,6 +384,7 @@
 				8F5518D1D71455747EBB3FF8 /* ThumbLoader.swift */,
 				5CE433469D0526F0B9301843 /* ThumbnailGenerator.swift */,
 				0E11BD8069366B6D702F962F /* VaultActivityManager.swift */,
+				9105049EC27233A2E946FDC4 /* VaultFileProviderDomain.swift */,
 				C5FA672892FCE157DA46E160 /* VaultIndexDeltaSync.swift */,
 				02D65CE83DFEE043122E73ED /* VaultSyncEngine.swift */,
 				9A95B7F2B96B712A555DDC10 /* VaultTreeSync.swift */,
@@ -972,6 +975,7 @@
 				0ABDF00DE0E41618712B96BB /* VaultCrypto.swift in Sources */,
 				D43E8A76C2FE0AF4FB6EC226 /* VaultFile.swift in Sources */,
 				0C0E5E9208BCB9FBFBBD910B /* VaultFileItem.swift in Sources */,
+				F65F1D719509E9505B9B9663 /* VaultFileProviderDomain.swift in Sources */,
 				D95EE6F8A200E3B41060CE70 /* VaultFolder.swift in Sources */,
 				E86A967D031B67F4AAF9D387 /* VaultIndexDeltaSync.swift in Sources */,
 				B122DC79087D0545CDBA9983 /* VaultIndexItem.swift in Sources */,

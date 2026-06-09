@@ -57,6 +57,7 @@ targets:
     frameworks:
       - VisionKit
       - PDFKit
+      - FileProvider
 
   VaultyxLiveActivity:
     type: app-extension
