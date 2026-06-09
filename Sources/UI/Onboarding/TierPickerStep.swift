@@ -3,6 +3,7 @@ import KatafractStyle
 
 struct TierPickerStep: View {
     @State private var selectedTier: StorageTier = .free
+    let sovereignPriceText: String
     let onTierSelected: (StorageTier) -> Void
 
     enum StorageTier: String, CaseIterable {
@@ -54,7 +55,7 @@ struct TierPickerStep: View {
                         TierOptionCard(
                             title: "Sovereign",
                             storage: "1 TB",
-                            price: "$18/mo or $144/yr",
+                            price: sovereignPriceText,
                             features: [
                                 "Everything in Free, plus:",
                                 "1 TB encrypted storage",
@@ -168,5 +169,5 @@ private struct TierOptionCard: View {
 }
 
 #Preview {
-    TierPickerStep(onTierSelected: { _ in })
+    TierPickerStep(sovereignPriceText: "$18/mo or $144/yr", onTierSelected: { _ in })
 }
