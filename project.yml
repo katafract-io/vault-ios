@@ -171,6 +171,7 @@ schemes:
       targets:
         - VaultyxTests
         - VaultyxUITests
+      storeKitConfiguration: Vaultyx.storekit
     profile:
       config: Release
     analyze:

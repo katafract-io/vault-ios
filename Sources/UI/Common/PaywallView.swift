@@ -16,8 +16,17 @@ struct PaywallView: View {
     @State private var showRedemption = false
     @State private var showFounderRedeem = false
 
+    /// The paywall sells exactly one plan: Sovereign monthly or yearly.
+    /// StoreKit/ASC may return other products (legacy v1, standalone capacity
+    /// SKUs) — never render tiles for those.
+    private var paywallProducts: [Product] {
+        let ids = [SubscriptionStore.ProductID.sovereignMonthly,
+                   SubscriptionStore.ProductID.sovereignYearly]
+        return ids.compactMap { id in store.products.first { $0.id == id } }
+    }
+
     private var selectedProduct: Product? {
-        store.products.first { $0.id == selectedProductID }
+        paywallProducts.first { $0.id == selectedProductID }
     }
 
     var body: some View {
@@ -103,7 +112,7 @@ struct PaywallView: View {
     private var pricingTiles: some View {
         if store.isLoading {
             KataProgressRing(size: 28).frame(height: 120)
-        } else if store.products.isEmpty {
+        } else if paywallProducts.isEmpty {
             Text("Subscription plans unavailable. Check your connection and try again.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -111,7 +120,7 @@ struct PaywallView: View {
                 .padding()
         } else {
             HStack(spacing: 12) {
-                ForEach(store.products) { product in
+                ForEach(paywallProducts) { product in
                     PricingTile(
                         product: product,
                         isSelected: product.id == selectedProductID,
