@@ -94,12 +94,44 @@ final class VaultFileProviderExtension: NSObject, NSFileProviderReplicatedExtens
                        version requestedVersion: NSFileProviderItemVersion?,
                        request: NSFileProviderRequest,
                        completionHandler: @escaping (URL?, NSFileProviderItem?, Error?) -> Void) -> Progress {
-        // Phase 2 wires download + in-extension decrypt. Until then the item is
-        // browsable but not yet downloadable; report it as temporarily
-        // unavailable rather than missing so it stays visible in Files.
         let progress = Progress(totalUnitCount: 1)
-        completionHandler(nil, nil, NSFileProviderError(.serverUnreachable))
-        progress.completedUnitCount = 1
+        defer { progress.completedUnitCount = 1 }
+        guard let modelContainer else {
+            completionHandler(nil, nil, NSFileProviderError(.notAuthenticated)); return progress
+        }
+        let context = ModelContext(modelContainer)
+        let raw = itemIdentifier.rawValue
+        guard let file = try? context.fetch(
+            FetchDescriptor<LocalFile>(predicate: #Predicate { $0.fileId == raw })).first else {
+            completionHandler(nil, nil, NSFileProviderError(.noSuchItem)); return progress
+        }
+        // Stage A: serve files whose plaintext is materialized in the SHARED
+        // app-group cache — covers free-tier local-only files and any file opened
+        // once in the app. (Stage B adds server download + in-extension decrypt
+        // for cloud-only / evicted files, via an additive shared-keychain export.)
+        // Guard on the app-group path so we never hand back a stale sandbox path
+        // the extension can't actually read.
+        if let path = file.localPath,
+           path.contains("group.com.katafract.enclave"),
+           FileManager.default.fileExists(atPath: path) {
+            do {
+                let tmp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension((file.filename as NSString).pathExtension)
+                try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: tmp)
+                let item = VaultFileProviderItem(
+                    identifier: itemIdentifier, filename: file.filename, isDirectory: false,
+                    sizeBytes: Int(file.sizeBytes),
+                    parentFolderId: file.parentFolderId.map { NSFileProviderItemIdentifier($0) } ?? .rootContainer)
+                completionHandler(tmp, item, nil)
+            } catch {
+                completionHandler(nil, nil, error)
+            }
+        } else {
+            // Not materialized where the extension can read it — open once in
+            // Vaultyx (downloads + decrypts to the shared cache), then it opens here.
+            completionHandler(nil, nil, NSFileProviderError(.serverUnreachable))
+        }
         return progress
     }
 

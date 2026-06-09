@@ -1158,9 +1158,13 @@ enum LocalCache {
 
     /// Base directory. Created on first use.
     static var cacheURL: URL = {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = appSupport.appendingPathComponent("VaultyxLocalCache", isDirectory: true)
+        // App-group container (NOT the app sandbox) so the File Provider
+        // extension can read materialized plaintext and open files in Files.app.
+        // Falls back to Application Support if the container is unavailable.
+        let base = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave")
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = base.appendingPathComponent("VaultyxLocalCache", isDirectory: true)
         try? FileManager.default.createDirectory(
             at: dir, withIntermediateDirectories: true)
         return dir
