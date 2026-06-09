@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OnboardingView: View {
     @EnvironmentObject private var services: VaultServices
+    @EnvironmentObject private var store: SubscriptionStore
     @AppStorage("vaultyx.onboarding.welcomed") private var welcomed = false
     @AppStorage("vaultyx.onboarding.recovery_kit_confirmed") private var recoveryKitConfirmed = false
     @AppStorage("vaultyx.onboarding.photos_prompted") private var photosPrompted = false
@@ -21,6 +22,17 @@ struct OnboardingView: View {
 
     var onboardingComplete: Bool {
         welcomed && recoveryKitConfirmed && photosPrompted && notificationsPrompted && tierChosen
+    }
+
+    /// Live Sovereign price from StoreKit so the onboarding tier card tracks the
+    /// App Store price instead of a hardcode. Falls back to a non-numeric label
+    /// while StoreKit products are still loading.
+    private var sovereignPriceText: String {
+        let monthly = store.products.first { $0.id == SubscriptionStore.ProductID.sovereignMonthly }?.displayPrice
+        let yearly = store.products.first { $0.id == SubscriptionStore.ProductID.sovereignYearly }?.displayPrice
+        if let m = monthly, let y = yearly { return "\(m)/mo or \(y)/yr" }
+        if let m = monthly { return "\(m)/mo" }
+        return "Subscription"
     }
 
     @ViewBuilder
@@ -67,7 +79,7 @@ struct OnboardingView: View {
                 )
 
             case .tierPicker:
-                TierPickerStep { tier in
+                TierPickerStep(sovereignPriceText: sovereignPriceText) { tier in
                     tierChosen = true
                 }
         }
