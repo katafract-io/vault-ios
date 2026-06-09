@@ -60,13 +60,10 @@ struct FileBrowserView: View {
         }
     }
 
-    private func gate(_ action: () -> Void) {
-        if subscriptionStore.isSubscribed {
-            action()
-        } else {
-            showPaywall = true
-        }
-    }
+    // Adding files & folders is free — Vaultyx is a usable on-device encrypted
+    // vault without a subscription. Cloud upload/sync is gated in VaultSyncEngine
+    // (cloudUploadsEnabled); the paywall is surfaced from the upgrade CTA and the
+    // Photos cloud-backup flow, not from local file management.
 
     /// Delete an item and surface an Undo toast. The VM handles the server
     /// and local-cache mutations; the toast holds the reverse action for 6
@@ -266,10 +263,10 @@ struct FileBrowserView: View {
                         Text("Done")
                     }
                 } else {
-                    Button(action: { gate { showNewFolder = true } }) {
+                    Button(action: { showNewFolder = true }) {
                         Image(systemName: "folder.badge.plus")
                     }
-                    Button(action: { gate { uploadSource = .files } }) {
+                    Button(action: { uploadSource = .files }) {
                         Image(systemName: "plus")
                     }
                     .accessibilityIdentifier("vault-upload-btn")
@@ -534,7 +531,7 @@ struct FileBrowserView: View {
     private var folderContent: some View {
         if viewModel.items.isEmpty && !viewModel.isLoading {
             EmptyFolderView(
-                onUpload: { gate { uploadSource = .files } },
+                onUpload: { uploadSource = .files },
                 onUpgrade: subscriptionStore.isSubscribed ? nil : { showPaywall = true }
             )
         } else if viewMode == .list {
