@@ -40,7 +40,6 @@ enum ScreenshotMode {
     }
 
     static var autoOpenFile: String? { flagValue("--auto-open-file") }
-    static var autoOpenVersions: String? { flagValue("--auto-open-versions") }
     static var mockTier: String? { flagValue("--mock-tier") }
 
     private static func flagValue(_ name: String) -> String? {

@@ -13,7 +13,7 @@ struct FileBrowserView: View {
     @State private var showDocumentPicker = false
     @State private var showPhotoPicker = false
     @State private var showCameraPicker = false
-    @State private var showScanStub = false
+    @State private var showScanner = false
     @State private var showNewFolder = false
     @State private var showPaywall = false
     @State private var selectedFile: VaultFileItem?
@@ -33,7 +33,6 @@ struct FileBrowserView: View {
     @State private var selectedCategory: FileCategory = .all
     @State private var pendingInboxCount: Int = 0
     @State private var showStuckItems = false
-    @State private var versionsFile: VaultFileItem?
 
     let folderId: String?  // nil = root
     var isReadOnly: Bool = false
@@ -299,7 +298,7 @@ struct FileBrowserView: View {
                 set: { if !$0 { uploadSource = nil } }),
             presenting: uploadSource) { source in
             Button(action: {
-                showScanStub = true
+                showScanner = true
                 uploadSource = nil
             }) {
                 Label("Scan Document", systemImage: "doc.viewfinder")
@@ -335,27 +334,9 @@ struct FileBrowserView: View {
         .sheet(isPresented: $showCameraPicker) {
             CameraPickerView(onPick: viewModel.uploadFiles)
         }
-        .sheet(isPresented: $showScanStub) {
-            VStack(spacing: 16) {
-                Image(systemName: "doc.viewfinder")
-                    .font(.system(size: 48))
-                    .foregroundColor(.kataSapphire)
-                Text("Coming Soon")
-                    .font(.headline)
-                Text("Document scanning will be available soon.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                Button("OK") {
-                    showScanStub = false
-                    uploadSource = nil
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.kataSapphire)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-            }
-            .padding()
+        .sheet(isPresented: $showScanner) {
+            DocumentScannerView(onScan: viewModel.uploadFiles)
+                .ignoresSafeArea()
         }
         .sheet(item: $moveTarget) { target in
             FolderPickerSheet(excludeFolderId: target.isFolder ? target.id : nil) { newParentId in
@@ -425,9 +406,6 @@ struct FileBrowserView: View {
                     }
             }
         }
-        .sheet(item: $versionsFile) { file in
-            FileVersionsView(fileId: file.id, filename: file.name)
-        }
         .alert("Can't open file",
                isPresented: Binding(
                    get: { viewModel.error != nil },
@@ -463,9 +441,6 @@ struct FileBrowserView: View {
             if ScreenshotMode.autoOpenFile != nil {
                 let name = ScreenshotMode.autoOpenFile!
                 selectedFile = nonFolderItems.first(where: { $0.name == name }) ?? nonFolderItems.first
-            } else if ScreenshotMode.autoOpenVersions != nil {
-                let name = ScreenshotMode.autoOpenVersions!
-                versionsFile = nonFolderItems.first(where: { $0.name == name }) ?? nonFolderItems.first
             }
         }
         .task {
