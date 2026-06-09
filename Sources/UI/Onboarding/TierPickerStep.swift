@@ -41,12 +41,12 @@ struct TierPickerStep: View {
                     VStack(spacing: 16) {
                         TierOptionCard(
                             title: "Free",
-                            storage: "5 GB",
+                            storage: "On this device",
                             price: "Included",
                             features: [
-                                "End-to-end encrypted storage",
-                                "Access on this device",
-                                "Manual backup"
+                                "End-to-end encrypted, on-device vault",
+                                "Add & open your files offline",
+                                "Sovereign adds cloud backup + sync"
                             ],
                             isSelected: selectedTier == .free,
                             action: { selectedTier = .free }

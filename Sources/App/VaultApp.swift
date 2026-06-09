@@ -191,6 +191,8 @@ struct VaultApp: App {
                 }
             case .active:
                 lock.markActive()
+                // Free tier is local-only; cloud upload/sync requires Sovereign.
+                services.syncEngine.cloudUploadsEnabled = subscriptionStore.isSubscribed
                 // Trigger biometric unlock only if locked AND idle timeout has passed
                 if lock.isLocked && lock.isIdleTooLong() {
                     Task { await lock.unlock() }

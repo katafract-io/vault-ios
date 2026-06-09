@@ -351,7 +351,17 @@ public class VaultSyncEngine: ObservableObject {
     ///   3. For each chunk: HEAD server (dedup) → presign PUT → upload
     ///   4. On ACK: delete local cache file, mark row done
     ///   5. When all rows for a file are done: POST manifest, syncState='synced'
+    /// Gates cloud upload. false = free / local-only tier: files are imported,
+    /// encrypted, and cached on device but never uploaded. Cloud backup + sync
+    /// is a Sovereign feature. Set from the active subscription in VaultApp.
+    public var cloudUploadsEnabled: Bool = false
+
     public func syncPending() async {
+        // Free tier is local-only — never drain chunks to the cloud.
+        guard cloudUploadsEnabled else {
+            dlog("syncPending skipped — local-only tier (cloud uploads disabled)", category: "sync", level: .debug)
+            return
+        }
         await MainActor.run { self.syncState = .uploading; self.activeUploads += 1 }
         defer { Task { await MainActor.run { self.activeUploads -= 1 } } }
 
