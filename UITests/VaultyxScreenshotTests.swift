@@ -1,326 +1,82 @@
 import XCTest
 
+/// App Store screenshot capture for Vaultyx. Dark, premium privacy-vault
+/// aesthetic. Frames are captured via XCTAttachment(.keepAlways) (fastlane
+/// snapshot() writes 0 PNGs under a raw `xcodebuild test`) and exported from
+/// the .xcresult afterward.
 @MainActor
 final class VaultyxScreenshotTests: XCTestCase {
 
-    override func setUpWithError() throws {
-        continueAfterFailure = false
+    override func setUpWithError() throws { continueAfterFailure = false }
+
+    private var demoFlags: [String] {
+        ["--screenshots", "--skip-onboarding", "--mock-subscribed",
+         "--mock-prices", "--force-dark-mode", "--seed-data", "sovereign-demo"]
     }
 
-    // MARK: - Frame 01: Recovery Phrase (unsubscribed, onboarding forced, dark mode)
+    // 01 — Files browser: a populated privacy vault (HERO)
+    func testFilesBrowser() {
+        let app = launch(flags: demoFlags)
+        sleep(3)
+        _ = app.staticTexts["LLC"].firstMatch.waitForExistence(timeout: 6)
+        capture("01-files")
+    }
 
-    func testCaptureRecoveryPhrase() {
-        _ = launch(flags: [
-            "--screenshots", "--mock-unsubscribed", "--mock-prices",
-            "--force-onboarding", "--force-dark-mode",
-        ])
+    // 02 — Recovery phrase: only you hold the key
+    func testRecoveryPhrase() {
+        _ = launch(flags: ["--screenshots", "--mock-unsubscribed", "--mock-prices",
+                           "--force-onboarding", "--force-dark-mode"])
         sleep(4)
-        snapshot("01-recovery-phrase")
+        capture("02-recovery")
     }
 
-    // MARK: - Frame 02: File Browser (subscribed, seeded data)
-
-    func testCaptureFileBrowserSeeded() {
-        let app = launch(flags: defaultFlags)
+    // 03 — Paywall: Sovereign value (Settings → Upgrade)
+    func testPaywall() {
+        let app = launch(flags: ["--screenshots", "--skip-onboarding", "--mock-unsubscribed",
+                                 "--mock-prices", "--force-dark-mode", "--seed-data", "sovereign-demo"])
         sleep(3)
-        let llcRow = app.staticTexts["LLC"].firstMatch
-        _ = llcRow.waitForExistence(timeout: 5)
-        snapshot("02-files-browser")
+        let settings = app.buttons["Settings"].firstMatch
+        if settings.waitForExistence(timeout: 6) { settings.tap(); sleep(2) }
+        let upgrade = app.buttons["Upgrade to Sovereign — 7-day free trial"].firstMatch
+        if upgrade.waitForExistence(timeout: 5) { upgrade.tap() }
+        sleep(4) // paywall sheet animates in
+        capture("03-paywall")
     }
 
-    // MARK: - Frame 03: File Preview (auto-open specific file)
-
-    func testCaptureFilePreview() {
-        let app = launch(flags: defaultFlags + ["--auto-open-file", "LLC_Operating_Agreement.pdf"])
-        sleep(3)
-        snapshot("03-file-preview")
+    // 04 — File preview: open a stored document
+    func testFilePreview() {
+        let app = launch(flags: demoFlags + ["--auto-open-file", "LLC_Operating_Agreement.pdf"])
+        sleep(4)
+        capture("04-preview")
     }
 
-    // MARK: - Frame 04: Recycle Bin (navigate via Settings)
-
-    func testCaptureRecycleBin() {
-        let app = launch(flags: defaultFlags)
+    // 05 — Photos: encrypted photo vault
+    func testPhotos() {
+        let app = launch(flags: demoFlags)
         sleep(3)
-        let settingsTab = app.buttons["Settings"].firstMatch
-        if settingsTab.waitForExistence(timeout: 5) {
-            settingsTab.tap()
-            sleep(2)
-            let recycleBinCell = app.staticTexts["Recycle Bin"].firstMatch
-            if recycleBinCell.waitForExistence(timeout: 3) {
-                recycleBinCell.tap()
-                sleep(2)
-            }
-        }
-        snapshot("04-recycle-bin")
+        let photos = app.buttons["Photos"].firstMatch
+        if photos.waitForExistence(timeout: 5) { photos.tap(); sleep(3) }
+        capture("05-photos")
     }
 
-    // MARK: - Frame 05: File Versions (auto-open versions for specific file)
-
-    func testCaptureVersions() {
-        let app = launch(flags: defaultFlags + ["--auto-open-versions", "Will_and_Trust.pdf"])
+    // 06 — Settings / storage: the vault at a glance
+    func testSettings() {
+        let app = launch(flags: demoFlags)
         sleep(3)
-        snapshot("07-versions")
-    }
-
-    // MARK: - Frame 06: Paywall Yearly (unsubscribed, yearly tile default)
-
-    func testCapturePaywallYaarly() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
-            "--mock-prices", "--force-dark-mode",
-        ])
-        sleep(3)
-        triggerPaywall(app: app)
-        sleep(3)
-        snapshot("08-paywall-yearly")
-    }
-
-    // MARK: - Frame 07: Paywall Monthly (subscription-review-only asset)
-
-    func testCapturePaywallMonthly() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
-            "--mock-prices", "--force-dark-mode",
-        ])
-        sleep(3)
-        triggerPaywall(app: app)
-        sleep(2)
-        let monthlyTile = app.staticTexts["Monthly"].firstMatch
-        if monthlyTile.waitForExistence(timeout: 3) {
-            monthlyTile.tap()
-            sleep(1)
-        }
-        snapshot("11-paywall-monthly")
-    }
-
-    // MARK: - Frame 08: Capacity 100GB Monthly (IAP review SKU)
-
-    func testCaptureCapacity100gbMonthly() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
-            "--mock-prices", "--force-dark-mode",
-            "--seed-data", "sovereign-demo",
-            "--mock-tier", "com.katafract.vault.100gb.monthly",
-        ])
-        sleep(3)
-        triggerPaywall(app: app)
-        sleep(2)
-        // Ensure yearly → monthly
-        let monthlyText = app.staticTexts["Monthly"].firstMatch
-        if monthlyText.waitForExistence(timeout: 3) {
-            monthlyText.tap()
-            sleep(1)
-        }
-        // Tap the 100 GB card to highlight it
-        let gb100Text = app.staticTexts["100 GB"].firstMatch
-        if gb100Text.waitForExistence(timeout: 3) {
-            gb100Text.tap()
-            sleep(1)
-        }
-        snapshot("12-capacity-100gb-monthly")
-    }
-
-    // MARK: - Frame 09: Capacity 100GB Yearly (IAP review SKU)
-
-    func testCaptureCapacity100gbYearly() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
-            "--mock-prices", "--force-dark-mode",
-            "--seed-data", "sovereign-demo",
-            "--mock-tier", "com.katafract.vault.100gb.yearly",
-        ])
-        sleep(3)
-        triggerPaywall(app: app)
-        sleep(2)
-        // Ensure yearly cadence is selected
-        let yearlyText = app.staticTexts["Yearly"].firstMatch
-        if yearlyText.waitForExistence(timeout: 3) {
-            yearlyText.tap()
-            sleep(1)
-        }
-        // Tap the 100 GB card to highlight it
-        let gb100Text = app.staticTexts["100 GB"].firstMatch
-        if gb100Text.waitForExistence(timeout: 3) {
-            gb100Text.tap()
-            sleep(1)
-        }
-        snapshot("13-capacity-100gb-yearly")
-    }
-
-    // MARK: - Frame 10: Capacity 1TB Monthly (IAP review SKU)
-
-    func testCaptureCapacity1tbMonthly() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
-            "--mock-prices", "--force-dark-mode",
-            "--seed-data", "sovereign-demo",
-            "--mock-tier", "com.katafract.vault.1tb.monthly",
-        ])
-        sleep(3)
-        triggerPaywall(app: app)
-        sleep(2)
-        // Ensure monthly cadence
-        let monthlyText = app.staticTexts["Monthly"].firstMatch
-        if monthlyText.waitForExistence(timeout: 3) {
-            monthlyText.tap()
-            sleep(1)
-        }
-        // Tap the 1 TB card to highlight it
-        let tb1Text = app.staticTexts["1 TB"].firstMatch
-        if tb1Text.waitForExistence(timeout: 3) {
-            tb1Text.tap()
-            sleep(1)
-        }
-        snapshot("14-capacity-1tb-monthly")
-    }
-
-    // MARK: - Frame 11: Capacity 1TB Yearly (IAP review SKU)
-
-    func testCaptureCapacity1tbYearly() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
-            "--mock-prices", "--force-dark-mode",
-            "--seed-data", "sovereign-demo",
-            "--mock-tier", "com.katafract.vault.1tb.yearly",
-        ])
-        sleep(3)
-        triggerPaywall(app: app)
-        sleep(2)
-        // Ensure yearly cadence
-        let yearlyText = app.staticTexts["Yearly"].firstMatch
-        if yearlyText.waitForExistence(timeout: 3) {
-            yearlyText.tap()
-            sleep(1)
-        }
-        // Tap the 1 TB card to highlight it
-        let tb1Text = app.staticTexts["1 TB"].firstMatch
-        if tb1Text.waitForExistence(timeout: 3) {
-            tb1Text.tap()
-            sleep(1)
-        }
-        snapshot("15-capacity-1tb-yearly")
-    }
-
-    // MARK: - Frame 12: Capacity 5TB Monthly (IAP review SKU)
-
-    func testCaptureCapacity5tbMonthly() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
-            "--mock-prices", "--force-dark-mode",
-            "--seed-data", "sovereign-demo",
-            "--mock-tier", "com.katafract.vault.5tb.monthly",
-        ])
-        sleep(3)
-        triggerPaywall(app: app)
-        sleep(2)
-        // Ensure monthly cadence
-        let monthlyText = app.staticTexts["Monthly"].firstMatch
-        if monthlyText.waitForExistence(timeout: 3) {
-            monthlyText.tap()
-            sleep(1)
-        }
-        // Tap the 5 TB card to highlight it
-        let tb5Text = app.staticTexts["5 TB"].firstMatch
-        if tb5Text.waitForExistence(timeout: 3) {
-            tb5Text.tap()
-            sleep(1)
-        }
-        snapshot("16-capacity-5tb-monthly")
-    }
-
-    // MARK: - Frame 13: Capacity 5TB Yearly (IAP review SKU)
-
-    func testCaptureCapacity5tbYearly() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-unsubscribed",
-            "--mock-prices", "--force-dark-mode",
-            "--seed-data", "sovereign-demo",
-            "--mock-tier", "com.katafract.vault.5tb.yearly",
-        ])
-        sleep(3)
-        triggerPaywall(app: app)
-        sleep(2)
-        // Ensure yearly cadence
-        let yearlyText = app.staticTexts["Yearly"].firstMatch
-        if yearlyText.waitForExistence(timeout: 3) {
-            yearlyText.tap()
-            sleep(1)
-        }
-        // Tap the 5 TB card to highlight it
-        let tb5Text = app.staticTexts["5 TB"].firstMatch
-        if tb5Text.waitForExistence(timeout: 3) {
-            tb5Text.tap()
-            sleep(1)
-        }
-        snapshot("17-capacity-5tb-yearly")
-    }
-
-    // MARK: - Frame 14: Photos tab — grid with active backup states
-
-    func testCapturePhotosGrid() {
-        let app = launch(flags: defaultFlags)
-        sleep(3)
-        let photosTab = app.tabBars.buttons["Photos"].firstMatch
-        if photosTab.waitForExistence(timeout: 5) {
-            photosTab.tap()
-            sleep(3)
-        }
-        snapshot("05-photos-grid")
-    }
-
-    // MARK: - Frame 15: Photos tab — sealed-album empty state
-
-    func testCapturePhotosEmptyState() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-subscribed",
-            "--mock-prices", "--force-dark-mode",
-        ])
-        sleep(3)
-        let photosTab = app.tabBars.buttons["Photos"].firstMatch
-        if photosTab.waitForExistence(timeout: 5) {
-            photosTab.tap()
-            sleep(3)
-        }
-        snapshot("06-photos-empty")
-    }
-
-    // MARK: - Frame 16: Upload source menu sheet (Files "+" button)
-
-    func testCaptureUploadSourceSheet() {
-        let app = launch(flags: defaultFlags)
-        sleep(3)
-        // Tap the "+" toolbar button to open UploadSourceMenuSheet
-        let plusButton = app.navigationBars.buttons["plus"].firstMatch
-        if plusButton.waitForExistence(timeout: 5) {
-            plusButton.tap()
-            sleep(2)
-        }
-        snapshot("09-upload-source-sheet")
-    }
-
-    // MARK: - Frame 17: Photos tab — album selection / choose-albums state
-
-    func testCaptureAlbumSelection() {
-        let app = launch(flags: [
-            "--screenshots", "--skip-onboarding", "--mock-subscribed",
-            "--mock-prices", "--force-dark-mode", "--mock-albums-empty",
-        ])
-        sleep(3)
-        let photosTab = app.tabBars.buttons["Photos"].firstMatch
-        if photosTab.waitForExistence(timeout: 5) {
-            photosTab.tap()
-            sleep(3)
-        }
-        snapshot("10-album-selection")
+        let settings = app.buttons["Settings"].firstMatch
+        if settings.waitForExistence(timeout: 5) { settings.tap(); sleep(2) }
+        capture("06-settings")
     }
 
     // MARK: - Helpers
 
-    private var defaultFlags: [String] {
-        [
-            "--screenshots", "--skip-onboarding", "--mock-subscribed",
-            "--mock-prices", "--force-dark-mode", "--seed-data", "sovereign-demo",
-        ]
+    private func capture(_ name: String) {
+        let shot = XCUIScreen.main.screenshot()
+        let att = XCTAttachment(screenshot: shot)
+        att.name = name
+        att.lifetime = .keepAlways
+        add(att)
+        snapshot(name)
     }
 
     private func launch(flags: [String]) -> XCUIApplication {
@@ -330,15 +86,8 @@ final class VaultyxScreenshotTests: XCTestCase {
         app.launch()
         XCTAssertTrue(
             app.wait(for: .runningForeground, timeout: 30),
-            "App did not reach foreground within 30s — aborting to avoid silent 0-PNG run"
+            "App did not reach foreground within 30s — aborting to avoid a silent 0-PNG run"
         )
         return app
-    }
-
-    private func triggerPaywall(app: XCUIApplication) {
-        let uploadBtn = app.buttons["vault-upload-btn"].firstMatch
-        if uploadBtn.waitForExistence(timeout: 5) {
-            uploadBtn.tap()
-        }
     }
 }
