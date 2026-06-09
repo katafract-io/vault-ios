@@ -118,8 +118,13 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
             entropy = entropy.prefix(32)
         }
 
-        // Generate 24-word phrase from entropy
-        phrase = RecoveryPhrase.encode(entropy: entropy)
+        // Derive the phrase from the REAL master key (same as Settings'
+        // RecoveryPhrase.phrase(for: services.masterKey)). Encoding the random
+        // ceremony `entropy` here was the data-loss bug: restore decodes the
+        // phrase straight back to a key, so it MUST encode the master key the
+        // user's files are actually sealed under, or restore yields a different
+        // key and nothing decrypts. The entropy animation is now pure UX.
+        phrase = RecoveryPhrase.phrase(for: masterKey)
 
         // Transition to phrase display
         withAnimation {

@@ -86,6 +86,17 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "F963380CBA7092F248B014F1"
+               BuildableName = "VaultyxTests.xctest"
+               BlueprintName = "VaultyxTests"
+               ReferencedContainer = "container:Vaultyx.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "0C3A387E25CA827AD2C7B92D"
                BuildableName = "VaultyxUITests.xctest"
                BlueprintName = "VaultyxUITests"

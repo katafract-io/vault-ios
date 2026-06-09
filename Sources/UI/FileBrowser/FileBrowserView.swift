@@ -377,7 +377,7 @@ struct FileBrowserView: View {
             }
         }
         .sheet(isPresented: $showPaywall) {
-            CapacityPickerView()
+            PaywallView(capacity: .tb1)
         }
         .sheet(item: $selectedFile, onDismiss: {
             previewURL = nil
