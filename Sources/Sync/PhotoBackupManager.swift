@@ -62,6 +62,10 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     /// toggles off bulk backup.
     private var bulkBackupTask: Task<Void, Never>?
 
+    /// Observes `.vaultyxFileSynced` so a photo asset is marked backed-up only
+    /// after its file's manifest is confirmed on the server (never on enqueue).
+    private var fileSyncObserver: NSObjectProtocol?
+
     /// Cached set of backed-up asset identifiers, refreshed on `refresh()` /
     /// after `markBackedUp`. Faster than a SwiftData query per grid cell.
     private(set) public var backedUpIdentifiers: Set<String> = []
@@ -110,6 +114,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         super.init()
         refresh()
         loadBulkBackupState()
+        observeFileSyncConfirmations()
     }
 
     private func loadBulkBackupState() {
@@ -146,6 +151,30 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
     /// Record a completed upload. Safe to call from the upload task once
     /// `VaultSyncEngine.uploadFile` returns.
+    /// Mark a photo asset backed-up the moment its file's manifest is
+    /// confirmed on the server. This is the ONLY path that flips a photo to
+    /// "backed up" — marking on enqueue (before any byte uploaded) was the
+    /// silent-photo-drop bug.
+    private func observeFileSyncConfirmations() {
+        fileSyncObserver = NotificationCenter.default.addObserver(
+            forName: .vaultyxFileSynced, object: nil, queue: .main) { [weak self] note in
+            guard let fileId = note.userInfo?["fileId"] as? String else { return }
+            Task { @MainActor [weak self] in self?.markAssetBackedUpIfSynced(fileId: fileId) }
+        }
+    }
+
+    private func markAssetBackedUpIfSynced(fileId: String) {
+        let desc = FetchDescriptor<LocalFile>(predicate: #Predicate { $0.fileId == fileId })
+        guard let file = try? modelContext.fetch(desc).first,
+              let assetId = file.sourceAssetIdentifier,
+              !backedUpIdentifiers.contains(assetId) else { return }
+        markBackedUp(assetIdentifier: assetId,
+                     fileId: fileId,
+                     folderId: "root",
+                     sizeBytes: file.sizeBytes)
+        logger.info("asset \(assetId, privacy: .public) confirmed backed up (fileId \(fileId, privacy: .public))")
+    }
+
     public func markBackedUp(assetIdentifier: String,
                              fileId: String,
                              folderId: String,
@@ -242,12 +271,13 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             filename: originalName,
             sourceAssetIdentifier: asset.localIdentifier)
 
-        markBackedUp(
-            assetIdentifier: asset.localIdentifier,
-            fileId: fileId,
-            folderId: "root",
-            sizeBytes: sizeBytes)
-        dlog("photo enqueued ok: \(originalName) size=\(sizeBytes) fileId=\(fileId)", category: "photos", level: .info)
+        // Do NOT mark backed-up here — importFile only QUEUES the upload.
+        // The asset is marked backed-up only when its file's manifest is
+        // confirmed on the server (see observeFileSyncConfirmations), so a user
+        // can never see "backed up" for a photo that never actually synced and
+        // then delete the original. (The LocalFile row created above is what
+        // prevents duplicate imports on a retry.)
+        dlog("photo enqueued ok (pending sync): \(originalName) size=\(sizeBytes) fileId=\(fileId)", category: "photos", level: .info)
         return fileId
     }
 
