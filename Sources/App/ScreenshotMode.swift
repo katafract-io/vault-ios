@@ -61,8 +61,8 @@ enum ScreenshotMode {
 
 extension ScreenshotMode {
     static let mockedDisplayPrices: [String: String] = [
-        "com.katafract.vault.sovereign.monthly": "$18.00",
-        "com.katafract.vault.sovereign.yearly":  "$144.00",
+        "com.katafract.vault.sovereign.monthly": "$14.99",
+        "com.katafract.vault.sovereign.yearly":  "$119.99",
         "com.katafract.vault.100gb.monthly": "$1.99",
         "com.katafract.vault.100gb.yearly": "$19.99",
         "com.katafract.vault.1tb.monthly": "$9.99",
