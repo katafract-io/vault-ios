@@ -168,6 +168,28 @@ struct VaultApp: App {
             .modelContainer(services.modelContainer)
             .preferredColorScheme(ScreenshotMode.forceDarkMode ? .dark : nil)
             .tint(KataAccent.gold)
+            #if targetEnvironment(macCatalyst)
+            .commands {
+                CommandGroup(replacing: .newItem) {
+                    Button("New Folder") {
+                        NotificationCenter.default.post(name: .vaultNewFolder, object: nil)
+                    }
+                    .keyboardShortcut("n", modifiers: .command)
+                }
+
+                CommandMenu("Vault") {
+                    Button("Lock Vault") {
+                        NotificationCenter.default.post(name: .vaultLockRequested, object: nil)
+                    }
+                    .keyboardShortcut("l", modifiers: [.command, .option])
+
+                    Button("Find") {
+                        NotificationCenter.default.post(name: .vaultFindActivated, object: nil)
+                    }
+                    .keyboardShortcut("f", modifiers: .command)
+                }
+            }
+            #endif
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {

@@ -42,6 +42,9 @@ struct MainTabView: View {
             }
         }
         .tint(.kataSapphire)
+        .onReceive(NotificationCenter.default.publisher(for: .vaultLockRequested)) { _ in
+            lock.lock()
+        }
         .onChange(of: subscriptionStore.subscriptionState) { oldState, newState in
             // Detect transition from subscribed/redeemed to notSubscribed
             switch (oldState, newState) {

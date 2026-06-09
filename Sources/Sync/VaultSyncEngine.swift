@@ -1120,6 +1120,8 @@ public extension Notification.Name {
     static let vaultyxDrainRequested = Notification.Name("VaultyxDrainRequested")
     /// Posted when iOS is about to expire the drain BGProcessingTask.
     static let vaultyxDrainExpired = Notification.Name("VaultyxDrainExpired")
+    /// Posted when vault is locked (macOS keyboard shortcut or timeout).
+    static let vaultLockRequested = Notification.Name("VaultyxLockRequested")
 }
 
 // MARK: - Local encrypted-chunk cache
