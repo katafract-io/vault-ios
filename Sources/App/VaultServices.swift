@@ -47,22 +47,24 @@ public final class VaultServices: ObservableObject {
             }
             container = try ModelContainer(for: schema, configurations: [modelConfig])
         } catch {
-            // Schema migration failed (new property added without a versioned plan).
-            // Wipe all .sqlite* and .store files from Application Support so SwiftData
-            // can create a fresh schema. The encrypted vault data lives on the server;
-            // losing the local cache means re-fetching the file index on next sync —
-            // acceptable for TestFlight. Log loudly so we notice in debug exports.
-            print("[VaultServices] ModelContainer init failed (\(error)). Wiping store and retrying.")
-            let appSupport = URL.applicationSupportDirectory
-            if let files = try? FileManager.default.contentsOfDirectory(
-                at: appSupport, includingPropertiesForKeys: nil
-            ) {
-                for f in files
-                where f.pathExtension == "sqlite"
-                    || f.pathExtension == "store"
-                    || f.lastPathComponent.hasSuffix("-wal")
-                    || f.lastPathComponent.hasSuffix("-shm") {
-                    try? FileManager.default.removeItem(at: f)
+            // A migration/incompatibility failure must NEVER destroy user data:
+            // a free-tier vault is local-only, so the on-device store is the only
+            // copy. Quarantine the store (move it aside) instead of deleting it, so
+            // SwiftData can create a fresh store at the same path while the old data
+            // stays recoverable on disk. NOTE: this targets the APP GROUP container
+            // (where vault.sqlite actually lives) — the previous code wiped
+            // URL.applicationSupportDirectory, which never held the store, so the
+            // "wipe + retry" couldn't free the path and would fatalError.
+            print("[VaultServices] ModelContainer init failed (\(error)). Quarantining store and retrying.")
+            if let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave") {
+                let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+                let quarantine = containerUrl.appendingPathComponent("Quarantine/\(stamp)", isDirectory: true)
+                try? FileManager.default.createDirectory(at: quarantine, withIntermediateDirectories: true)
+                for name in ["vault.sqlite", "vault.sqlite-wal", "vault.sqlite-shm"] {
+                    let src = containerUrl.appendingPathComponent(name)
+                    if FileManager.default.fileExists(atPath: src.path) {
+                        try? FileManager.default.moveItem(at: src, to: quarantine.appendingPathComponent(name))
+                    }
                 }
             }
             do {
@@ -76,7 +78,7 @@ public final class VaultServices: ObservableObject {
                 }
                 container = try ModelContainer(for: schema, configurations: [modelConfig])
             } catch let retryError {
-                fatalError("ModelContainer failed even after store wipe: \(retryError)")
+                fatalError("ModelContainer failed even after quarantining store: \(retryError)")
             }
         }
         self.modelContainer = container
