@@ -18,7 +18,13 @@ final class VaultFileProviderExtension: NSObject, NSFileProviderReplicatedExtens
         // CRITICAL: must point at the SAME store the app writes
         // (group.com.katafract.enclave/vault.sqlite). Using SwiftData's default
         // store name here opens a different, empty file → Files shows nothing.
-        let schema = Schema([LocalFile.self, LocalFolder.self, VaultFolder.self, BackedUpAsset.self])
+        // MUST match the app's schema exactly (VaultServices) — a shared SwiftData
+        // store opened with divergent schemas makes the app's ModelContainer fail to
+        // open and fatalError on launch. All 7 models, same order as the app.
+        let schema = Schema([
+            LocalFile.self, LocalFolder.self, BackedUpAsset.self, VaultFolder.self,
+            PendingUpload.self, ChunkUploadQueue.self, VaultIndexItem.self
+        ])
         var container: ModelContainer?
         if let url = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave")?

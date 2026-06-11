@@ -78,7 +78,14 @@ public final class VaultServices: ObservableObject {
                 }
                 container = try ModelContainer(for: schema, configurations: [modelConfig])
             } catch let retryError {
-                fatalError("ModelContainer failed even after quarantining store: \(retryError)")
+                // NEVER hard-crash on launch (this SIGTRAP'd on every launch when the
+                // FileProvider opened the shared store with a divergent schema). Fall back
+                // to an in-memory store so the app boots; the schema itself is valid, so an
+                // in-memory container always succeeds even when the on-disk store can't open.
+                print("[VaultServices] ModelContainer retry failed (\(retryError)). Falling back to in-memory store.")
+                container = try! ModelContainer(
+                    for: schema,
+                    configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
             }
         }
         self.modelContainer = container
