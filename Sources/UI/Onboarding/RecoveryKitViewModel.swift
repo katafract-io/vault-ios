@@ -93,9 +93,9 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
         if accelerometerData.count >= 20 {
             var mixed = entropy
             for sample in accelerometerData {
-                let x = UInt8(bitPattern: Int8(sample.x * 127))
-                let y = UInt8(bitPattern: Int8(sample.y * 127))
-                let z = UInt8(bitPattern: Int8(sample.z * 127))
+                let x = Self.entropyByte(sample.x)
+                let y = Self.entropyByte(sample.y)
+                let z = Self.entropyByte(sample.z)
                 for i in 0..<min(3, mixed.count) {
                     mixed[i] = mixed[i] ^ x ^ y ^ z
                 }
@@ -103,6 +103,17 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
             entropy = mixed
             accelerometerData.removeAll()
         }
+    }
+
+    /// Map a raw accelerometer axis to a byte. Acceleration exceeds ±1g the
+    /// moment the phone is moved (a shake hits several g), so `Int8(value * 127)`
+    /// — a trapping initializer — would crash on any out-of-range or NaN value.
+    /// Clamp into Int8 range first.
+    private static func entropyByte(_ value: Double) -> UInt8 {
+        guard value.isFinite else { return 0 }
+        let scaled = (value * 127).rounded()
+        let clamped = Swift.max(-128.0, Swift.min(127.0, scaled))
+        return UInt8(bitPattern: Int8(clamped))
     }
 
     private func finalizeEntropy() {
