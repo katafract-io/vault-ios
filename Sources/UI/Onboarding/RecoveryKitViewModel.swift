@@ -327,7 +327,13 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
         // Scale up the QR code for readability
         let scale = 10.0
         let scaledImage = qrImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        return UIImage(ciImage: scaledImage)
+
+        // A CIImage-backed UIImage does NOT reliably draw into a CG/PDF context
+        // (it has no CGImage backing) — the first PDF render comes out blank.
+        // Rasterize through a CIContext to a concrete CGImage so draw(in:) works.
+        let ciContext = CIContext()
+        guard let cgImage = ciContext.createCGImage(scaledImage, from: scaledImage.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 
     // MARK: - Keychain Storage

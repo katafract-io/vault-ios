@@ -543,9 +543,8 @@ public struct TokenInfoResponse: Decodable, Sendable {
 
 public struct VaultInitResponse: Decodable, Sendable {
     public let user_id: String
-    public let created: Bool
     public let quota_bytes: Int64
-    public let storage_tier: String
+    public let created_at: Int64
 }
 
 public struct VaultMetaResponse: Decodable, Sendable {
