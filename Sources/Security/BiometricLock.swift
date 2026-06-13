@@ -8,10 +8,15 @@ public class BiometricLock: ObservableObject {
     @AppStorage("biometric_lock_enabled") public var isEnabled: Bool = false
 
     private let context = LAContext()
-    private var lastActiveAt: Date = Date()
-    private let lockTimeoutSeconds: TimeInterval = 30
 
     public static let shared = BiometricLock()
+
+    private init() {
+        // If the lock is enabled, start locked so a cold launch requires auth.
+        if UserDefaults.standard.bool(forKey: "biometric_lock_enabled") {
+            isLocked = true
+        }
+    }
 
     public var biometryType: String {
         var error: NSError?
@@ -25,16 +30,6 @@ public class BiometricLock: ObservableObject {
         case .none: return "Passcode"
         @unknown default: return "Passcode"
         }
-    }
-
-    /// Mark app as active (call on scenePhase .active)
-    public func markActive() {
-        lastActiveAt = Date()
-    }
-
-    /// Check if idle timeout has passed
-    public func isIdleTooLong() -> Bool {
-        return Date().timeIntervalSince(lastActiveAt) > lockTimeoutSeconds
     }
 
     /// Lock the app (called on background/resign active)

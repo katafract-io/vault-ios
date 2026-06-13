@@ -172,8 +172,10 @@ struct VaultApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background, .inactive:
-                // Only lock if biometric is enabled; don't trigger unlock on brief transitions
-                if lock.isEnabled && lock.isIdleTooLong() {
+                // Lock on a real background transition (home screen / app switcher),
+                // not on transient .inactive overlays (Control Center, notification
+                // pull-down) — otherwise a quick blip would force a re-auth.
+                if phase == .background {
                     lock.lock()
                 }
                 drainTicker?.cancel()
@@ -190,11 +192,11 @@ struct VaultApp: App {
                     await engine.syncPending()
                 }
             case .active:
-                lock.markActive()
                 // Free tier is local-only; cloud upload/sync requires Sovereign.
                 services.syncEngine.cloudUploadsEnabled = subscriptionStore.isSubscribed
-                // Trigger biometric unlock only if locked AND idle timeout has passed
-                if lock.isLocked && lock.isIdleTooLong() {
+                // If the app is locked, prompt for biometric/passcode unlock now
+                // that we're back in the foreground.
+                if lock.isLocked && lock.isEnabled {
                     Task { await lock.unlock() }
                 }
                 // Drain the share-extension import inbox FIRST — convert any
