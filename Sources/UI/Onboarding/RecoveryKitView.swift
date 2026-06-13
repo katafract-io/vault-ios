@@ -6,8 +6,7 @@ import CryptoKit
 struct RecoveryKitView: View {
     @StateObject private var viewModel: RecoveryKitViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var showSaveSheet = false
-    @State private var pdfData: Data?
+    @State private var pdfItem: PDFDocumentItem?
 
     init(masterKey: SymmetricKey, sigilID: String = "", vaultEndpoint: String = "vault.katafract.com", onComplete: @escaping () -> Void) {
         let vm = RecoveryKitViewModel(masterKey: masterKey, sigilID: sigilID, vaultEndpoint: vaultEndpoint)
@@ -41,10 +40,13 @@ struct RecoveryKitView: View {
         .onAppear {
             viewModel.startEntropyAnimation()
         }
-        .sheet(isPresented: $showSaveSheet) {
-            if let pdfData = pdfData {
-                ShareSheet(items: [pdfData])
-            }
+        // Bind the share sheet to the data itself (.sheet(item:)) rather than a
+        // separate Bool. Setting `pdfData` and `showSaveSheet = true` in the same
+        // tick raced: SwiftUI built the sheet body before the data propagated, so
+        // the first tap presented an empty sheet ("blank until you discard and
+        // tap again"). With item binding the content always sees the non-nil PDF.
+        .sheet(item: $pdfItem) { item in
+            ShareSheet(items: [item.data])
         }
     }
 
@@ -144,8 +146,7 @@ struct RecoveryKitView: View {
 
                     Button {
                         if let pdf = viewModel.generateRecoveryKitPDF() {
-                            pdfData = pdf
-                            showSaveSheet = true
+                            pdfItem = PDFDocumentItem(data: pdf)
                         }
                     } label: {
                         Label("Save as PDF", systemImage: "doc.fill")
@@ -366,8 +367,7 @@ struct RecoveryKitView: View {
             VStack(spacing: 12) {
                 Button {
                     if let pdf = viewModel.generateRecoveryKitPDF() {
-                        pdfData = pdf
-                        showSaveSheet = true
+                        pdfItem = PDFDocumentItem(data: pdf)
                     }
                 } label: {
                     Label("Download Recovery Kit PDF", systemImage: "arrow.down.doc")
@@ -397,6 +397,16 @@ struct RecoveryKitView: View {
         }
         .padding(24)
     }
+}
+
+// MARK: - PDF Share Item
+
+/// Wraps the generated PDF so the share sheet can be driven by `.sheet(item:)`,
+/// which presents only once the data is non-nil — avoiding the first-tap-blank
+/// race of `.sheet(isPresented:)` paired with separate data state.
+struct PDFDocumentItem: Identifiable {
+    let id = UUID()
+    let data: Data
 }
 
 // MARK: - Share Sheet
