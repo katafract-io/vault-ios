@@ -8,6 +8,7 @@ struct PhotosView: View {
     @StateObject private var viewModel = PhotosViewModel()
     @State private var showPaywall = false
     @State private var showAlbumsSheet = false
+    @State private var showFilterSheet = false
 
     var body: some View {
         NavigationStack {
@@ -106,6 +107,13 @@ struct PhotosView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
+                        // Filter button
+                        Button {
+                            showFilterSheet = true
+                        } label: {
+                            Image(systemName: "funnel")
+                        }
+
                         // Bulk backup toggle
                         Button {
                             if viewModel.bulkBackupActive {
@@ -160,6 +168,31 @@ struct PhotosView: View {
                         await viewModel.loadRecentPhotos()
                     }
                 })
+            }
+            .sheet(isPresented: $showFilterSheet) {
+                BackupFilterSheet(
+                    startDate: $viewModel.filterStartDate,
+                    endDate: $viewModel.filterEndDate,
+                    selectedMediaTypes: $viewModel.selectedMediaTypes
+                )
+                .onChange(of: viewModel.filterStartDate) { _ in
+                    viewModel.persistFilters()
+                    Task {
+                        await viewModel.loadRecentPhotos()
+                    }
+                }
+                .onChange(of: viewModel.filterEndDate) { _ in
+                    viewModel.persistFilters()
+                    Task {
+                        await viewModel.loadRecentPhotos()
+                    }
+                }
+                .onChange(of: viewModel.selectedMediaTypes) { _ in
+                    viewModel.persistFilters()
+                    Task {
+                        await viewModel.loadRecentPhotos()
+                    }
+                }
             }
             .sheet(isPresented: $showPaywall) {
                 PaywallView(capacity: .tb1)
