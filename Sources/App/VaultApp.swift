@@ -168,6 +168,26 @@ struct VaultApp: App {
             .modelContainer(services.modelContainer)
             .preferredColorScheme(ScreenshotMode.forceDarkMode ? .dark : nil)
             .tint(KataAccent.gold)
+            .onReceive(subscriptionStore.$subscriptionState) { state in
+                // Cloud uploads are gated on an active paid entitlement. That
+                // entitlement resolves asynchronously after launch (StoreKit
+                // currentEntitlements scan), so the scenePhase .active handler
+                // captured the still-`.unknown` value at cold launch and left
+                // paying users stuck local-only with chunks queued forever.
+                // Drive the engine reactively off the resolved state instead.
+                // NB: read the emitted `state`, not `subscriptionStore.isSubscribed`
+                // — @Published fires on willSet, so the stored value is still
+                // stale inside this closure.
+                let subscribed: Bool
+                switch state {
+                case .subscribed, .redeemed: subscribed = true
+                case .unknown, .notSubscribed: subscribed = false
+                }
+                services.syncEngine.cloudUploadsEnabled = subscribed
+                if subscribed {
+                    Task { await services.syncEngine.syncPending() }
+                }
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
