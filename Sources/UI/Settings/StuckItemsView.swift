@@ -7,7 +7,16 @@ struct StuckItemsView: View {
     @EnvironmentObject private var services: VaultServices
     @Environment(\.modelContext) private var modelContext
     @State private var stuckFiles: [LocalFile] = []
+    @State private var showClearConfirm = false
     private let logger = Logger(subsystem: "com.katafract.vault", category: "stuck-items")
+
+    /// Terminal failures the user can clear — chunks may be uploaded but the
+    /// manifest can never be posted (its per-chunk keys are gone), so retry
+    /// can't help. pending_upload / manifest_pending are still in progress and
+    /// are intentionally excluded.
+    private var failedFiles: [LocalFile] {
+        stuckFiles.filter { $0.syncState == "conflict" || $0.syncState == "manifest_failed" }
+    }
 
     var body: some View {
         List {
@@ -38,6 +47,28 @@ struct StuckItemsView: View {
         }
         .refreshable {
             await loadStuckItems()
+        }
+        .toolbar {
+            if !failedFiles.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .destructive) {
+                        showClearConfirm = true
+                    } label: {
+                        Text("Clear Failed")
+                    }
+                    .tint(.red)
+                }
+            }
+        }
+        .confirmationDialog(
+            "Clear \(failedFiles.count) failed upload\(failedFiles.count == 1 ? "" : "s")?",
+            isPresented: $showClearConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Failed Uploads", role: .destructive) { clearFailedUploads() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("These uploads can't be completed (their encryption keys were lost). Removing them won't affect files that synced successfully.")
         }
     }
 
@@ -143,6 +174,44 @@ struct StuckItemsView: View {
     }
 
     // MARK: - Actions
+
+    /// Remove terminal-failure files and all their local debris: chunk-queue
+    /// rows, cached encrypted chunks, the sidecar + manifest cache entries, any
+    /// BackedUpAsset rows, and the local plaintext. These never reached the
+    /// server (no manifest), so there's nothing to delete server-side.
+    private func clearFailedUploads() {
+        let targets = failedFiles
+        var removed = 0
+        for file in targets {
+            let fileId = file.fileId
+
+            let queueDesc = FetchDescriptor<ChunkUploadQueue>(
+                predicate: #Predicate { $0.fileId == fileId })
+            for row in (try? modelContext.fetch(queueDesc)) ?? [] {
+                ChunkCache.delete(hash: row.chunkHash)
+                modelContext.delete(row)
+            }
+            ChunkCache.delete(hash: "__sidecar__\(fileId)")
+            ChunkCache.delete(hash: "__manifest__\(fileId)")
+
+            if let assets = try? modelContext.fetch(FetchDescriptor<BackedUpAsset>()) {
+                for row in assets where row.fileId == fileId {
+                    modelContext.delete(row)
+                }
+            }
+            if let path = file.localPath { LocalCache.remove(at: path) }
+            modelContext.delete(file)
+            removed += 1
+        }
+
+        do {
+            try modelContext.save()
+            dlog("cleared \(removed) failed upload(s)", category: "stuck-items", level: .info)
+        } catch {
+            dlog("clear failed uploads save error: \(error.localizedDescription)", category: "stuck-items", level: .error)
+        }
+        Task { await loadStuckItems() }
+    }
 
     private func forceRetryFile(_ file: LocalFile) {
         dlog("force-retry stuck file: \(file.filename) (id: \(file.fileId))", category: "stuck-items", level: .info)
