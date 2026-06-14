@@ -144,6 +144,17 @@ struct FileBrowserView: View {
         isEditing = false
     }
 
+    @ViewBuilder
+    private func sortButton(_ order: SortOrder, _ title: String) -> some View {
+        Button { sortOrder = order } label: {
+            if sortOrder == order {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
+
     var sortedItems: [VaultFileItem] {
         let filtered: [VaultFileItem]
         if selectedCategory == .all {
@@ -181,6 +192,11 @@ struct FileBrowserView: View {
                 if a.isFolder != b.isFolder {
                     return a.isFolder && !b.isFolder
                 }
+                // Group by file extension, then name — previously this was a
+                // duplicate of .name and did nothing for same-type files.
+                let extA = (a.name as NSString).pathExtension.lowercased()
+                let extB = (b.name as NSString).pathExtension.lowercased()
+                if extA != extB { return extA < extB }
                 return a.name.lowercased() < b.name.lowercased()
             }
         }
@@ -312,11 +328,15 @@ struct FileBrowserView: View {
                             Label("Grid", systemImage: "square.grid.2x2").tag(ViewMode.grid)
                         }
                         Divider()
-                        Picker("Sort", selection: $sortOrder) {
-                            Text("Name").tag(SortOrder.name)
-                            Text("Date").tag(SortOrder.date)
-                            Text("Size").tag(SortOrder.size)
-                            Text("Type").tag(SortOrder.type)
+                        // Explicit buttons rather than a second inline Picker:
+                        // two inline Pickers in one Menu is unreliable (the sort
+                        // selection often didn't register), and this also shows a
+                        // checkmark on the active order.
+                        Section("Sort by") {
+                            sortButton(.name, "Name")
+                            sortButton(.date, "Date")
+                            sortButton(.size, "Size")
+                            sortButton(.type, "Type")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
