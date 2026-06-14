@@ -56,24 +56,16 @@ class FileBrowserViewModel: ObservableObject {
             return
         }
 
-        // Display name for the current folder.
-        if folderId == nil {
-            folderName = "Vault"
-        } else {
+        // Display name for the current folder, from the synced VaultFolder cache.
+        if let folderId {
             let context = ModelContext(services.modelContainer)
-            if let folderId = folderId, let folderId = UUID(uuidString: folderId) {
-                var descriptor = FetchDescriptor<VaultIndexItem>(
-                    predicate: #Predicate { $0.id == folderId }
-                )
-                descriptor.fetchLimit = 1
-                if let folder = try? context.fetch(descriptor).first {
-                    folderName = folder.name
-                } else {
-                    folderName = "Folder"
-                }
-            } else {
-                folderName = "Folder"
-            }
+            var descriptor = FetchDescriptor<VaultFolder>(
+                predicate: #Predicate { $0.folderId == folderId }
+            )
+            descriptor.fetchLimit = 1
+            folderName = (try? context.fetch(descriptor))?.first?.name ?? "Folder"
+        } else {
+            folderName = "Vault"
         }
 
         // Inject seed data if in ScreenshotMode
@@ -101,37 +93,33 @@ class FileBrowserViewModel: ObservableObject {
         }
     }
 
-    /// Re-query SwiftData and rebuild `items` from VaultIndexItem + LocalFile.
+    /// Re-query SwiftData and rebuild `items` from VaultFolder + LocalFile —
+    /// the models that VaultTreeSync actually populates from the server tree
+    /// (and that createFolder/importFile write locally). (The previous
+    /// VaultIndexItem source is fed only by VaultIndexDeltaSync from the
+    /// server `vault_manifest` table, which the upload path never writes, so
+    /// it was always empty — folders never rendered. See vault.py.)
     /// Called after load, uploads, deletes, and background sync.
     /// Sorts folders first (isFolder DESC), then by name (ASC).
     func refreshFromCache() {
         guard let services else { return }
         let context = ModelContext(services.modelContainer)
 
-        let targetParentId = currentFolderId.flatMap { UUID(uuidString: $0) }
-        var descriptor = FetchDescriptor<VaultIndexItem>(
-            predicate: #Predicate { item in
-                !item.isDeleted && item.parentId == targetParentId
-            },
-            sortBy: [
-                SortDescriptor(\.mime, order: .reverse),
-                SortDescriptor(\.name)
-            ]
-        )
-
-        let indexItems = (try? context.fetch(descriptor)) ?? []
-        dlog("refreshFromCache: fetched \(indexItems.count) item(s) for parent=\(currentFolderId ?? "root")", category: "ui", level: .info)
-
-        let folderItems = indexItems.map { item -> VaultFileItem in
-            VaultFileItem(
-                id: item.id.uuidString,
-                name: item.name,
-                isFolder: item.mime == "application/vnd.vault.folder",
-                sizeBytes: Int64(item.sizeBytes),
-                modifiedAt: item.modifiedAt,
-                syncState: .synced,
-                isPinned: false)
-        }
+        // Folders for the current parent, from the synced VaultFolder cache.
+        let folderRows = (try? context.fetch(FetchDescriptor<VaultFolder>())) ?? []
+        let folderItems = folderRows
+            .filter { $0.parentFolderId == currentFolderId }
+            .map { f -> VaultFileItem in
+                VaultFileItem(
+                    id: f.folderId,
+                    name: f.name,
+                    isFolder: true,
+                    sizeBytes: 0,
+                    modifiedAt: f.modifiedAt,
+                    syncState: .synced,
+                    isPinned: false)
+            }
+        dlog("refreshFromCache: \(folderItems.count) folder(s) for parent=\(currentFolderId ?? "root")", category: "ui", level: .info)
 
         // Fetch LocalFile records for this folder
         let fileRows = (try? context.fetch(FetchDescriptor<LocalFile>())) ?? []
