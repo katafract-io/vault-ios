@@ -10,6 +10,10 @@ class FileBrowserViewModel: ObservableObject {
     @Published var error: String?
     @Published var navPath: [VaultFileItem] = []
 
+    /// IDs with a delete in flight — guards against a second delete of the same
+    /// row (which would hit the server for an already-deleted item and hard-error).
+    private var deletingIds = Set<String>()
+
     // Upload progress state — drives FileUploadProgressBanner
     @Published var uploadInProgress: Bool = false
     @Published var batchBytesUploaded: Int64 = 0
@@ -371,6 +375,15 @@ class FileBrowserViewModel: ObservableObject {
         let snapshotFolderId = currentFolderId ?? rootFolderId
         let itemId = item.id
         let itemIsFolder = item.isFolder
+
+        // Guard re-entrancy: ignore a repeat delete of a row whose delete is
+        // already in flight. Without this, tapping delete twice (e.g. before the
+        // list settles) fires a second server delete on an already-deleted item,
+        // which hard-errors.
+        guard !deletingIds.contains(itemId) else {
+            return DeleteResult(message: "", undo: {})
+        }
+        deletingIds.insert(itemId)
         dlog("delete \(itemIsFolder ? "folder" : "file"): \(snapshotName) id=\(itemId)", category: "ui", level: .info)
 
         // Optimistic: remove from the visible list immediately so the user
@@ -399,13 +412,23 @@ class FileBrowserViewModel: ObservableObject {
         // SwiftData operations always run on the actor that owns the context;
         // capturing services + itemId by value avoids any non-Sendable hops.
         Task { @MainActor [weak self] in
+            defer { self?.deletingIds.remove(itemId) }
             do {
+                let context = ModelContext(services.modelContainer)
                 if itemIsFolder {
                     _ = try await services.apiClient.deleteFolder(folderId: itemId)
-                    self?.refreshFromCache()
+                    // Drop the local VaultFolder cache row too — otherwise
+                    // refreshFromCache re-reads it and the folder reappears,
+                    // leaving the user to "delete" a phantom row that then
+                    // hard-errors on the second server call.
+                    if let rows = try? context.fetch(FetchDescriptor<VaultFolder>()) {
+                        for row in rows where row.folderId == itemId {
+                            context.delete(row)
+                        }
+                        saveOrLog(context)
+                    }
                 } else {
                     try await services.apiClient.softDeleteFile(fileId: itemId)
-                    let context = ModelContext(services.modelContainer)
                     if let rows = try? context.fetch(FetchDescriptor<LocalFile>()) {
                         for row in rows where row.fileId == itemId {
                             context.delete(row)
@@ -413,7 +436,11 @@ class FileBrowserViewModel: ObservableObject {
                         saveOrLog(context)
                     }
                 }
+                self?.refreshFromCache()
             } catch {
+                // Reconcile against the real cache so a failed/duplicate delete
+                // doesn't leave a phantom row, and surface the error softly.
+                self?.refreshFromCache()
                 self?.error = "Delete failed: \(error.localizedDescription)"
             }
         }
