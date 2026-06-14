@@ -428,22 +428,30 @@ public class VaultSyncEngine: ObservableObject {
             await checkAndFinalizeFile(fileId: fileId)
         }
 
-        // Manifest-retry sweep: files whose chunks are all uploaded but the
-        // manifest POST previously failed sit in `manifest_pending` until the
-        // backoff window opens. Re-finalize them here so the user doesn't have
-        // to wait for a new import to kick the drain. Files that exhausted
-        // `manifestRetryCap` attempts move to `manifest_failed` and are NOT
-        // retried here — those need explicit user / Settings intervention.
-        let manifestPendingIds: [String] = await MainActor.run {
+        // Finalize sweep: files whose chunks are all uploaded but the manifest
+        // was never POSTed. Two cases:
+        //   • `manifest_pending` — a prior manifest POST failed; retry once the
+        //     backoff window opens.
+        //   • `pending_upload` with all chunks already done — the chunk drain
+        //     above found nothing to dispatch, so the per-chunk completion path
+        //     (which is what normally triggers finalize) never fires. This is
+        //     exactly what a force-retry of a `manifest_failed` file produces:
+        //     it flips the row back to `pending_upload`, but the chunks were
+        //     uploaded long ago, so without this sweep the file would never
+        //     finalize and stays "queued" forever.
+        // checkAndFinalizeFile no-ops when any chunk is still outstanding, so
+        // this is safe to run over actively-uploading files too.
+        let finalizeSweepIds: [String] = await MainActor.run {
             let nowDate = Date()
             let desc = FetchDescriptor<LocalFile>(
                 predicate: #Predicate {
-                    $0.syncState == "manifest_pending" && $0.nextManifestRetryAt <= nowDate
+                    ($0.syncState == "manifest_pending" || $0.syncState == "pending_upload")
+                    && $0.nextManifestRetryAt <= nowDate
                 }
             )
             return ((try? modelContext.fetch(desc)) ?? []).map(\.fileId)
         }
-        for fileId in manifestPendingIds where !fileIds.contains(fileId) {
+        for fileId in finalizeSweepIds where !fileIds.contains(fileId) {
             await checkAndFinalizeFile(fileId: fileId)
         }
 
