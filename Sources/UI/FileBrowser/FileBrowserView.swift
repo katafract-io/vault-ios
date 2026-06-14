@@ -37,6 +37,21 @@ struct FileBrowserView: View {
     let folderId: String?  // nil = root
     var isReadOnly: Bool = false
 
+    /// Navigation path shared from the root browser. Only the root instance
+    /// (folderId == nil) owns a `NavigationStack`; pushed child instances render
+    /// content-only and append folder taps to this shared path so the single
+    /// root stack drives navigation. Nesting a NavigationStack per folder caused
+    /// blank-then-pop on push.
+    var sharedNavPath: Binding<[VaultFileItem]>? = nil
+
+    private func pushFolder(_ item: VaultFileItem) {
+        if let sharedNavPath {
+            sharedNavPath.wrappedValue.append(item)
+        } else {
+            viewModel.navPath.append(item)
+        }
+    }
+
     enum ViewMode { case list, grid }
     enum SortOrder { case name, date, size, type }
 
@@ -199,29 +214,47 @@ struct FileBrowserView: View {
         }
     }
 
-    var body: some View {
-        NavigationStack(path: $viewModel.navPath) {
-            VStack(spacing: 0) {
-                // Breadcrumb navigation
-                if !viewModel.navPath.isEmpty {
-                    BreadcrumbNavigation(path: breadcrumbPath) { index in
-                        navigateToBreadcrumb(index)
-                    }
-                    .padding(.vertical, 8)
-                    Divider()
+    @ViewBuilder
+    private var browserStack: some View {
+        VStack(spacing: 0) {
+            // Breadcrumb navigation
+            if !viewModel.navPath.isEmpty {
+                BreadcrumbNavigation(path: breadcrumbPath) { index in
+                    navigateToBreadcrumb(index)
                 }
+                .padding(.vertical, 8)
+                Divider()
+            }
 
-                progressBanners
-                stuckItemsBanner
-                folderContent
-            }
-            .navigationDestination(for: VaultFileItem.self) { item in
-                FileBrowserView(folderId: item.id)
-            }
-            .navigationDestination(isPresented: $showStuckItems) {
-                StuckItemsView()
-            }
+            progressBanners
+            stuckItemsBanner
+            folderContent
         }
+        .navigationDestination(isPresented: $showStuckItems) {
+            StuckItemsView()
+        }
+    }
+
+    // Single NavigationStack, owned by the root browser. Child folders are
+    // pushed onto it (content-only) — never their own stack. Extracted from
+    // `body` so the long trailing modifier chain still type-checks in time.
+    @ViewBuilder
+    private var navigationContainer: some View {
+        if folderId == nil {
+            NavigationStack(path: $viewModel.navPath) {
+                browserStack
+                    .navigationDestination(for: VaultFileItem.self) { item in
+                        FileBrowserView(folderId: item.id, isReadOnly: isReadOnly,
+                                        sharedNavPath: $viewModel.navPath)
+                    }
+            }
+        } else {
+            browserStack
+        }
+    }
+
+    var body: some View {
+        navigationContainer
         .animation(.spring(duration: 0.35), value: viewModel.uploadInProgress)
         .animation(.spring(duration: 0.35), value: viewModel.downloadInProgress)
         .safeAreaInset(edge: .bottom) { bulkActionBar }
@@ -586,7 +619,7 @@ struct FileBrowserView: View {
                                     selectedIds.insert(item.id)
                                 }
                             } else if item.isFolder {
-                                viewModel.navPath.append(item)
+                                pushFolder(item)
                             } else if !fileLoadingStates.contains(item.id) {
                                 // Guard: prevent re-entry while materialize is in
                                 // flight. Without this, an impatient user tapping
@@ -643,7 +676,7 @@ struct FileBrowserView: View {
                                         selectedIds.insert(item.id)
                                     }
                                 } else if item.isFolder {
-                                    viewModel.navPath.append(item)
+                                    pushFolder(item)
                                 } else if !fileLoadingStates.contains(item.id) {
                                     // Same re-entry guard as list view.
                                     fileLoadingStates.insert(item.id)
