@@ -109,70 +109,57 @@ class PhotosViewModel: ObservableObject {
 
         let context = ModelContext(services.modelContainer)
         let logMsg = offset == 0 ? "initial load" : "pagination (offset: \(offset))"
-        dlog("loadRecentPhotos: \(logMsg) querying VaultIndexItem for recent images", category: "photos", level: .info)
+        dlog("loadRecentPhotos: \(logMsg) querying LocalFile for backed-up photos", category: "photos", level: .info)
 
-        var descriptor = FetchDescriptor<VaultIndexItem>(
-            predicate: #Predicate { item in
-                !item.isDeleted && item.mime.starts(with: "image/")
-            },
-            sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]
-        )
-
-        // Fetch extra to detect if there are more items beyond what we'll show
-        descriptor.fetchOffset = offset
-        descriptor.fetchLimit = paginationBatchSize + 1
-
-        do {
-            let items = try context.fetch(descriptor)
-            dlog("loadRecentPhotos: fetched \(items.count) image item(s) at offset \(offset)", category: "photos", level: .info)
-
-            // Check if there are more photos beyond this batch
-            hasMorePhotos = items.count > paginationBatchSize
-            let itemsToProcess = Array(items.prefix(paginationBatchSize))
-
-            var newPhotos: [BackedUpPhoto] = []
-            newPhotos.reserveCapacity(itemsToProcess.count)
-            for item in itemsToProcess {
-                newPhotos.append(BackedUpPhoto(
-                    id: item.assetIdentifier ?? item.id.uuidString,
-                    filename: item.name,
-                    sizeBytes: item.sizeBytes,
-                    takenAt: item.modifiedAt,
-                    backupState: .syncedAndLocal,
-                    isCloudOnly: false
-                ))
-            }
-
-            // On initial load, include cloud-only photos
-            if offset == 0 {
-                let localAssetIds = Set(itemsToProcess.compactMap { $0.assetIdentifier })
-                let cloudOnlyPhotos = await fetchCloudOnlyPhotos(
-                    excludeLocalIds: localAssetIds, modelContainer: services.modelContainer)
-                newPhotos.append(contentsOf: cloudOnlyPhotos)
-
-                // Sort all items newest-first by takenAt for initial display
-                newPhotos.sort { ($0.takenAt) > ($1.takenAt) }
-                backedUpPhotos = newPhotos
-            } else {
-                // Append to existing photos during pagination
-                backedUpPhotos.append(contentsOf: newPhotos)
-            }
-
-            currentOffset = offset + paginationBatchSize
-
-            // Apply memory cap: keep only the latest 600 items
-            if backedUpPhotos.count > maxVisiblePhotos {
-                backedUpPhotos = Array(backedUpPhotos.prefix(maxVisiblePhotos))
-            }
-
-            allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
-        } catch {
-            dlog("loadRecentPhotos: fetch failed: \(error.localizedDescription)", category: "photos", level: .error)
-            if offset == 0 {
-                backedUpPhotos = []
-            }
-            allBackedUp = false
+        // Source from LocalFile — the model the upload + tree-sync paths
+        // populate. (VaultIndexItem is fed only by VaultIndexDeltaSync from the
+        // server `vault_manifest` table, which the upload path never writes, so
+        // it was always empty and the grid showed nothing.) Photo-roll backups
+        // carry `sourceAssetIdentifier`; that's what the grid keys thumbnails on.
+        let allFiles = (try? context.fetch(FetchDescriptor<LocalFile>(
+            sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]))) ?? []
+        let photoFiles = allFiles.filter {
+            $0.syncState != "deleted" && $0.sourceAssetIdentifier != nil
         }
+        dlog("loadRecentPhotos: \(photoFiles.count) backed-up photo(s) in vault", category: "photos", level: .info)
+
+        // Manual pagination over the filtered set (extension/identifier filters
+        // can't run inside a SwiftData #Predicate).
+        let page = Array(photoFiles.dropFirst(offset).prefix(paginationBatchSize + 1))
+        hasMorePhotos = page.count > paginationBatchSize
+        let itemsToProcess = Array(page.prefix(paginationBatchSize))
+
+        var newPhotos: [BackedUpPhoto] = itemsToProcess.map { f in
+            BackedUpPhoto(
+                id: f.sourceAssetIdentifier ?? f.fileId,
+                filename: f.filename,
+                sizeBytes: Int(f.sizeBytes),
+                takenAt: f.modifiedAt,
+                backupState: .syncedAndLocal,
+                isCloudOnly: false
+            )
+        }
+
+        // On initial load, include cloud-only photos (in vault, deleted from device)
+        if offset == 0 {
+            let localAssetIds = Set(itemsToProcess.compactMap { $0.sourceAssetIdentifier })
+            let cloudOnlyPhotos = await fetchCloudOnlyPhotos(
+                excludeLocalIds: localAssetIds, modelContainer: services.modelContainer)
+            newPhotos.append(contentsOf: cloudOnlyPhotos)
+            newPhotos.sort { $0.takenAt > $1.takenAt }
+            backedUpPhotos = newPhotos
+        } else {
+            backedUpPhotos.append(contentsOf: newPhotos)
+        }
+
+        currentOffset = offset + paginationBatchSize
+
+        // Apply memory cap: keep only the latest 600 items
+        if backedUpPhotos.count > maxVisiblePhotos {
+            backedUpPhotos = Array(backedUpPhotos.prefix(maxVisiblePhotos))
+        }
+
+        allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
     }
 
     /// Load more photos when user scrolls past the last visible item.
