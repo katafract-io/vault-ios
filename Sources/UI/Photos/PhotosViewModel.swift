@@ -107,49 +107,74 @@ class PhotosViewModel: ObservableObject {
             hasMorePhotos = true
         }
 
-        let context = ModelContext(services.modelContainer)
         let logMsg = offset == 0 ? "initial load" : "pagination (offset: \(offset))"
-        dlog("loadRecentPhotos: \(logMsg) querying LocalFile for backed-up photos", category: "photos", level: .info)
+        dlog("loadRecentPhotos: \(logMsg) querying BackedUpAsset ledger", category: "photos", level: .info)
 
-        // Source from LocalFile — the model the upload + tree-sync paths
-        // populate. (VaultIndexItem is fed only by VaultIndexDeltaSync from the
-        // server `vault_manifest` table, which the upload path never writes, so
-        // it was always empty and the grid showed nothing.) Photo-roll backups
-        // carry `sourceAssetIdentifier`; that's what the grid keys thumbnails on.
-        let allFiles = (try? context.fetch(FetchDescriptor<LocalFile>(
-            sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]))) ?? []
-        let photoFiles = allFiles.filter {
-            $0.syncState != "deleted" && $0.sourceAssetIdentifier != nil
-        }
-        dlog("loadRecentPhotos: \(photoFiles.count) backed-up photo(s) in vault", category: "photos", level: .info)
+        // Source from BackedUpAsset — the durable per-photo backup ledger written
+        // by PhotoBackupManager, keyed on PHAsset.localIdentifier. (LocalFile's
+        // sourceAssetIdentifier is recreated empty by tree-sync, and VaultIndexItem
+        // is never populated, so both showed nothing after a re-sync.) Decide
+        // local-vs-cloud by whether the PHAsset still exists on device.
+        let container = services.modelContainer
+        let all: [BackedUpPhoto] = await Task.detached(priority: .userInitiated) {
+            let context = ModelContext(container)
 
-        // Manual pagination over the filtered set (extension/identifier filters
-        // can't run inside a SwiftData #Predicate).
-        let page = Array(photoFiles.dropFirst(offset).prefix(paginationBatchSize + 1))
+            // (a) Backup ledger — album/camera-roll backups, keyed on PHAsset id.
+            let rows = (try? context.fetch(FetchDescriptor<BackedUpAsset>(
+                sortBy: [SortDescriptor(\.backedUpAt, order: .reverse)]))) ?? []
+            let ids = rows.map { $0.assetIdentifier }
+            var onDevice = Set<String>()
+            if !ids.isEmpty {
+                let fetched = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+                fetched.enumerateObjects { asset, _, _ in onDevice.insert(asset.localIdentifier) }
+            }
+            let coveredFileIds = Set(rows.map { $0.fileId })
+            var photos: [BackedUpPhoto] = rows.map { r in
+                let isLocal = onDevice.contains(r.assetIdentifier)
+                return BackedUpPhoto(
+                    id: r.assetIdentifier,
+                    filename: r.originalFilename,
+                    sizeBytes: Int(r.sizeBytes),
+                    takenAt: r.backedUpAt,
+                    backupState: isLocal ? .syncedAndLocal : .cloudOnly,
+                    isCloudOnly: !isLocal
+                )
+            }
+
+            // (b) Any other image already in the vault (manual uploads, or rows
+            // tree-sync recreated without a ledger entry). The user sees these in
+            // Files; they belong in Photos too. Dedup against the ledger by fileId.
+            let files = (try? context.fetch(FetchDescriptor<LocalFile>(
+                sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]))) ?? []
+            var seenIds = Set(photos.map { $0.id })
+            for f in files where f.syncState != "deleted"
+                && !coveredFileIds.contains(f.fileId)
+                && Self.isImageFilename(f.filename) {
+                let pid = f.sourceAssetIdentifier ?? f.fileId
+                guard seenIds.insert(pid).inserted else { continue }
+                photos.append(BackedUpPhoto(
+                    id: pid,
+                    filename: f.filename,
+                    sizeBytes: Int(f.sizeBytes),
+                    takenAt: f.modifiedAt,
+                    backupState: .syncedAndLocal,
+                    isCloudOnly: false
+                ))
+            }
+
+            photos.sort { $0.takenAt > $1.takenAt }
+            return photos
+        }.value
+        dlog("loadRecentPhotos: \(all.count) backed-up photo(s) in ledger", category: "photos", level: .info)
+
+        let page = Array(all.dropFirst(offset).prefix(paginationBatchSize + 1))
         hasMorePhotos = page.count > paginationBatchSize
         let itemsToProcess = Array(page.prefix(paginationBatchSize))
 
-        var newPhotos: [BackedUpPhoto] = itemsToProcess.map { f in
-            BackedUpPhoto(
-                id: f.sourceAssetIdentifier ?? f.fileId,
-                filename: f.filename,
-                sizeBytes: Int(f.sizeBytes),
-                takenAt: f.modifiedAt,
-                backupState: .syncedAndLocal,
-                isCloudOnly: false
-            )
-        }
-
-        // On initial load, include cloud-only photos (in vault, deleted from device)
         if offset == 0 {
-            let localAssetIds = Set(itemsToProcess.compactMap { $0.sourceAssetIdentifier })
-            let cloudOnlyPhotos = await fetchCloudOnlyPhotos(
-                excludeLocalIds: localAssetIds, modelContainer: services.modelContainer)
-            newPhotos.append(contentsOf: cloudOnlyPhotos)
-            newPhotos.sort { $0.takenAt > $1.takenAt }
-            backedUpPhotos = newPhotos
+            backedUpPhotos = itemsToProcess
         } else {
-            backedUpPhotos.append(contentsOf: newPhotos)
+            backedUpPhotos.append(contentsOf: itemsToProcess)
         }
 
         currentOffset = offset + paginationBatchSize
@@ -174,35 +199,11 @@ class PhotosViewModel: ObservableObject {
         await loadRecentPhotos(offset: currentOffset)
     }
 
-    /// Fetch BackedUpAssets whose assetIdentifiers don't resolve to live PHAssets.
-    /// Returns them as BackedUpPhoto items with .cloudOnly state.
-    private func fetchCloudOnlyPhotos(
-        excludeLocalIds: Set<String>,
-        modelContainer: ModelContainer?
-    ) async -> [BackedUpPhoto] {
-        guard let container = modelContainer else { return [] }
-
-        return await Task.detached(priority: .userInitiated) {
-            let context = ModelContext(container)
-            var descriptor = FetchDescriptor<BackedUpAsset>()
-            descriptor.fetchLimit = 1000  // Safety limit
-
-            guard let allBackedUp = try? context.fetch(descriptor) else { return [] }
-
-            // Filter to BackedUpAssets not in the live PHAsset collection.
-            let cloudOnly = allBackedUp.filter { !excludeLocalIds.contains($0.assetIdentifier) }
-
-            return cloudOnly.map { asset in
-                BackedUpPhoto(
-                    id: asset.assetIdentifier,
-                    filename: asset.originalFilename,
-                    sizeBytes: Int(asset.sizeBytes),
-                    takenAt: asset.backedUpAt,
-                    backupState: .cloudOnly,
-                    isCloudOnly: true
-                )
-            }
-        }.value
+    /// True for image file extensions. `nonisolated` so the detached load task
+    /// can call it off the main actor.
+    nonisolated static func isImageFilename(_ name: String) -> Bool {
+        let ext = (name as NSString).pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "tiff", "bmp"].contains(ext)
     }
 
 
