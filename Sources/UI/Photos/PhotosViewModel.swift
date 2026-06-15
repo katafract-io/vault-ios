@@ -386,7 +386,7 @@ class PhotosViewModel: ObservableObject {
             }
 
             do {
-                let fileId = try await services.photoBackup.enqueueAsset(asset)
+                let fileId = try await services.photoBackup.enqueueToCameraRoll(asset)
                 updateAssetState(id: assetID, to: .syncedAndLocal)
                 logger.info("photo backed up: \(assetID, privacy: .public) → \(fileId, privacy: .public)")
             } catch {
@@ -428,7 +428,7 @@ class PhotosViewModel: ObservableObject {
             }
 
             do {
-                _ = try await services.photoBackup.enqueueAsset(asset)
+                _ = try await services.photoBackup.enqueueToCameraRoll(asset)
                 updateAssetState(id: assetId, to: .syncedAndLocal)
                 logger.info("single photo backed up: \(assetId, privacy: .public)")
                 allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }

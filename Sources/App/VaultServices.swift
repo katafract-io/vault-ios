@@ -115,7 +115,8 @@ public final class VaultServices: ObservableObject {
             syncEngine: self.syncEngine,
             modelContext: ModelContext(container),
             keyManager: self.keyManager,
-            masterKey: self.masterKey)
+            masterKey: self.masterKey,
+            apiClient: api)
 
         // Seed screenshot demo data if requested
         #if DEBUG
