@@ -255,6 +255,38 @@ class PhotosViewModel: ObservableObject {
         self.albums = result
     }
 
+    /// UserDefaults key holding the album set we last started/stopped backup
+    /// for, so we can diff against a freshly-saved selection.
+    private let reconciledAlbumsKey = "photos.reconciled_albums"
+
+    /// Reconcile the saved album selection (written by AlbumPickerSheet) against
+    /// what we've already acted on: start backup for newly-enabled albums and
+    /// stop+unsync newly-disabled ones. The picker previously only persisted the
+    /// selection and reloaded the grid — it never kicked the backup pipeline, so
+    /// selecting a new album did nothing and deselecting left its photos in the
+    /// vault.
+    func reconcileAlbumSelection() {
+        guard let services = self.services else { return }
+        let selected = Set(UserDefaults.standard.stringArray(forKey: enabledAlbumsKey) ?? [])
+        let previous = Set(UserDefaults.standard.stringArray(forKey: reconciledAlbumsKey) ?? [])
+        let added = selected.subtracting(previous)
+        let removed = previous.subtracting(selected)
+        dlog("reconcileAlbumSelection: selected=\(selected.count) added=\(added.count) removed=\(removed.count)", category: "photos", level: .info)
+
+        for albumId in added {
+            services.photoBackup.startAlbumBackup(albumId: albumId)
+        }
+        for albumId in removed {
+            services.photoBackup.stopAlbumBackup(albumId: albumId, apiClient: services.apiClient)
+            Task { @MainActor in
+                await services.photoBackup.unsyncAlbum(albumId: albumId, apiClient: services.apiClient)
+            }
+        }
+        UserDefaults.standard.set(Array(selected), forKey: reconciledAlbumsKey)
+
+        Task { @MainActor in await loadRecentPhotos() }
+    }
+
     func toggleAlbum(_ album: PhotoAlbumItem, enabled: Bool) {
         if let idx = albums.firstIndex(where: { $0.id == album.id }) {
             albums[idx].isEnabled = enabled

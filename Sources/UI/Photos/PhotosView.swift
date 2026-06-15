@@ -156,9 +156,8 @@ struct PhotosView: View {
             }
             .sheet(isPresented: $showAlbumsSheet) {
                 AlbumPickerSheet(onSave: {
-                    Task {
-                        await viewModel.loadRecentPhotos()
-                    }
+                    // Start/stop backup for the changed albums, then refresh.
+                    viewModel.reconcileAlbumSelection()
                 })
             }
             .sheet(isPresented: $showPaywall) {
