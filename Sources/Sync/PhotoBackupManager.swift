@@ -240,7 +240,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     ///
     /// Convention: photos go to the vault root. Per-album folder targeting
     /// lands separately when `toggleAlbum` is wired (WP 73).
-    public func enqueueAsset(_ asset: PHAsset) async throws -> String {
+    public func enqueueAsset(_ asset: PHAsset, parentFolderId: String? = nil) async throws -> String {
         if excludedIdentifiers.contains(asset.localIdentifier) {
             logger.info("skipping excluded asset \(asset.localIdentifier, privacy: .public)")
             dlog("photo enqueue skipped (excluded): \(asset.localIdentifier)", category: "photos", level: .debug)
@@ -259,13 +259,15 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             throw PhotoBackupManagerError.excluded
         }
 
-        let folderKey = try await keyManager.getOrCreateFolderKey(folderId: "root")
+        // Back up into the target folder (album folder under Media), encrypting
+        // under that folder's key. nil → root (auto/bulk paths, unchanged).
+        let folderKey = try await keyManager.getOrCreateFolderKey(folderId: parentFolderId ?? "root")
         let (tempURL, originalName, sizeBytes) = try await Self.exportAssetToTemp(asset: asset)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         let fileId = try await syncEngine.importFile(
             localURL: tempURL,
-            parentFolderId: nil,                // root
+            parentFolderId: parentFolderId,
             folderKey: folderKey,
             masterKey: masterKey,
             filename: originalName,
@@ -287,7 +289,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     /// `Task.isCancelled` and exits cleanly if `stopAlbumBackup` was called.
     /// In-progress assets finish (PHAssetResourceManager.writeData isn't
     /// cancellable mid-write), but no new assets start.
-    public func startAlbumBackup(albumId: String) {
+    public func startAlbumBackup(albumId: String, apiClient: VaultAPIClient) {
         // Cancel any prior task for the same album so toggling enable→disable→
         // enable doesn't leave two batches racing.
         albumOperations[albumId]?.cancel()
@@ -308,10 +310,64 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.runAlbumBackup(albumId: albumId)
+            await self.runAlbumBackup(albumId: albumId, apiClient: apiClient)
             self.albumOperations[albumId] = nil
         }
         albumOperations[albumId] = task
+    }
+
+    // MARK: - Album → folder organization (Media/<Album>/photos)
+
+    private static let albumFolderMapKey = "vaultyx.photos.album_folder_map"
+
+    private func albumFolderId(for albumId: String) -> String? {
+        (UserDefaults.standard.dictionary(forKey: Self.albumFolderMapKey) as? [String: String])?[albumId]
+    }
+    private func setAlbumFolderId(_ folderId: String, for albumId: String) {
+        var map = (UserDefaults.standard.dictionary(forKey: Self.albumFolderMapKey) as? [String: String]) ?? [:]
+        map[albumId] = folderId
+        UserDefaults.standard.set(map, forKey: Self.albumFolderMapKey)
+    }
+    private func clearAlbumFolderId(for albumId: String) {
+        var map = (UserDefaults.standard.dictionary(forKey: Self.albumFolderMapKey) as? [String: String]) ?? [:]
+        map.removeValue(forKey: albumId)
+        UserDefaults.standard.set(map, forKey: Self.albumFolderMapKey)
+    }
+
+    /// Find-or-create a vault folder by (name, parent), returning its folderId.
+    /// Idempotent: reuses an existing VaultFolder cache row with the same name
+    /// and parent. Creates the folder server-side + pushes its key, mirroring
+    /// FileBrowserViewModel.createFolder.
+    private func ensureFolder(name: String, parentFolderId: String?, apiClient: VaultAPIClient) async -> String? {
+        if let existing = (try? modelContext.fetch(FetchDescriptor<VaultFolder>()))?
+            .first(where: { $0.name == name && $0.parentFolderId == parentFolderId }) {
+            return existing.folderId
+        }
+        let newId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        do {
+            let parentKey = try await keyManager.getOrCreateFolderKey(folderId: parentFolderId ?? "root")
+            let nameEnc = try VaultCrypto.encrypt(Data(name.utf8), key: parentKey).base64EncodedString()
+            _ = try await apiClient.createFolder(folderId: newId, parentFolderId: parentFolderId, nameEnc: nameEnc)
+            _ = try await keyManager.getOrCreateFolderKey(folderId: newId)
+            modelContext.insert(VaultFolder(folderId: newId, parentFolderId: parentFolderId, name: name))
+            try? modelContext.save()
+            dlog("created vault folder '\(name)' (\(newId)) parent=\(parentFolderId ?? "root")", category: "photos", level: .info)
+            return newId
+        } catch {
+            logger.error("ensureFolder failed for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            dlog("ensureFolder failed for \(name): \(error.localizedDescription)", category: "photos", level: .error)
+            return nil
+        }
+    }
+
+    /// Resolve (creating if needed) the destination folder for an album:
+    /// Media/<AlbumName>. Persists the album→folder mapping.
+    private func destinationFolder(albumId: String, albumName: String, apiClient: VaultAPIClient) async -> String? {
+        if let mapped = albumFolderId(for: albumId) { return mapped }
+        guard let mediaId = await ensureFolder(name: "Media", parentFolderId: nil, apiClient: apiClient) else { return nil }
+        guard let albumFolder = await ensureFolder(name: albumName, parentFolderId: mediaId, apiClient: apiClient) else { return nil }
+        setAlbumFolderId(albumFolder, for: albumId)
+        return albumFolder
     }
 
     /// Cancel the in-flight backup for `albumId` AND remove already-backed-up
@@ -354,6 +410,21 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         for assetId in assetIds {
             await removeBackup(assetIdentifier: assetId, apiClient: apiClient)
             removed += 1
+        }
+
+        // Remove the album's vault folder (Media/<Album>) now its photos are gone.
+        if let folderId = albumFolderId(for: albumId) {
+            do {
+                try await apiClient.deleteFolder(folderId: folderId)
+            } catch {
+                logger.error("unsyncAlbum: deleteFolder \(folderId, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            }
+            if let vf = (try? modelContext.fetch(FetchDescriptor<VaultFolder>()))?
+                .first(where: { $0.folderId == folderId }) {
+                modelContext.delete(vf)
+                try? modelContext.save()
+            }
+            clearAlbumFolderId(for: albumId)
         }
         logger.info("unsync complete for album \(albumId, privacy: .public) — touched \(removed, privacy: .public) asset(s)")
     }
@@ -406,20 +477,21 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         try? modelContext.save()
     }
 
-    private func runAlbumBackup(albumId: String) async {
+    private func runAlbumBackup(albumId: String, apiClient: VaultAPIClient) async {
         // Bulk-enumerate the album off-main. PHAsset.fetchAssets +
         // enumerateObjects sync-call Photos.sqlite via NSXPCStoreConnection;
         // doing it on @MainActor (which this class is) blocks the runloop
         // and trips the iOS watchdog (bug type 228 / "UIKit-runloop timeout"
         // — see /tmp/vault.crash.ips from build 513). Only [String] (Sendable)
         // crosses the actor boundary; PHAsset itself is non-Sendable.
-        struct AlbumLookup: Sendable { let collectionResolved: Bool; let assetIds: [String] }
+        struct AlbumLookup: Sendable { let collectionResolved: Bool; let assetIds: [String]; let albumName: String }
         let lookup: AlbumLookup = await Task.detached(priority: .userInitiated) {
             let coll = PHAssetCollection.fetchAssetCollections(
                 withLocalIdentifiers: [albumId], options: nil)
             guard let collection = coll.firstObject else {
-                return AlbumLookup(collectionResolved: false, assetIds: [])
+                return AlbumLookup(collectionResolved: false, assetIds: [], albumName: "Album")
             }
+            let title = collection.localizedTitle ?? "Album"
             // No mediaType predicate — Vaultyx backs up videos + photos +
             // Live Photos + iCloud-shared assets equally. Filtering on
             // PHAssetMediaType.image was excluding everything in albums
@@ -430,7 +502,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             assetsResult.enumerateObjects { asset, _, _ in
                 ids.append(asset.localIdentifier)
             }
-            return AlbumLookup(collectionResolved: true, assetIds: ids)
+            return AlbumLookup(collectionResolved: true, assetIds: ids, albumName: title)
         }.value
         let allIds = lookup.assetIds
         if !lookup.collectionResolved {
@@ -454,6 +526,16 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         logger.info("album backup starting: \(albumId, privacy: .public) — \(toProcess.count, privacy: .public) unbacked asset(s)")
         dlog("album backup starting: \(albumId) — \(toProcess.count) asset(s)", category: "photos", level: .info)
 
+        guard !toProcess.isEmpty else {
+            dlog("album backup: nothing new to back up for \(lookup.albumName)", category: "photos", level: .info)
+            return
+        }
+
+        // Destination = Media/<AlbumName>. Resolve once; nil falls back to root.
+        let destFolderId = await destinationFolder(
+            albumId: albumId, albumName: lookup.albumName, apiClient: apiClient)
+        dlog("album '\(lookup.albumName)' → folder \(destFolderId ?? "root")", category: "photos", level: .info)
+
         for assetId in toProcess {
             if Task.isCancelled {
                 logger.info("album backup interrupted: \(albumId, privacy: .public)")
@@ -469,7 +551,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
                 continue
             }
             do {
-                _ = try await enqueueAsset(asset)
+                _ = try await enqueueAsset(asset, parentFolderId: destFolderId)
             } catch {
                 logger.error("album asset failed for \(assetId, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 dlog("album asset failed for \(assetId): \(error.localizedDescription)", category: "photos", level: .error)
