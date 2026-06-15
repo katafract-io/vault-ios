@@ -572,14 +572,18 @@ class FileBrowserViewModel: ObservableObject {
 
         // Branch 2: pull from server, decrypt, write into LocalCache so the
         // next open hits the fast path.
-        let folderId = currentFolderId ?? rootFolderId
         downloadFilename = item.name
         downloadProgress = 0
         downloadInProgress = true
         defer { downloadInProgress = false }
 
+        // Key off the FILE's own parent folder — the key it was encrypted under
+        // at import — NOT the folder currently being viewed. Using the current
+        // view's folder opens a file with the wrong key (e.g. a root-keyed photo
+        // opened from a subfolder) → CryptoKit authentication failure (error 3).
+        let keyFolderId = row?.parentFolderId ?? "root"
         do {
-            let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: folderId ?? "root")
+            let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: keyFolderId)
             let plaintext = try await services.syncEngine.downloadFile(
                 fileId: item.id,
                 folderKey: folderKey,
