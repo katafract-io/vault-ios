@@ -315,7 +315,14 @@ class RecentsViewModel: ObservableObject {
             return nil
         }
         do {
-            let folderKey = try await services.keyManager.getOrCreateFolderKey(folderId: "root")
+            // Key off the file's own parent folder (what it was encrypted under),
+            // not a hardcoded "root" — otherwise files in subfolders fail to
+            // decrypt with a CryptoKit authentication failure (error 3).
+            let context = ModelContext(services.modelContainer)
+            let parentFolderId = (try? context.fetch(FetchDescriptor<LocalFile>()))?
+                .first { $0.fileId == item.id }?.parentFolderId
+            let folderKey = try await services.keyManager.getOrCreateFolderKey(
+                folderId: parentFolderId ?? "root")
             let plaintext = try await services.syncEngine.downloadFile(
                 fileId: item.id, folderKey: folderKey)
             let tmp = FileManager.default.temporaryDirectory
