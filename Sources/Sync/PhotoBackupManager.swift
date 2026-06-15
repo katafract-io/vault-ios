@@ -50,6 +50,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     private let modelContext: ModelContext
     private let keyManager: VaultKeyManager
     private let masterKey: SymmetricKey
+    private let apiClient: VaultAPIClient
     private var isRegistered = false
     private let logger = Logger(subsystem: "com.katafract.vault.photos", category: "library-change")
 
@@ -105,12 +106,14 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         syncEngine: VaultSyncEngine,
         modelContext: ModelContext,
         keyManager: VaultKeyManager,
-        masterKey: SymmetricKey
+        masterKey: SymmetricKey,
+        apiClient: VaultAPIClient
     ) {
         self.syncEngine = syncEngine
         self.modelContext = modelContext
         self.keyManager = keyManager
         self.masterKey = masterKey
+        self.apiClient = apiClient
         super.init()
         refresh()
         loadBulkBackupState()
@@ -219,12 +222,13 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             }
             self.logger.info("\(newAssets.count, privacy: .public) new asset(s) detected; auto-backup on, enqueuing")
             dlog("library-change: enqueuing \(newAssets.count) new asset(s)", category: "photos", level: .info)
+            let crFolder = await self.cameraRollFolderId()
             let excluded = self.excludedIdentifiers
             for asset in newAssets
             where !self.backedUpIdentifiers.contains(asset.localIdentifier)
                   && !excluded.contains(asset.localIdentifier) {
                 do {
-                    let fileId = try await self.enqueueAsset(asset)
+                    let fileId = try await self.enqueueAsset(asset, parentFolderId: crFolder)
                     self.logger.info("auto-backed-up new asset \(asset.localIdentifier, privacy: .public) → \(fileId, privacy: .public)")
                 } catch {
                     self.logger.error("auto-backup failed for new asset \(asset.localIdentifier, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -368,6 +372,21 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         guard let albumFolder = await ensureFolder(name: albumName, parentFolderId: mediaId, apiClient: apiClient) else { return nil }
         setAlbumFolderId(albumFolder, for: albumId)
         return albumFolder
+    }
+
+    /// Destination for non-album backups (auto-new-asset, full-library bulk, and
+    /// manual single-photo) → Media/Camera Roll. ensureFolder is idempotent so
+    /// this reuses the folder rather than creating duplicates.
+    private func cameraRollFolderId() async -> String? {
+        guard let mediaId = await ensureFolder(name: "Media", parentFolderId: nil, apiClient: apiClient) else { return nil }
+        return await ensureFolder(name: "Camera Roll", parentFolderId: mediaId, apiClient: apiClient)
+    }
+
+    /// Back up one asset into Media/Camera Roll. Used by the manual single-photo
+    /// paths; falls back to root if folder creation fails.
+    public func enqueueToCameraRoll(_ asset: PHAsset) async throws -> String {
+        let folderId = await cameraRollFolderId()
+        return try await enqueueAsset(asset, parentFolderId: folderId)
     }
 
     /// Cancel the in-flight backup for `albumId` AND remove already-backed-up
@@ -660,6 +679,9 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         let batchSize = 50
         var processedCount = 0
 
+        // Full-library backup lands in Media/Camera Roll (resolved once).
+        let crFolder = await cameraRollFolderId()
+
         for assetId in toProcess {
             if Task.isCancelled {
                 logger.info("bulk backup interrupted")
@@ -673,7 +695,7 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             }
 
             do {
-                _ = try await enqueueAsset(asset)
+                _ = try await enqueueAsset(asset, parentFolderId: crFolder)
                 processedCount += 1
             } catch {
                 logger.error("bulk backup asset failed for \(assetId, privacy: .public): \(error.localizedDescription, privacy: .public)")
