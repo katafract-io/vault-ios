@@ -274,7 +274,7 @@ class PhotosViewModel: ObservableObject {
         dlog("reconcileAlbumSelection: selected=\(selected.count) added=\(added.count) removed=\(removed.count)", category: "photos", level: .info)
 
         for albumId in added {
-            services.photoBackup.startAlbumBackup(albumId: albumId)
+            services.photoBackup.startAlbumBackup(albumId: albumId, apiClient: services.apiClient)
         }
         for albumId in removed {
             services.photoBackup.stopAlbumBackup(albumId: albumId, apiClient: services.apiClient)
@@ -302,7 +302,7 @@ class PhotosViewModel: ObservableObject {
             return
         }
         if enabled {
-            services.photoBackup.startAlbumBackup(albumId: album.id)
+            services.photoBackup.startAlbumBackup(albumId: album.id, apiClient: services.apiClient)
         } else {
             services.photoBackup.stopAlbumBackup(albumId: album.id, apiClient: services.apiClient)
             Task { @MainActor in
