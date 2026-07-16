@@ -79,6 +79,7 @@ jobs:
 
       - name: Unlock keychain
         run: |
+          security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
           security unlock-keychain -p "" "$KEYCHAIN"
           security set-keychain-settings -lut 7200 "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN" >/dev/null 2>&1
