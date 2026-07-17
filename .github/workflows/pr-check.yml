@@ -23,16 +23,12 @@ on:
       - '.github/workflows/pr-check.yml'
       - '.github/repo-meta.yml'
 
-# head_ref is set on pull_request, empty on push; ref_name is the branch name on both.
-# Using ref_name (not ref) makes the push + pull_request runs for one branch share a
-# group so cancel-in-progress collapses the duplicate instead of double-running.
-concurrency:
-  group: pr-check-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
-
 jobs:
   build:
     name: Compile (iOS Simulator, no signing)
+    # NO cancel-in-progress here: this is the REQUIRED check, and a cancelled run of a
+    # required context makes GitHub's rollup treat the whole thing as failed → PR blocked
+    # even when a sibling run succeeded. Let both push+PR runs complete (cheap compile).
     runs-on: [self-hosted, macOS, ios-build]
     timeout-minutes: 15
     steps:
