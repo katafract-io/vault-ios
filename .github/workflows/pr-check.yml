@@ -102,3 +102,56 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             2>&1 | grep -E ": (error|warning):" | head -100
+
+  adversarial-review:
+    name: Adversarial review (5-axis)
+    runs-on: [self-hosted, macOS, ios-build, ARM64]   # hephaestus — the authenticated claude CLI host
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mint autofix[bot] token (separate reviewer identity)
+        id: apptoken
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.AUTOFIX_APP_ID }}
+          private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
+
+      - name: Compute PR diff
+        run: |
+          MB=""
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch origin "${{ github.base_ref }}" --quiet || true
+            MB=$(git merge-base "origin/${{ github.base_ref }}" HEAD 2>/dev/null || echo "")
+          fi
+          [ -z "$MB" ] && MB=$(git rev-parse HEAD~1 2>/dev/null || echo "")
+          if [ -n "$MB" ]; then git diff "$MB" HEAD > pr.diff; else git diff HEAD > pr.diff; fi
+          echo "diff lines: $(wc -l < pr.diff)"
+
+      - name: Run 5-axis adversarial review (claude -p)
+        id: review
+        run: |
+          export PATH="$PATH:$HOME/.local/bin:/opt/homebrew/bin"
+          set +e
+          python3 .github/ci/adversarial-review.py --diff pr.diff --out advrev.md --json advrev.json
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Post review as PR comment (autofix[bot])
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ steps.apptoken.outputs.token }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file advrev.md || true
+
+      - name: Gate on high-severity confirmed findings
+        run: |
+          if [ "${{ steps.review.outputs.rc }}" = "1" ]; then
+            echo "::error::Adversarial review found high-severity CONFIRMED finding(s) — see the PR comment."
+            exit 1
+          fi
+          echo "No high-severity confirmed findings (rc=${{ steps.review.outputs.rc }})."
