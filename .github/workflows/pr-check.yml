@@ -1,6 +1,9 @@
 name: PR check (compile gate)
 
 on:
+  # pull_request ONLY (fires for autofix-bot-authored PRs too, verified). No `push` trigger:
+  # push + pull_request both firing for the SAME commit left a cancelled run of the required
+  # context → merge blocked. One run per commit means adversarial-review can be REQUIRED.
   pull_request:
     paths:
       - '**/*.swift'
@@ -11,17 +14,12 @@ on:
       - 'Package.resolved'
       - '.github/workflows/pr-check.yml'
       - '.github/repo-meta.yml'
-  push:
-    branches-ignore: [main]
-    paths:
-      - '**/*.swift'
-      - '**/*.xcodeproj/**'
-      - '**/*.pbxproj'
-      - 'project.yml'
-      - 'Package.swift'
-      - 'Package.resolved'
-      - '.github/workflows/pr-check.yml'
-      - '.github/repo-meta.yml'
+
+# Safe with pull_request-only: cancels only older-commit runs (a new commit = new head SHA),
+# never a same-SHA sibling, so the head commit never carries a cancelled required check.
+concurrency:
+  group: pr-check-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -89,12 +87,6 @@ jobs:
   adversarial-review:
     name: Adversarial review (5-axis)
     runs-on: [self-hosted, claude-review]   # dedicated always-on claude reviewers (fury + artemis), NOT a build runner
-    # Job-scoped dedup (NOT workflow-scoped): collapses the push+PR double-run so we don't
-    # race the comment upsert or double-spend claude. Safe because this job is NOT a required
-    # check, so a cancelled run here can't block the merge (unlike the required Compile job).
-    concurrency:
-      group: advrev-${{ github.head_ref || github.ref_name }}
-      cancel-in-progress: true
     timeout-minutes: 25
     permissions:
       contents: read
