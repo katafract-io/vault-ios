@@ -23,6 +23,19 @@ on:
       - 'Package.resolved'
       - '.github/workflows/pr-check.yml'
       - '.github/repo-meta.yml'
+  # Also run on branch push (App-token PRs don't fire pull_request; a real push does).
+  push:
+    branches-ignore: [main]
+    paths:
+      - '**/*.swift'
+      - '**/*.xcodeproj/**'
+      - '**/*.pbxproj'
+      - 'project.yml'
+      - 'Package.swift'
+      - 'Package.resolved'
+      - '.github/workflows/pr-check.yml'
+      - '.github/repo-meta.yml'
+
 
 concurrency:
   group: pr-check-${{ github.head_ref || github.ref }}
