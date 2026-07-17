@@ -115,10 +115,11 @@ jobs:
           BASE="${{ github.base_ref }}"
           [ -z "$BASE" ] && BASE="${{ github.event.repository.default_branch }}"
           [ -z "$BASE" ] && BASE=main
-          git fetch origin "$BASE" --quiet || true
-          MB=$(git merge-base "origin/$BASE" HEAD 2>/dev/null || echo "")
-          [ -z "$MB" ] && MB=$(git rev-parse HEAD~1 2>/dev/null || echo "")
-          if [ -n "$MB" ]; then git diff "$MB" HEAD > pr.diff; else git diff HEAD > pr.diff; fi
+          # Hard-fail (→ gate fails closed) rather than under-reviewing to HEAD~1: an
+          # unresolvable base could hide a malicious earlier commit behind a benign tip.
+          git fetch origin "$BASE" --quiet || { echo "::error::cannot fetch base '$BASE'"; exit 1; }
+          MB=$(git merge-base "origin/$BASE" HEAD) || { echo "::error::cannot resolve merge-base with '$BASE'"; exit 1; }
+          git diff "$MB" HEAD > pr.diff
           echo "diff lines: $(wc -l < pr.diff)"
 
       - name: Run 5-axis adversarial review (TRUSTED reviewer, claude -p)
@@ -146,34 +147,36 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.apptoken.outputs.token }}
           REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
         run: |
+          # Never clobber a prior good comment with an empty body if no report was produced.
+          [ -s advrev.md ] || { echo "no report produced — leaving any prior comment intact"; exit 0; }
           PR="${{ github.event.pull_request.number }}"
           if [ -z "$PR" ]; then
-            PR=$(gh pr list -R "$REPO" --head "${{ github.ref_name }}" --state open --json number -q '.[0].number' 2>/dev/null)
+            # owner-qualified head so a fork's same-named branch can't resolve to the wrong PR
+            PR=$(gh pr list -R "$REPO" --head "$OWNER:${{ github.ref_name }}" --state open --json number -q '.[0].number' 2>/dev/null)
           fi
           [ -z "$PR" ] && { echo "no open PR for this ref — skipping comment"; exit 0; }
           { echo '<!-- adversarial-review -->'; cat advrev.md; } > body.md
-          # author + marker scoped; select filters out non-matches so tail -1 is a single id
-          CID=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-                 --jq '.[] | select(.user.login=="katafract-autofix[bot]" and (.body|contains("<!-- adversarial-review -->"))) | .id' \
-                 2>/dev/null | tail -1)
-          if [ -n "$CID" ]; then
-            gh api -X PATCH "repos/$REPO/issues/comments/$CID" -F body=@body.md >/dev/null && echo "updated comment $CID"
-          else
+          # Converge to exactly one bot comment: keep the earliest, delete any twins, patch the survivor.
+          mapfile -t CIDS < <(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+             --jq '.[] | select(.user.login=="katafract-autofix[bot]" and (.body|contains("<!-- adversarial-review -->"))) | .id')
+          if [ "${#CIDS[@]}" -eq 0 ]; then
             gh pr comment "$PR" -R "$REPO" --body-file body.md && echo "posted new comment"
+          else
+            for extra in "${CIDS[@]:1}"; do gh api -X DELETE "repos/$REPO/issues/comments/$extra" >/dev/null 2>&1 && echo "deleted dup $extra"; done
+            gh api -X PATCH "repos/$REPO/issues/comments/${CIDS[0]}" -F body=@body.md >/dev/null && echo "updated comment ${CIDS[0]}"
           fi
 
-      - name: Gate on high-severity confirmed findings
+      - name: Gate on adversarial review
         run: |
+          # Default-deny: pass ONLY on a clean rc=0. rc=1 (finding), rc=2 (incomplete), and any
+          # other code (137 OOM-kill, 124 timeout, 127 missing, crash) all fail CLOSED — an
+          # unreviewed or abnormally-exited review never yields a green check.
           rc="${{ steps.review.outputs.rc }}"
-          if [ "$rc" = "1" ]; then
-            echo "::error::Adversarial review found high-severity CONFIRMED finding(s) — see the PR comment."
-            exit 1
-          fi
-          if [ "$rc" = "2" ]; then
-            # Fail CLOSED: an unreviewed PR never merges. Reviewers are redundant (fury + artemis),
-            # so this only trips if ALL are down — re-run once recovered, or use the Accept override.
-            echo "::error::Adversarial review INCOMPLETE after retry (reviewer unavailable) — failing CLOSED."
-            exit 1
-          fi
-          echo "Gate passed (rc=$rc)."
+          case "$rc" in
+            0) echo "Gate passed (no high-severity confirmed findings)."; exit 0 ;;
+            1) echo "::error::Adversarial review found high-severity CONFIRMED finding(s) — see the PR comment."; exit 1 ;;
+            2) echo "::error::Adversarial review INCOMPLETE after retry (reviewer unavailable) — failing CLOSED. Re-run or use the Accept override."; exit 1 ;;
+            *) echo "::error::Adversarial review exited abnormally (rc=$rc) — failing CLOSED."; exit 1 ;;
+          esac
