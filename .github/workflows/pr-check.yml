@@ -73,6 +73,7 @@ jobs:
         run: |
           xcodebuild -scheme "${{ steps.meta.outputs.scheme }}" \
                      -project "${{ steps.meta.outputs.project }}" \
+                     -derivedDataPath "${{ runner.temp }}/dd-${{ github.run_id }}-${{ github.run_attempt }}" \
                      -resolvePackageDependencies 2>&1 | tail -10
 
       - name: Compile (Debug, simulator, no signing)
@@ -83,6 +84,7 @@ jobs:
             -project "${{ steps.meta.outputs.project }}" \
             -destination "generic/platform=iOS Simulator" \
             -configuration Debug \
+            -derivedDataPath "${{ runner.temp }}/dd-${{ github.run_id }}-${{ github.run_attempt }}" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
