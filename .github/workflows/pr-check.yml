@@ -1,17 +1,5 @@
 name: PR check (compile gate)
 
-# Verification framework — Tier 0 (static / compile).
-# See .doctrine/verification-framework.md
-#
-# Goal: every PR that touches Swift / Xcode files must compile-check on a real
-# Xcode toolchain BEFORE merge. Catches the kind of silent breakage that
-# previously only surfaced in TestFlight / ASC upload (e.g. ship.yml run
-# 25227640893 — closed-train CFBundleShortVersionString that the dev never
-# saw locally).
-#
-# Cheap by design: simulator build, no archive, no test, no signing.
-# Should complete in 3-5 min on cmfmbp / chronos-macbuilder.
-
 on:
   pull_request:
     paths:
@@ -22,8 +10,8 @@ on:
       - 'Package.swift'
       - 'Package.resolved'
       - '.github/workflows/pr-check.yml'
+      - '.github/ci/adversarial-review.py'
       - '.github/repo-meta.yml'
-  # Also run on branch push (App-token PRs don't fire pull_request; a real push does).
   push:
     branches-ignore: [main]
     paths:
@@ -34,11 +22,14 @@ on:
       - 'Package.swift'
       - 'Package.resolved'
       - '.github/workflows/pr-check.yml'
+      - '.github/ci/adversarial-review.py'
       - '.github/repo-meta.yml'
 
-
+# head_ref is set on pull_request, empty on push; ref_name is the branch name on both.
+# Using ref_name (not ref) makes the push + pull_request runs for one branch share a
+# group so cancel-in-progress collapses the duplicate instead of double-running.
 concurrency:
-  group: pr-check-${{ github.head_ref || github.ref }}
+  group: pr-check-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -46,7 +37,6 @@ jobs:
     name: Compile (iOS Simulator, no signing)
     runs-on: [self-hosted, macOS, ios-build]
     timeout-minutes: 15
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,7 +51,6 @@ jobs:
             echo "::error::.github/repo-meta.yml missing — required by verification framework"
             exit 1
           fi
-          # Minimal yq-free parser; works for the flat key:value file we ship.
           SCHEME=$(awk -F': *' '/^scheme:/ {print $2; exit}' .github/repo-meta.yml | tr -d '"' | tr -d "'")
           PROJECT=$(awk -F': *' '/^project:/ {print $2; exit}' .github/repo-meta.yml | tr -d '"' | tr -d "'")
           if [ -z "$SCHEME" ] || [ -z "$PROJECT" ]; then
@@ -123,13 +112,13 @@ jobs:
           app-id: ${{ secrets.AUTOFIX_APP_ID }}
           private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
 
-      - name: Compute PR diff
+      - name: Compute PR diff (merge-base vs default branch, same on push + PR)
         run: |
-          MB=""
-          if [ -n "${{ github.base_ref }}" ]; then
-            git fetch origin "${{ github.base_ref }}" --quiet || true
-            MB=$(git merge-base "origin/${{ github.base_ref }}" HEAD 2>/dev/null || echo "")
-          fi
+          BASE="${{ github.base_ref }}"
+          [ -z "$BASE" ] && BASE="${{ github.event.repository.default_branch }}"
+          [ -z "$BASE" ] && BASE=main
+          git fetch origin "$BASE" --quiet || true
+          MB=$(git merge-base "origin/$BASE" HEAD 2>/dev/null || echo "")
           [ -z "$MB" ] && MB=$(git rev-parse HEAD~1 2>/dev/null || echo "")
           if [ -n "$MB" ]; then git diff "$MB" HEAD > pr.diff; else git diff HEAD > pr.diff; fi
           echo "diff lines: $(wc -l < pr.diff)"
@@ -138,20 +127,40 @@ jobs:
         id: review
         run: |
           export PATH="$PATH:$HOME/.local/bin:/opt/homebrew/bin"
+          run_review() { python3 .github/ci/adversarial-review.py --diff pr.diff --out advrev.md --json advrev.json; }
           set +e
-          python3 .github/ci/adversarial-review.py --diff pr.diff --out advrev.md --json advrev.json
-          echo "rc=$?" >> "$GITHUB_OUTPUT"
+          run_review; rc=$?
+          if [ "$rc" = "2" ]; then
+            echo "review incomplete (rc=2, reviewer offline) — retrying once…"
+            run_review; rc=$?
+          fi
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      - name: Post review as PR comment (autofix[bot])
+      - name: Post/update review comment (autofix[bot], upsert)
         if: ${{ github.event_name == 'pull_request' }}
         env:
           GH_TOKEN: ${{ steps.apptoken.outputs.token }}
-        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file advrev.md || true
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          { echo '<!-- adversarial-review -->'; cat advrev.md; } > body.md
+          CID=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+                --jq 'map(select(.body|test("adversarial-review"))) | last | .id' 2>/dev/null)
+          if [ -n "$CID" ] && [ "$CID" != "null" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$CID" -F body=@body.md >/dev/null && echo "updated comment $CID"
+          else
+            gh pr comment "$PR" --body-file body.md && echo "posted new comment"
+          fi
 
       - name: Gate on high-severity confirmed findings
         run: |
-          if [ "${{ steps.review.outputs.rc }}" = "1" ]; then
+          rc="${{ steps.review.outputs.rc }}"
+          if [ "$rc" = "1" ]; then
             echo "::error::Adversarial review found high-severity CONFIRMED finding(s) — see the PR comment."
             exit 1
           fi
-          echo "No high-severity confirmed findings (rc=${{ steps.review.outputs.rc }})."
+          if [ "$rc" = "2" ]; then
+            echo "::warning::Adversarial review INCOMPLETE after retry (reviewer offline) — failing OPEN per policy."
+          fi
+          echo "Gate passed (rc=$rc)."
