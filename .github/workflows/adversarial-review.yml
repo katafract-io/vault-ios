@@ -1,0 +1,127 @@
+name: Adversarial review
+
+# BASE-BRANCH-CONTROLLED GATE. Triggered via `workflow_run`, so GitHub ALWAYS executes
+# THIS file from the repository default branch — never the PR head. A PR therefore cannot
+# edit the review/gate logic to neuter its own required check (the self-modifying-gate
+# hole that a `pull_request`-triggered INLINE gate has: the PR could rewrite `exit 0`
+# while keeping the required job/context name byte-identical). The PR-editable
+# pr-check.yml only runs the compile. This workflow reviews the REAL head-vs-base diff
+# with the TRUSTED runner-local reviewer and reports the required
+# `Adversarial review (5-axis)` COMMIT STATUS on the PR head SHA.
+
+on:
+  workflow_run:
+    workflows: ["PR check (compile gate)"]
+    types: [completed]
+
+permissions:
+  contents: read
+  statuses: write
+  pull-requests: write
+
+concurrency:
+  # One review per head SHA; a newer SHA (new commit) is a different group.
+  group: adv-review-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Adversarial review (5-axis)
+    # Only gate PRs (ignore pushes to main and other non-PR pr-check runs).
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    runs-on: [self-hosted, claude-review]   # dedicated always-on claude reviewers, NOT a build runner
+    timeout-minutes: 25
+    env:
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      BASE_REPO: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Mint autofix[bot] token (separate reviewer identity)
+        id: apptoken
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.AUTOFIX_APP_ID }}
+          private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
+
+      - name: Post pending status on PR head SHA
+        env:
+          # Built-in GITHUB_TOKEN (statuses:write via permissions:) — a workflow_run
+          # workflow runs in the trusted default-branch context so its token gets write
+          # scopes. The autofix App itself lacks Commit-statuses perm; the app token is
+          # used only for the review COMMENT (reviewer identity), not the status signal.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Post pending FIRST so the required context exists even if a later step dies
+          # (it then stays pending → merge blocked = fail CLOSED; a re-run clears it).
+          gh api -X POST "repos/$BASE_REPO/statuses/$HEAD_SHA" \
+            -f state=pending -f context="Adversarial review (5-axis)" \
+            -f description="Reviewing PR diff…" >/dev/null
+
+      - name: Checkout base repo (this default-branch workflow; used only for git)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute head-vs-base diff (data only, never executed)
+        run: |
+          set -euo pipefail
+          git fetch origin "$HEAD_SHA" --quiet || git fetch origin "$HEAD_BRANCH" --quiet
+          git fetch origin "$DEFAULT_BRANCH" --quiet
+          MB=$(git merge-base "origin/$DEFAULT_BRANCH" "$HEAD_SHA") \
+            || { echo "::error::cannot resolve merge-base"; exit 1; }
+          git diff "$MB" "$HEAD_SHA" > pr.diff
+          echo "diff lines: $(wc -l < pr.diff)"
+
+      - name: Run 5-axis adversarial review (TRUSTED runner-local reviewer)
+        id: review
+        run: |
+          export PATH="$PATH:$HOME/.local/bin:/opt/homebrew/bin"
+          REVIEWER="$HOME/.katafract-ci/adversarial-review.py"
+          if [ ! -f "$REVIEWER" ]; then
+            echo "::error::trusted reviewer missing on runner ($REVIEWER)"
+            echo "rc=2" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          run_review() { python3 "$REVIEWER" --diff pr.diff --out advrev.md --json advrev.json; }
+          set +e
+          run_review; rc=$?
+          if [ "$rc" = "2" ]; then
+            echo "review incomplete (rc=2) — retrying once…"; run_review; rc=$?
+          fi
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Post/update review comment (autofix[bot], upsert)
+        env:
+          GH_TOKEN: ${{ steps.apptoken.outputs.token }}
+        run: |
+          [ -s advrev.md ] || { echo "no report produced — leaving any prior comment intact"; exit 0; }
+          PR=$(gh pr list -R "$BASE_REPO" --head "$HEAD_BRANCH" --state open --json number -q '.[0].number' 2>/dev/null)
+          [ -z "$PR" ] && { echo "no open PR for head '$HEAD_BRANCH' — skipping comment"; exit 0; }
+          { echo '<!-- adversarial-review -->'; cat advrev.md; } > body.md
+          mapfile -t CIDS < <(gh api "repos/$BASE_REPO/issues/$PR/comments" --paginate \
+             --jq '.[] | select(.user.login=="katafract-autofix[bot]" and (.body|contains("<!-- adversarial-review -->"))) | .id')
+          if [ "${#CIDS[@]}" -eq 0 ]; then
+            gh pr comment "$PR" -R "$BASE_REPO" --body-file body.md && echo "posted new comment"
+          else
+            for extra in "${CIDS[@]:1}"; do gh api -X DELETE "repos/$BASE_REPO/issues/comments/$extra" >/dev/null 2>&1 && echo "deleted dup $extra"; done
+            gh api -X PATCH "repos/$BASE_REPO/issues/comments/${CIDS[0]}" -F body=@body.md >/dev/null && echo "updated comment ${CIDS[0]}"
+          fi
+
+      - name: Report final status (the gate)
+        env:
+          GH_TOKEN: ${{ github.token }}   # built-in token posts the required status signal
+        run: |
+          # Default-deny: success ONLY on rc=0. rc=1 (finding), rc=2 (incomplete), any
+          # other (crash/timeout/OOM) → failure = fail CLOSED. The status IS the required check.
+          rc="${{ steps.review.outputs.rc }}"
+          case "$rc" in
+            0) st=success; desc="No high-severity confirmed findings" ;;
+            1) st=failure; desc="High-severity CONFIRMED finding — see PR comment" ;;
+            2) st=failure; desc="Review incomplete after retry (reviewer unavailable) — failing CLOSED" ;;
+            *) st=failure; desc="Review exited abnormally (rc=$rc) — failing CLOSED" ;;
+          esac
+          gh api -X POST "repos/$BASE_REPO/statuses/$HEAD_SHA" \
+            -f state="$st" -f context="Adversarial review (5-axis)" -f description="$desc" >/dev/null
+          echo "posted status=$st (rc=$rc) on $HEAD_SHA"
+          [ "$st" = "success" ] || exit 1
