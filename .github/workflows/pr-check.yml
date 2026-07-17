@@ -92,7 +92,7 @@ jobs:
 
   adversarial-review:
     name: Adversarial review (5-axis)
-    runs-on: [self-hosted, macOS, ios-build, ARM64]   # hephaestus — the authenticated claude CLI host
+    runs-on: [self-hosted, claude-review]   # dedicated always-on claude reviewers (fury + artemis), NOT a build runner
     timeout-minutes: 25
     permissions:
       contents: read
@@ -171,6 +171,9 @@ jobs:
             exit 1
           fi
           if [ "$rc" = "2" ]; then
-            echo "::warning::Adversarial review INCOMPLETE after retry (reviewer offline) — failing OPEN per policy."
+            # Fail CLOSED: an unreviewed PR never merges. Reviewers are redundant (fury + artemis),
+            # so this only trips if ALL are down — re-run once recovered, or use the Accept override.
+            echo "::error::Adversarial review INCOMPLETE after retry (reviewer unavailable) — failing CLOSED."
+            exit 1
           fi
           echo "Gate passed (rc=$rc)."
