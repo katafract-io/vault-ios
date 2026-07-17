@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   build:
-    name: Compile (iOS Simulator, no signing)
+    name: Compile (iOS device, no signing)
     # NO cancel-in-progress here: this is the REQUIRED check, and a cancelled run of a
     # required context makes GitHub's rollup treat the whole thing as failed → PR blocked
     # even when a sibling run succeeded. Let both push+PR runs complete (cheap compile).
@@ -61,14 +61,14 @@ jobs:
                      -derivedDataPath "${{ runner.temp }}/dd-${{ github.run_id }}-${{ github.run_attempt }}" \
                      -resolvePackageDependencies 2>&1 | tail -10
 
-      - name: Compile (Debug, simulator, no signing)
+      - name: Compile (Debug, device, no signing)
         run: |
           set -o pipefail
           xcodebuild build \
             -scheme "${{ steps.meta.outputs.scheme }}" \
             -project "${{ steps.meta.outputs.project }}" \
             -derivedDataPath "${{ runner.temp }}/dd-${{ github.run_id }}-${{ github.run_attempt }}" \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "generic/platform=iOS" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
