@@ -10,7 +10,6 @@ on:
       - 'Package.swift'
       - 'Package.resolved'
       - '.github/workflows/pr-check.yml'
-      - '.github/ci/adversarial-review.py'
       - '.github/repo-meta.yml'
   push:
     branches-ignore: [main]
@@ -22,7 +21,6 @@ on:
       - 'Package.swift'
       - 'Package.resolved'
       - '.github/workflows/pr-check.yml'
-      - '.github/ci/adversarial-review.py'
       - '.github/repo-meta.yml'
 
 # head_ref is set on pull_request, empty on push; ref_name is the branch name on both.
@@ -123,11 +121,18 @@ jobs:
           if [ -n "$MB" ]; then git diff "$MB" HEAD > pr.diff; else git diff HEAD > pr.diff; fi
           echo "diff lines: $(wc -l < pr.diff)"
 
-      - name: Run 5-axis adversarial review (claude -p)
+      - name: Run 5-axis adversarial review (TRUSTED reviewer, claude -p)
         id: review
+        # Runs the reviewer from a trusted runner-local path, NOT the PR checkout, so a PR
+        # cannot edit its own reviewer to neuter the gate. Deployed to heph out-of-band.
         run: |
           export PATH="$PATH:$HOME/.local/bin:/opt/homebrew/bin"
-          run_review() { python3 .github/ci/adversarial-review.py --diff pr.diff --out advrev.md --json advrev.json; }
+          REVIEWER="$HOME/.katafract-ci/adversarial-review.py"
+          if [ ! -f "$REVIEWER" ]; then
+            echo "::error::trusted reviewer missing on runner ($REVIEWER)"
+            echo "rc=2" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          run_review() { python3 "$REVIEWER" --diff pr.diff --out advrev.md --json advrev.json; }
           set +e
           run_review; rc=$?
           if [ "$rc" = "2" ]; then
@@ -138,19 +143,24 @@ jobs:
           exit 0
 
       - name: Post/update review comment (autofix[bot], upsert)
-        if: ${{ github.event_name == 'pull_request' }}
         env:
           GH_TOKEN: ${{ steps.apptoken.outputs.token }}
-          PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          PR="${{ github.event.pull_request.number }}"
+          if [ -z "$PR" ]; then
+            PR=$(gh pr list -R "$REPO" --head "${{ github.ref_name }}" --state open --json number -q '.[0].number' 2>/dev/null)
+          fi
+          [ -z "$PR" ] && { echo "no open PR for this ref — skipping comment"; exit 0; }
           { echo '<!-- adversarial-review -->'; cat advrev.md; } > body.md
+          # author + marker scoped; select filters out non-matches so tail -1 is a single id
           CID=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-                --jq 'map(select(.body|test("adversarial-review"))) | last | .id' 2>/dev/null)
-          if [ -n "$CID" ] && [ "$CID" != "null" ]; then
+                 --jq '.[] | select(.user.login=="katafract-autofix[bot]" and (.body|contains("<!-- adversarial-review -->"))) | .id' \
+                 2>/dev/null | tail -1)
+          if [ -n "$CID" ]; then
             gh api -X PATCH "repos/$REPO/issues/comments/$CID" -F body=@body.md >/dev/null && echo "updated comment $CID"
           else
-            gh pr comment "$PR" --body-file body.md && echo "posted new comment"
+            gh pr comment "$PR" -R "$REPO" --body-file body.md && echo "posted new comment"
           fi
 
       - name: Gate on high-severity confirmed findings
