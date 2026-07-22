@@ -92,6 +92,9 @@ jobs:
           exit 0
 
       - name: Post/update review comment (autofix[bot], upsert)
+        # Cosmetic PR comment. NEVER let its failure (e.g. App-token rate limit) skip the
+        # gate-status step below — that stranded PRs at 'pending' fleet-wide (2026-07-21).
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.apptoken.outputs.token }}
         run: |
@@ -109,6 +112,9 @@ jobs:
           fi
 
       - name: Report final status (the gate)
+        # always() — the gate MUST post its verdict even if the comment step (App token) failed.
+        # Uses the built-in github.token (separate rate-limit bucket), so it survives App throttling.
+        if: ${{ always() }}
         env:
           GH_TOKEN: ${{ github.token }}   # built-in token posts the required status signal
         run: |
