@@ -1,0 +1,25 @@
+# Standard Katafract Dependabot auto-merge (fleet, 2026-07-22).
+# Auto-merges ONLY patch + minor updates, and only once the repo's REQUIRED checks pass
+# (compile gate + 5-axis adversarial review) — GitHub's --auto queues the merge behind branch
+# protection. MAJOR updates are never auto-merged (they arrive as separate PRs) → manual review.
+# The 7-day cooldown in dependabot.yml is the supply-chain guard (never first to pull a release).
+name: Dependabot auto-merge
+on: pull_request
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  automerge:
+    # Only Dependabot PRs. runs-on GitHub-hosted (gh CLI preinstalled); tiny/occasional job.
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+      - name: Enable auto-merge (patch + minor only)
+        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
