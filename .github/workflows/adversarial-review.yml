@@ -59,7 +59,7 @@ jobs:
             -f description="Reviewing PR diff…" >/dev/null
 
       - name: Checkout base repo (this default-branch workflow; used only for git)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
