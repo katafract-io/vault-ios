@@ -72,6 +72,11 @@ struct VaultApp: App {
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         dlog("app launched, version \(appVersion) (build \(buildNumber))", category: "app")
 
+        // Clean up macOS export cache on launch
+        #if targetEnvironment(macCatalyst)
+        cleanupExportCache()
+        #endif
+
         let services = VaultServices()
         _services = StateObject(wrappedValue: services)
         _subscriptionStore = StateObject(
@@ -129,6 +134,19 @@ struct VaultApp: App {
             }
         }
     }
+
+    /// Clean up macOS export cache directory on launch.
+    /// Removes any files left behind from previous decrypted exports.
+    #if targetEnvironment(macCatalyst)
+    private func cleanupExportCache() {
+        let fm = FileManager.default
+        guard let cacheDir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        let exportsURL = cacheDir.appendingPathComponent("vault_exports", isDirectory: true)
+        if fm.fileExists(atPath: exportsURL.path) {
+            try? fm.removeItem(at: exportsURL)
+        }
+    }
+    #endif
 
     var body: some Scene {
         WindowGroup {
