@@ -189,6 +189,11 @@ struct VaultApp: App {
                 }
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .defaultSize(width: 1100, height: 720)
+        .windowResizability(.contentSize)
+        .windowMinimumDimensions(minWidth: 900, minHeight: 600)
+        #endif
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background, .inactive:
