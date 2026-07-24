@@ -243,5 +243,15 @@ struct VaultApp: App {
             @unknown default: break
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Open File...") {
+                    NotificationCenter.default.post(name: .vaultOpenDocumentFromMenu, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+        }
+        #endif
     }
 }
