@@ -70,6 +70,7 @@ jobs:
             -derivedDataPath "${{ runner.temp }}/dd-${{ github.run_id }}-${{ github.run_attempt }}" \
             -destination "generic/platform=iOS" \
             -configuration Debug \
+            -derivedDataPath "${{ runner.temp }}/dd-${{ github.run_id }}-${{ github.run_attempt }}" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
