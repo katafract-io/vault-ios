@@ -461,17 +461,34 @@ class PhotosViewModel: ObservableObject {
             return
         }
         let assetId = photo.id
+        let isCloudOnly = photo.isCloudOnly
         updateAssetState(id: assetId, to: .removing)
         Task { @MainActor in
             let outcome = await services.photoBackup.removeBackup(assetIdentifier: assetId, apiClient: services.apiClient)
             switch outcome {
-            case .removed, .noSuchAsset:
+            case .removed:
                 updateAssetState(id: assetId, to: .localOnly)
-            case .pendingRetry:
+            case .noSuchAsset:
+                // The ledger row is already gone (e.g. a concurrent removal
+                // won the race). For a photo that's still on-device this
+                // correctly means "no longer backed up" → .localOnly. But a
+                // cloud-only photo (no PHAsset on this device) has nothing
+                // left at all once its row is gone — claiming .localOnly
+                // would tell the user it's on their device when it exists
+                // nowhere (adversarial review, 2026-07-27, on #209's fix).
+                // Drop it from the visible list instead.
+                if isCloudOnly {
+                    backedUpPhotos.removeAll { $0.id == assetId }
+                } else {
+                    updateAssetState(id: assetId, to: .localOnly)
+                }
+            case .pendingRetry, .alreadyInFlight:
                 // Leave the `.removing` state showing — nothing to claim as
                 // success. Automatic retry (or the next full reload) will
                 // resolve it to either .localOnly (once confirmed) or keep
-                // retrying.
+                // retrying. `.alreadyInFlight` means another call (e.g. a
+                // concurrent foreground retry sweep) owns resolving this
+                // asset right now.
                 break
             }
             allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }

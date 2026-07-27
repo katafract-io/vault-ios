@@ -71,6 +71,15 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     /// after `markBackedUp`. Faster than a SwiftData query per grid cell.
     private(set) public var backedUpIdentifiers: Set<String> = []
 
+    /// Asset identifiers with a `removeBackup` currently awaiting
+    /// `softDeleteFile`. Guards against MainActor-reentrancy: a user-tapped
+    /// removal and a foreground `retryPendingRemovals` sweep can both reach
+    /// the same asset's `await` suspension point before either has deleted
+    /// the row, otherwise double-issuing the remote soft-delete and racing
+    /// two `modelContext.delete(row)` calls on the same object (adversarial
+    /// review, 2026-07-27, on #209's fix).
+    private var removalsInFlight: Set<String> = []
+
     /// Current bulk backup state. Loaded on init, mutated during backup.
     @Published public var bulkBackupState: BulkBackupState?
 
@@ -96,10 +105,26 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
     /// Re-include an asset in backup. Used when the user re-enables an album
     /// (intent: "I want this back") or explicitly re-uploads a single photo.
+    ///
+    /// Also clears any pending removal for this asset. Without this
+    /// (adversarial review, 2026-07-27, on #209's fix): a photo removed
+    /// while offline keeps its `BackedUpAsset` row with `removalPendingSince`
+    /// set (the soft-delete failed and is queued for retry). Re-enabling the
+    /// album only cleared the exclusion — the still-pending row survived,
+    /// and the next foreground `retryPendingRemovals` would re-exclude AND
+    /// soft-delete the copy the user just chose to keep, silently
+    /// overriding their re-enable.
     public func includeInBackup(_ assetIdentifier: String) {
         var current = excludedIdentifiers
         current.remove(assetIdentifier)
         excludedIdentifiers = current
+
+        let descriptor = FetchDescriptor<BackedUpAsset>(
+            predicate: #Predicate { $0.assetIdentifier == assetIdentifier })
+        if let row = (try? modelContext.fetch(descriptor))?.first, row.removalPendingSince != nil {
+            row.removalPendingSince = nil
+            try? modelContext.save()
+        }
     }
 
     public init(
@@ -300,16 +325,32 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
         // User intent on enable: "back up everything in this album, including
         // anything I previously removed." Drop those assets from the exclusion
-        // set so runAlbumBackup actually picks them up.
+        // set so runAlbumBackup actually picks them up, AND clear any pending
+        // removal so a queued retry can't override this re-enable by
+        // soft-deleting a copy the user just chose to keep (adversarial
+        // review, 2026-07-27, on #209's fix — see includeInBackup's doc for
+        // the full failure mode; this path clears exclusions directly rather
+        // than calling includeInBackup, so it needs the same fix inline).
         let coll = PHAssetCollection.fetchAssetCollections(
             withLocalIdentifiers: [albumId], options: nil)
         if let collection = coll.firstObject {
             let assets = PHAsset.fetchAssets(in: collection, options: nil)
             var current = excludedIdentifiers
+            var assetIds: [String] = []
             assets.enumerateObjects { asset, _, _ in
                 current.remove(asset.localIdentifier)
+                assetIds.append(asset.localIdentifier)
             }
             excludedIdentifiers = current
+
+            if !assetIds.isEmpty {
+                let pendingDescriptor = FetchDescriptor<BackedUpAsset>(
+                    predicate: #Predicate<BackedUpAsset> { assetIds.contains($0.assetIdentifier) && $0.removalPendingSince != nil })
+                if let pendingRows = try? modelContext.fetch(pendingDescriptor), !pendingRows.isEmpty {
+                    for row in pendingRows { row.removalPendingSince = nil }
+                    try? modelContext.save()
+                }
+            }
         }
 
         let task = Task { [weak self] in
@@ -468,6 +509,10 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         /// No matching `BackedUpAsset` row existed for this identifier —
         /// nothing to remove (removal is idempotent).
         case noSuchAsset
+        /// A removal for this exact asset identifier is already in flight
+        /// (awaiting `softDeleteFile`) on another call — this call did
+        /// nothing further; the in-flight call owns resolving the row.
+        case alreadyInFlight
     }
 
     /// Remove the vault copy for a single backed-up asset. Adds
@@ -485,6 +530,12 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
     /// ever retry the deletion.
     @discardableResult
     public func removeBackup(assetIdentifier: String, apiClient: VaultAPIClient) async -> RemovalOutcome {
+        guard !removalsInFlight.contains(assetIdentifier) else {
+            return .alreadyInFlight
+        }
+        removalsInFlight.insert(assetIdentifier)
+        defer { removalsInFlight.remove(assetIdentifier) }
+
         excludeFromBackup(assetIdentifier)
         let descriptor = FetchDescriptor<BackedUpAsset>(
             predicate: #Predicate { $0.assetIdentifier == assetIdentifier })
@@ -500,13 +551,28 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
 
         do {
             try await apiClient.softDeleteFile(fileId: fileId)
+        } catch let apiError as VaultAPIClientError {
+            // A 404/already-deleted response means a PRIOR attempt actually
+            // succeeded server-side (e.g. the app was killed after the
+            // server processed the delete but before this method recorded
+            // it locally) — treat it as confirmed rather than retrying
+            // forever with the row permanently stuck in `.removing`
+            // (adversarial review, 2026-07-27, on #209's fix).
+            if case .httpError(let status, _) = apiError, status == 404 {
+                logger.info("soft-delete for \(fileId, privacy: .public) already applied server-side (404) — treating as confirmed")
+                dlog("soft-delete for \(fileId) already applied server-side (404) — treating as confirmed", category: "photos", level: .info)
+            } else {
+                logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(apiError.localizedDescription, privacy: .public) — will retry")
+                dlog("vault soft-delete failed for \(assetIdentifier): \(apiError.localizedDescription) — will retry", category: "photos", level: .error)
+                return .pendingRetry
+            }
         } catch {
             logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public) — will retry")
             dlog("vault soft-delete failed for \(assetIdentifier): \(error.localizedDescription) — will retry", category: "photos", level: .error)
             return .pendingRetry
         }
 
-        // Remote confirmed. Now — and only now — safe to clean up local
+        // Remote confirmed (or already applied). Now — and only now — safe to clean up local
         // pointers; the backend copy is genuinely gone.
         let lfDescriptor = FetchDescriptor<LocalFile>(
             predicate: #Predicate { $0.fileId == fileId })
@@ -550,10 +616,17 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         let descriptor = FetchDescriptor<BackedUpAsset>(
             predicate: #Predicate { $0.removalPendingSince != nil })
         guard let pending = try? modelContext.fetch(descriptor), !pending.isEmpty else { return }
-        logger.info("retrying \(pending.count, privacy: .public) pending photo removal(s)")
-        dlog("retrying \(pending.count) pending photo removal(s)", category: "photos", level: .info)
-        for row in pending {
-            await removeBackup(assetIdentifier: row.assetIdentifier, apiClient: apiClient)
+        // Snapshot identifiers only, not the SwiftData model objects — each
+        // `removeBackup` call below awaits, and a concurrent removal could
+        // delete a not-yet-processed row's object out from under a
+        // pre-fetched array in the meantime (adversarial review, 2026-07-27,
+        // on #209's fix). `removeBackup` re-fetches by identifier itself, so
+        // a since-deleted asset just resolves to `.noSuchAsset` — safe.
+        let assetIds = pending.map(\.assetIdentifier)
+        logger.info("retrying \(assetIds.count, privacy: .public) pending photo removal(s)")
+        dlog("retrying \(assetIds.count) pending photo removal(s)", category: "photos", level: .info)
+        for assetId in assetIds {
+            await removeBackup(assetIdentifier: assetId, apiClient: apiClient)
         }
     }
 
