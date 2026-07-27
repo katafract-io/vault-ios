@@ -123,7 +123,23 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             predicate: #Predicate { $0.assetIdentifier == assetIdentifier })
         if let row = (try? modelContext.fetch(descriptor))?.first, row.removalPendingSince != nil {
             row.removalPendingSince = nil
-            try? modelContext.save()
+            do {
+                try modelContext.save()
+            } catch {
+                // A silent failure here would leave removalPendingSince
+                // cleared in-memory but not on disk — a kill before the next
+                // successful save would resurrect it on relaunch, and a
+                // foreground retryPendingRemovals in THIS session would still
+                // see the in-memory nil and skip it, masking the fact that
+                // the clear isn't actually durable yet (adversarial review,
+                // 2026-07-27, on #209's fix). Logging loudly is the practical
+                // fix here — full transactional consistency between this and
+                // the UserDefaults exclusion set would need a bigger
+                // persistence redesign than this bug warrants (SwiftData
+                // save failures are rare/disk-pressure-only on iOS).
+                logger.error("includeInBackup: failed to persist removalPendingSince clear for \(assetIdentifier, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("includeInBackup: failed to persist removalPendingSince clear for \(assetIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
+            }
         }
     }
 
@@ -344,11 +360,28 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             excludedIdentifiers = current
 
             if !assetIds.isEmpty {
+                let assetIdSet = Set(assetIds)
+                // Fetch all pending rows and filter in-memory rather than
+                // capturing the assetIds array inside #Predicate — SwiftData
+                // has had real issues translating Array.contains inside a
+                // predicate to SQL on some OS versions, which would silently
+                // clear zero rows here (adversarial review, 2026-07-27, on
+                // #209's fix). The `removalPendingSince != nil` predicate
+                // alone (proven elsewhere in this file, in
+                // retryPendingRemovals) has no such risk.
                 let pendingDescriptor = FetchDescriptor<BackedUpAsset>(
-                    predicate: #Predicate<BackedUpAsset> { assetIds.contains($0.assetIdentifier) && $0.removalPendingSince != nil })
-                if let pendingRows = try? modelContext.fetch(pendingDescriptor), !pendingRows.isEmpty {
-                    for row in pendingRows { row.removalPendingSince = nil }
-                    try? modelContext.save()
+                    predicate: #Predicate<BackedUpAsset> { $0.removalPendingSince != nil })
+                if let allPending = try? modelContext.fetch(pendingDescriptor) {
+                    let toClear = allPending.filter { assetIdSet.contains($0.assetIdentifier) }
+                    if !toClear.isEmpty {
+                        for row in toClear { row.removalPendingSince = nil }
+                        do {
+                            try modelContext.save()
+                        } catch {
+                            logger.error("startAlbumBackup: failed to persist removalPendingSince clear for album \(albumId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                            dlog("startAlbumBackup: failed to persist removalPendingSince clear for album \(albumId): \(error.localizedDescription)", category: "photos", level: .error)
+                        }
+                    }
                 }
             }
         }
@@ -626,6 +659,20 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
         logger.info("retrying \(assetIds.count, privacy: .public) pending photo removal(s)")
         dlog("retrying \(assetIds.count) pending photo removal(s)", category: "photos", level: .info)
         for assetId in assetIds {
+            // Re-check right before acting, not just at snapshot time: this
+            // loop awaits per-asset, and the user can call includeInBackup
+            // (re-enabling a photo/album) for a LATER asset in this same
+            // list while an EARLIER one is still in flight — the snapshot
+            // alone can't see that. Without this check, removeBackup would
+            // treat the now-cancelled removal as a fresh request (its `??
+            // Date()` re-arms removalPendingSince unconditionally) and
+            // soft-delete a copy the user just chose to keep (adversarial
+            // review, 2026-07-27, on #209's fix).
+            let stillPendingDescriptor = FetchDescriptor<BackedUpAsset>(
+                predicate: #Predicate<BackedUpAsset> { $0.assetIdentifier == assetId && $0.removalPendingSince != nil })
+            guard let stillPending = try? modelContext.fetch(stillPendingDescriptor), !stillPending.isEmpty else {
+                continue
+            }
             await removeBackup(assetIdentifier: assetId, apiClient: apiClient)
         }
     }
