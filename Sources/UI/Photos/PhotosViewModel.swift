@@ -28,6 +28,7 @@ struct BackedUpPhoto: Identifiable, Hashable {
         case localOnly           // in photo roll, NOT yet uploaded
         case cloudOnly           // in vault, NOT in photo roll (user deleted locally)
         case syncing(Double)     // upload in flight
+        case removing            // remove-from-backup requested; remote delete pending/retrying (#209)
     }
 
     static func == (lhs: BackedUpPhoto, rhs: BackedUpPhoto) -> Bool { lhs.id == rhs.id }
@@ -131,12 +132,20 @@ class PhotosViewModel: ObservableObject {
             let coveredFileIds = Set(rows.map { $0.fileId })
             var photos: [BackedUpPhoto] = rows.map { r in
                 let isLocal = onDevice.contains(r.assetIdentifier)
+                // A row with a pending removal is still authoritatively
+                // "backed up" (the row/backend copy weren't touched until
+                // remote confirmation — see PhotoBackupManager.removeBackup),
+                // but must not be presented as a normal synced/cloud-only
+                // state while that removal is in flight or retrying (#209).
+                let state: BackedUpPhoto.BackupState = r.removalPendingSince != nil
+                    ? .removing
+                    : (isLocal ? .syncedAndLocal : .cloudOnly)
                 return BackedUpPhoto(
                     id: r.assetIdentifier,
                     filename: r.originalFilename,
                     sizeBytes: Int(r.sizeBytes),
                     takenAt: r.backedUpAt,
-                    backupState: isLocal ? .syncedAndLocal : .cloudOnly,
+                    backupState: state,
                     isCloudOnly: !isLocal
                 )
             }
@@ -440,8 +449,11 @@ class PhotosViewModel: ObservableObject {
     }
 
     /// Remove a backed-up photo from the vault. Soft-deletes the encrypted
-    /// file on the server, deletes the matching `BackedUpAsset` record, and
-    /// flips the row back to `.pending` so the grid badge updates.
+    /// file on the server; only on CONFIRMED remote success does the ledger
+    /// row disappear and the grid flip to `.localOnly`. A failed remote
+    /// delete shows `.removing` (never a false "removed") and is retried
+    /// automatically by `PhotoBackupManager.retryPendingRemovals` on the next
+    /// foreground reconciliation — see #209.
     /// The local PHAsset is not touched — only the encrypted vault copy.
     func removeFromBackup(_ photo: BackedUpPhoto) {
         guard let services else {
@@ -449,9 +461,36 @@ class PhotosViewModel: ObservableObject {
             return
         }
         let assetId = photo.id
+        let isCloudOnly = photo.isCloudOnly
+        updateAssetState(id: assetId, to: .removing)
         Task { @MainActor in
-            await services.photoBackup.removeBackup(assetIdentifier: assetId, apiClient: services.apiClient)
-            updateAssetState(id: assetId, to: .localOnly)
+            let outcome = await services.photoBackup.removeBackup(assetIdentifier: assetId, apiClient: services.apiClient)
+            switch outcome {
+            case .removed:
+                updateAssetState(id: assetId, to: .localOnly)
+            case .noSuchAsset:
+                // The ledger row is already gone (e.g. a concurrent removal
+                // won the race). For a photo that's still on-device this
+                // correctly means "no longer backed up" → .localOnly. But a
+                // cloud-only photo (no PHAsset on this device) has nothing
+                // left at all once its row is gone — claiming .localOnly
+                // would tell the user it's on their device when it exists
+                // nowhere (adversarial review, 2026-07-27, on #209's fix).
+                // Drop it from the visible list instead.
+                if isCloudOnly {
+                    backedUpPhotos.removeAll { $0.id == assetId }
+                } else {
+                    updateAssetState(id: assetId, to: .localOnly)
+                }
+            case .pendingRetry, .alreadyInFlight:
+                // Leave the `.removing` state showing — nothing to claim as
+                // success. Automatic retry (or the next full reload) will
+                // resolve it to either .localOnly (once confirmed) or keep
+                // retrying. `.alreadyInFlight` means another call (e.g. a
+                // concurrent foreground retry sweep) owns resolving this
+                // asset right now.
+                break
+            }
             allBackedUp = !backedUpPhotos.isEmpty && backedUpPhotos.allSatisfy { $0.backupState == .syncedAndLocal }
         }
     }
