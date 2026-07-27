@@ -89,9 +89,14 @@ struct VaultApp: App {
         // and clear `inFlightTaskIdentifier` for any row whose task no
         // longer exists. Without this, a row whose upload silently died
         // (session reset, low-storage kill) would sit `in_flight` forever.
+        // Skipped entirely in degraded bootstrap mode — the ModelContext
+        // it would reconcile against is the throwaway in-memory fallback,
+        // not the user's real (untouched, still on disk) queue.
         let coordinator = services.uploadCoordinator
-        Task.detached {
-            await coordinator.reconcileOnLaunch()
+        if !services.isDegraded {
+            Task.detached {
+                await coordinator.reconcileOnLaunch()
+            }
         }
 
         // Start network reachability monitoring.
@@ -108,7 +113,9 @@ struct VaultApp: App {
         ) { notification in
             guard let task = notification.object as? BGProcessingTask else { return }
             Task {
-                await engine.syncPending()
+                if !services.isDegraded {
+                    await engine.syncPending()
+                }
                 task.setTaskCompleted(success: true)
             }
         }
@@ -125,6 +132,7 @@ struct VaultApp: App {
             forName: .vaultyxWiFiResumed, object: nil, queue: nil
         ) { _ in
             Task {
+                guard !services.isDegraded else { return }
                 await engine.syncPending()
             }
         }
@@ -133,13 +141,11 @@ struct VaultApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                if services.bootstrapError != nil {
-                    KeychainBootstrapErrorView(onRetry: {
-                        // Retry: attempt to reinitialize services.
-                        // In production, this would typically restart the app or
-                        // trigger a full relaunch. For now, we show the error persistently.
-                        // A real implementation might trigger AppDelegate to restart the app.
-                    })
+                if let bootstrapError = services.bootstrapError {
+                    KeychainBootstrapErrorView(
+                        error: bootstrapError,
+                        onRetry: { services.retryBootstrap() }
+                    )
                 } else {
                     ZStack {
                         ContentView()
@@ -184,7 +190,7 @@ struct VaultApp: App {
                 case .unknown, .notSubscribed: subscribed = false
                 }
                 services.syncEngine.cloudUploadsEnabled = subscribed
-                if subscribed {
+                if subscribed && !services.isDegraded {
                     Task { await services.syncEngine.syncPending() }
                 }
             }
@@ -204,7 +210,9 @@ struct VaultApp: App {
                 // ~30s of "background" runtime before suspend. Use it to push
                 // as many queued chunks as possible. The BGProcessingTask
                 // request submitted in importFile picks up whatever this
-                // misses, but that window can be hours away.
+                // misses, but that window can be hours away. Skipped in
+                // degraded bootstrap mode — nothing real to flush.
+                guard !services.isDegraded else { return }
                 let engine = services.syncEngine
                 Task {
                     let bgTask = await UIApplication.shared.beginBackgroundTask(withName: "com.katafract.vault.drain-on-bg")
@@ -222,7 +230,11 @@ struct VaultApp: App {
                 // Drain the share-extension import inbox FIRST — convert any
                 // dropped files into proper LocalFile + chunk-queue rows. Then
                 // run the upload drain so chunks (including those just queued
-                // from the inbox) start moving to S3.
+                // from the inbox) start moving to S3. None of this is safe or
+                // meaningful against the degraded in-memory fallback
+                // container — the bootstrap-error screen is blocking the UI
+                // anyway, so there's nothing for the user to act on here.
+                guard !services.isDegraded else { return }
                 Task {
                     services.logQueueSummary()
                     await services.drainShareExtensionInbox()

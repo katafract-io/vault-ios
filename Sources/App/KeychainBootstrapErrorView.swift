@@ -2,11 +2,21 @@ import SwiftUI
 import UIKit
 import os
 
-/// Full-screen blocking error view shown when Keychain bootstrap fails.
-/// This prevents the vault from being usable until the issue is resolved.
+/// Full-screen blocking error view shown when vault-store bootstrap fails
+/// (either Keychain or the on-device encrypted database itself). This
+/// prevents the vault from being usable until the issue is resolved — the
+/// app must never look like a normal, empty vault when the real one
+/// couldn't be opened (2026-07-26 Codex audit, #210).
 struct KeychainBootstrapErrorView: View {
-    let onRetry: () -> Void
+    /// The actual underlying error, so both the user-visible copy and the
+    /// copyable diagnostics reflect the real cause rather than a generic
+    /// Keychain-only message that doesn't fit a SwiftData store failure.
+    let error: Error
+    /// Runs a real, non-destructive re-check and returns its outcome —
+    /// never a no-op (see `VaultServices.retryBootstrap()`).
+    let onRetry: () -> VaultServices.BootstrapRetryOutcome
     @State private var diagnosticsCopied = false
+    @State private var retryResultMessage: String?
 
     private var diagnosticsString: String {
         let device = UIDevice.current.model
@@ -23,6 +33,7 @@ struct KeychainBootstrapErrorView: View {
         Bundle: \(bundle)
         App Version: \(appVersion) (Build \(buildNumber))
         Timestamp: \(Date().formatted(date: .abbreviated, time: .standard))
+        Error: \(error.localizedDescription)
         """
     }
 
@@ -43,16 +54,31 @@ struct KeychainBootstrapErrorView: View {
                         .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(.primary)
 
-                    Text("Vaultyx cannot protect your files because it couldn't save the encryption key securely. This may be a temporary device issue.")
+                    Text("Vaultyx couldn't open your encrypted vault storage. Your files have not been touched or deleted — this may be a temporary device issue.")
                         .font(.system(size: 16, weight: .regular))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                         .lineLimit(nil)
+
+                    if let retryResultMessage {
+                        Text(retryResultMessage)
+                            .font(.system(size: 14, weight: .medium))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.orange)
+                            .padding(.top, 4)
+                    }
                 }
                 .padding(.horizontal, 24)
 
                 VStack(spacing: 12) {
-                    Button(action: onRetry) {
+                    Button(action: {
+                        switch onRetry() {
+                        case .resolvedRelaunchRequired:
+                            retryResultMessage = "Your vault storage is available again. Please force-quit and reopen Vaultyx to finish recovering."
+                        case .stillFailing:
+                            retryResultMessage = "Still unable to open your vault storage. Please try again shortly, or contact support if this persists."
+                        }
+                    }) {
                         Text("Retry")
                             .font(.system(size: 16, weight: .semibold))
                             .frame(maxWidth: .infinity)
@@ -103,5 +129,8 @@ struct KeychainBootstrapErrorView: View {
 }
 
 #Preview {
-    KeychainBootstrapErrorView(onRetry: {})
+    struct PreviewError: LocalizedError {
+        var errorDescription: String? { "Preview store-open failure" }
+    }
+    return KeychainBootstrapErrorView(error: PreviewError(), onRetry: { .stillFailing(PreviewError()) })
 }

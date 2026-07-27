@@ -22,73 +22,93 @@ public final class VaultServices: ObservableObject {
     /// Master key, generated on first launch and stashed in Keychain.
     public let masterKey: SymmetricKey
 
-    /// Error from Keychain bootstrap if it fails during initialization.
-    /// When non-nil, the main VaultApp displays KeychainBootstrapErrorView instead of normal content.
+    /// Error from vault-store bootstrap (ModelContainer open/migration
+    /// failure) if one occurred during initialization. When non-nil, the
+    /// main VaultApp displays KeychainBootstrapErrorView instead of normal
+    /// content, and background sync/upload services are never started
+    /// against the degraded fallback container. See `retryBootstrap()`.
     @Published public var bootstrapError: Error?
+
+    /// True once `bootstrapError` is non-nil. Callers outside this class use
+    /// this (rather than re-deriving it) to gate any real work — background
+    /// drain loops, delta sync, upload reconciliation — off the degraded
+    /// in-memory fallback container.
+    public var isDegraded: Bool { bootstrapError != nil }
+
+    /// The real on-device store path, quarantining and any other schema
+    /// details live in one place so `init()` and `retryBootstrap()` can't
+    /// silently drift apart.
+    nonisolated private static var vaultSchema: Schema {
+        Schema([
+            LocalFile.self, LocalFolder.self, BackedUpAsset.self, VaultFolder.self,
+            PendingUpload.self, ChunkUploadQueue.self, VaultIndexItem.self
+        ])
+    }
+
+    nonisolated private static func vaultModelConfiguration(schema: Schema) -> ModelConfiguration {
+        if let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave") {
+            return ModelConfiguration(schema: schema, url: containerUrl.appendingPathComponent("vault.sqlite"))
+        }
+        return ModelConfiguration(schema: schema)
+    }
+
+    /// Attempts to open the vault store, never mutating whatever is (or
+    /// isn't) already at the target location. `overrideURL` exists purely
+    /// for testability — production callers (`init`, `retryBootstrap`)
+    /// always pass `nil`, which resolves to the real App Group store path.
+    /// `internal` (not `private`) so `@testable import` can exercise this
+    /// exact logic with a scratch temp-directory URL instead of the real
+    /// App Group container, without needing the full heavyweight
+    /// `VaultServices` (real API client, background URLSession, etc.).
+    nonisolated static func attemptOpen(overrideURL: URL? = nil) -> Result<ModelContainer, Error> {
+        let schema = vaultSchema
+        let config = overrideURL.map { ModelConfiguration(schema: schema, url: $0) } ?? vaultModelConfiguration(schema: schema)
+        do {
+            return .success(try ModelContainer(for: schema, configurations: [config]))
+        } catch {
+            return .failure(error)
+        }
+    }
 
     private var deltaSync: VaultIndexDeltaSync?
     private var deltaSyncTask: Task<Void, Never>?
 
     public init() {
         let container: ModelContainer
-        let schema = Schema([
-            LocalFile.self, LocalFolder.self, BackedUpAsset.self, VaultFolder.self,
-            PendingUpload.self, ChunkUploadQueue.self, VaultIndexItem.self
-        ])
-        do {
-            // Use App Group container for FileProvider extension access
-            let containerUrl: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave")
-            var modelConfig: ModelConfiguration
-            if let containerUrl = containerUrl {
-                let storeUrl = containerUrl.appendingPathComponent("vault.sqlite")
-                modelConfig = ModelConfiguration(schema: schema, url: storeUrl)
-            } else {
-                modelConfig = ModelConfiguration(schema: schema)
-            }
-            container = try ModelContainer(for: schema, configurations: [modelConfig])
-        } catch {
-            // A migration/incompatibility failure must NEVER destroy user data:
-            // a free-tier vault is local-only, so the on-device store is the only
-            // copy. Quarantine the store (move it aside) instead of deleting it, so
-            // SwiftData can create a fresh store at the same path while the old data
-            // stays recoverable on disk. NOTE: this targets the APP GROUP container
-            // (where vault.sqlite actually lives) — the previous code wiped
-            // URL.applicationSupportDirectory, which never held the store, so the
-            // "wipe + retry" couldn't free the path and would fatalError.
-            print("[VaultServices] ModelContainer init failed (\(error)). Quarantining store and retrying.")
-            if let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave") {
-                let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-                let quarantine = containerUrl.appendingPathComponent("Quarantine/\(stamp)", isDirectory: true)
-                try? FileManager.default.createDirectory(at: quarantine, withIntermediateDirectories: true)
-                for name in ["vault.sqlite", "vault.sqlite-wal", "vault.sqlite-shm"] {
-                    let src = containerUrl.appendingPathComponent(name)
-                    if FileManager.default.fileExists(atPath: src.path) {
-                        try? FileManager.default.moveItem(at: src, to: quarantine.appendingPathComponent(name))
-                    }
-                }
-            }
-            do {
-                let containerUrl: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.katafract.enclave")
-                var modelConfig: ModelConfiguration
-                if let containerUrl = containerUrl {
-                    let storeUrl = containerUrl.appendingPathComponent("vault.sqlite")
-                    modelConfig = ModelConfiguration(schema: schema, url: storeUrl)
-                } else {
-                    modelConfig = ModelConfiguration(schema: schema)
-                }
-                container = try ModelContainer(for: schema, configurations: [modelConfig])
-            } catch let retryError {
-                // NEVER hard-crash on launch (this SIGTRAP'd on every launch when the
-                // FileProvider opened the shared store with a divergent schema). Fall back
-                // to an in-memory store so the app boots; the schema itself is valid, so an
-                // in-memory container always succeeds even when the on-disk store can't open.
-                print("[VaultServices] ModelContainer retry failed (\(retryError)). Falling back to in-memory store.")
-                container = try! ModelContainer(
-                    for: schema,
-                    configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
-            }
+        let schema = Self.vaultSchema
+        var bootstrapFailure: Error?
+        switch Self.attemptOpen() {
+        case .success(let opened):
+            container = opened
+        case .failure(let error):
+            // A store-open/migration failure must NEVER automatically mutate
+            // or replace the only on-device copy of a free-tier (local-only)
+            // vault — that's how a real user's entire library silently
+            // "disappeared" before this fix (2026-07-26 Codex audit, #210):
+            // the old code moved vault.sqlite/-wal/-shm into a Quarantine
+            // folder and opened a fresh, empty store at the original path
+            // with no user notice, so the app looked like a normal empty
+            // vault. We do not know here whether the failure is transient
+            // (App Group temporarily unavailable) or a genuine incompatible
+            // migration — either way, mutating the user's only copy without
+            // their explicit approval is never the right unilateral call for
+            // an automated code path to make.
+            //
+            // Fall back to an in-memory container ONLY so the type system
+            // and SwiftUI's environment injection have something to hold —
+            // `bootstrapError` (below) is what actually gates the app: real
+            // content, background sync, and uploads never run against this
+            // fallback. The original files are left completely untouched on
+            // disk, so a future app update or manual recovery step can still
+            // find them exactly where they were.
+            print("[VaultServices] ModelContainer init failed (\(error)). Entering degraded/blocked bootstrap mode — original store left untouched.")
+            bootstrapFailure = error
+            container = try! ModelContainer(
+                for: schema,
+                configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
         }
         self.modelContainer = container
+        self.bootstrapError = bootstrapFailure
 
         // Ensure the master key exists before anything else tries to derive
         // folder keys. `ensureMasterKey` is idempotent.
@@ -127,10 +147,40 @@ public final class VaultServices: ObservableObject {
 
         // Seed the key manager's master key so getFolderKey works immediately
         // without requiring a user-entered password. Runs in a detached Task
-        // because VaultKeyManager is an actor.
+        // because VaultKeyManager is an actor. configureKeyManager only
+        // touches Keychain, so it's harmless to run even in degraded mode;
+        // startDeltaSync reads/writes the ModelContext, so it must NEVER run
+        // against the in-memory fallback container — there is nothing there
+        // to sync, and doing so would busy-loop pointlessly while the app is
+        // blocked on the bootstrap-error screen anyway.
         Task {
             await self.configureKeyManager()
-            await self.startDeltaSync()
+            if !self.isDegraded {
+                await self.startDeltaSync()
+            }
+        }
+    }
+
+    /// Result of a non-destructive attempt to re-open the real on-device
+    /// store. Never mutates any files. A `.resolvedRelaunchRequired` result
+    /// means the underlying issue (e.g. a transient App Group unavailability)
+    /// has cleared, but this process's object graph (syncEngine, photoBackup,
+    /// uploadCoordinator — all already wired to the in-memory fallback
+    /// container) cannot be hot-swapped without recreating them, so a
+    /// relaunch is the only safe way to actually pick up the recovered
+    /// store. This exists so "Retry" tells the user the truth instead of
+    /// being a no-op (2026-07-26 Codex audit, #210).
+    public enum BootstrapRetryOutcome {
+        case resolvedRelaunchRequired
+        case stillFailing(Error)
+    }
+
+    public func retryBootstrap() -> BootstrapRetryOutcome {
+        switch Self.attemptOpen() {
+        case .success:
+            return .resolvedRelaunchRequired
+        case .failure(let error):
+            return .stillFailing(error)
         }
     }
 
