@@ -72,9 +72,11 @@
 		8B6DC046CDF9D96782C89D48 /* VaultyxScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6EB55A307D831805926CED /* VaultyxScreenshotTests.swift */; };
 		8C3396243A01EF74A7144B45 /* FileDownloadProgressBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF0D147A45D3B32DB20CE38C /* FileDownloadProgressBanner.swift */; };
 		8C3DFF552AF4F0B0C051C16D /* RecoveryKitViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D461713C802E4DC32C773D2 /* RecoveryKitViewModel.swift */; };
+		8EF7F99D962D4C3E08739C5E /* ChunkKeyRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08014DAC553EC97E88C36DFE /* ChunkKeyRecoveryTests.swift */; };
 		8F5E7A82B937DF96ECE245BA /* VaultyxLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3A4CDF3CC4CDE16F7B08CA /* VaultyxLiveActivity.swift */; };
 		92B2CCF639BD26855C309B5D /* VaultActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E11BD8069366B6D702F962F /* VaultActivityManager.swift */; };
 		93F96A9CFF784471A6030B61 /* FileIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7599892F6A4C813BA72A0119 /* FileIconView.swift */; };
+		99535D1C6C3C7FFDB64C1E12 /* ChunkKeyRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89C0D50893AA7142EED9E609 /* ChunkKeyRecovery.swift */; };
 		9A1FE3E5332445DCEA98DEBC /* LaunchSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94D157D704CE402CDA6F995 /* LaunchSplashView.swift */; };
 		9A51A23C185C664790A6DB49 /* KatafractStyle in Frameworks */ = {isa = PBXBuildFile; productRef = C731E6EA2BCFCB88CFEA28B3 /* KatafractStyle */; };
 		9B03329F616095286D939B6E /* NotificationsPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7292DF2A10489DDF3A68BF4D /* NotificationsPermissionStep.swift */; };
@@ -172,6 +174,7 @@
 		02D65CE83DFEE043122E73ED /* VaultSyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSyncEngine.swift; sourceTree = "<group>"; };
 		03A47F201CCDF4EDF81DAA65 /* BackgroundUploadCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundUploadCoordinator.swift; sourceTree = "<group>"; };
 		07525D43D25B96B5AC51046D /* KeychainBootstrapErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainBootstrapErrorView.swift; sourceTree = "<group>"; };
+		08014DAC553EC97E88C36DFE /* ChunkKeyRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkKeyRecoveryTests.swift; sourceTree = "<group>"; };
 		0A8556A97A4E3B84F26823AA /* PhotosView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosView.swift; sourceTree = "<group>"; };
 		0A9ABEC3D2B5EA6F32464CD7 /* DebugLog+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DebugLog+UI.swift"; sourceTree = "<group>"; };
 		0C3576C399AF300EC808B34A /* FilePreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewSheet.swift; sourceTree = "<group>"; };
@@ -226,6 +229,7 @@
 		87E84DB85BD2068C369A0E40 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		88A2A54A57CEADCA403804E1 /* RecycleBinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecycleBinView.swift; sourceTree = "<group>"; };
 		896ACA5F82A229E1E822031F /* FileUploadProgressBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUploadProgressBanner.swift; sourceTree = "<group>"; };
+		89C0D50893AA7142EED9E609 /* ChunkKeyRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkKeyRecovery.swift; sourceTree = "<group>"; };
 		8B45DCA47E925C170193E244 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		8F5518D1D71455747EBB3FF8 /* ThumbLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbLoader.swift; sourceTree = "<group>"; };
 		901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotMode.swift; sourceTree = "<group>"; };
@@ -519,6 +523,7 @@
 		B161C15C0F66B768508B90B1 /* VaultyxTests */ = {
 			isa = PBXGroup;
 			children = (
+				08014DAC553EC97E88C36DFE /* ChunkKeyRecoveryTests.swift */,
 				0D3D01BB41C6D2A5909C4800 /* RecoveryRoundTripTests.swift */,
 			);
 			path = VaultyxTests;
@@ -596,6 +601,7 @@
 		E4E196640306EB9611F2C7E2 /* Crypto */ = {
 			isa = PBXGroup;
 			children = (
+				89C0D50893AA7142EED9E609 /* ChunkKeyRecovery.swift */,
 				1DF96E9D3C1E121B1E96E5F4 /* VaultCrypto.swift */,
 				57206996A054400EEF17E246 /* VaultKeyManager.swift */,
 			);
@@ -889,6 +895,7 @@
 				32F365B045FCDCB7C8613B54 /* BackgroundUploadCoordinator.swift in Sources */,
 				5C2AB085574802735BEB0B8B /* BiometricLock.swift in Sources */,
 				120B7D1FFD2218AF6D7987ED /* CategoryFilterBar.swift in Sources */,
+				99535D1C6C3C7FFDB64C1E12 /* ChunkKeyRecovery.swift in Sources */,
 				C1220AB949F9D89560372244 /* ContentView.swift in Sources */,
 				BD01B801814ACC45FEE7C8DF /* CustodyBadge.swift in Sources */,
 				33183D7457BFCB147A63C301 /* CustodyState.swift in Sources */,
@@ -982,6 +989,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8EF7F99D962D4C3E08739C5E /* ChunkKeyRecoveryTests.swift in Sources */,
 				174C5F3B6BC59D3AF65E7095 /* RecoveryRoundTripTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1181,7 +1189,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.5;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1367,7 +1375,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.5;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
