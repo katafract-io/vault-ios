@@ -94,6 +94,7 @@
 		B749CA7CED96D4EAF34515B5 /* KeychainBootstrapErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07525D43D25B96B5AC51046D /* KeychainBootstrapErrorView.swift */; };
 		BD01B801814ACC45FEE7C8DF /* CustodyBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80B9EBA0D6E897CDB6A3F125 /* CustodyBadge.swift */; };
 		BDCA657DCE6B71175A02BD6D /* ThumbLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F5518D1D71455747EBB3FF8 /* ThumbLoader.swift */; };
+		BDD606049A5B6F7780464D68 /* VaultServicesBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CDB6AC8787718497BAA20B0 /* VaultServicesBootstrapTests.swift */; };
 		BE4225CBFB6D9882888695FD /* ScreenshotMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 901D3E9B2BE205AB9B29CF4E /* ScreenshotMode.swift */; };
 		BE5183171D2C6A86043A3D60 /* FileCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 199098218699C686778C33E3 /* FileCategory.swift */; };
 		BE600DBF9404A91282A494FF /* VaultFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEE91C06CE40E3712B8898B6 /* VaultFile.swift */; };
@@ -198,6 +199,7 @@
 		32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		39481199B6CB3F3482004760 /* VaultAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAPIClient.swift; sourceTree = "<group>"; };
 		3C42BCDD24AE3DCEA9C6E315 /* FileBrowserListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserListRow.swift; sourceTree = "<group>"; };
+		3CDB6AC8787718497BAA20B0 /* VaultServicesBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultServicesBootstrapTests.swift; sourceTree = "<group>"; };
 		3D0EFA9CC6E443C612546AFC /* VaultShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VaultShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3E845B566D3BF6AC839915C0 /* StorageQuotaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageQuotaView.swift; sourceTree = "<group>"; };
 		42209600639B9C22079E9670 /* VaultFileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultFileItem.swift; sourceTree = "<group>"; };
@@ -525,6 +527,7 @@
 			children = (
 				08014DAC553EC97E88C36DFE /* ChunkKeyRecoveryTests.swift */,
 				0D3D01BB41C6D2A5909C4800 /* RecoveryRoundTripTests.swift */,
+				3CDB6AC8787718497BAA20B0 /* VaultServicesBootstrapTests.swift */,
 			);
 			path = VaultyxTests;
 			sourceTree = "<group>";
@@ -991,6 +994,7 @@
 			files = (
 				8EF7F99D962D4C3E08739C5E /* ChunkKeyRecoveryTests.swift in Sources */,
 				174C5F3B6BC59D3AF65E7095 /* RecoveryRoundTripTests.swift in Sources */,
+				BDD606049A5B6F7780464D68 /* VaultServicesBootstrapTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
