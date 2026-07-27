@@ -103,4 +103,34 @@ final class ChunkKeyRecoveryTests: XCTestCase {
             fromEncryptedManifest: encManifest, folderKey: folderKey)
         XCTAssertNil(recovered["hashB"], "a hash absent from the manifest should be omitted, not synthesized")
     }
+
+    /// Adversarial review (2026-07-27): two descriptors sharing a hash but
+    /// wrapping DIFFERENT keys must never resolve to a silent last-writer-wins
+    /// pick — that would mean a coin flip decides which key "wins," and a
+    /// wrong pick makes the chunk permanently undecryptable, exactly the
+    /// class of bug #211 was about.
+    func testDuplicateHashWithDifferingKeysIsOmittedNotLastWriterWins() throws {
+        let folderKey = VaultCrypto.generateFolderKey()
+        let keyA = VaultCrypto.generateChunkKey()
+        let keyB = VaultCrypto.generateChunkKey()
+        let encManifest = try makeEncryptedManifest(
+            chunkKeys: [("dup-hash", keyA), ("dup-hash", keyB)], folderKey: folderKey)
+
+        let recovered = try ChunkKeyRecovery.originalChunkKeys(
+            fromEncryptedManifest: encManifest, folderKey: folderKey)
+        XCTAssertNil(recovered["dup-hash"], "an ambiguous duplicate hash must be omitted, never silently resolved to either key")
+    }
+
+    /// Two descriptors that happen to share a hash AND the same key are not
+    /// actually ambiguous — no reason to reject them.
+    func testDuplicateHashWithIdenticalKeysIsRecovered() throws {
+        let folderKey = VaultCrypto.generateFolderKey()
+        let key = VaultCrypto.generateChunkKey()
+        let encManifest = try makeEncryptedManifest(
+            chunkKeys: [("dup-hash", key), ("dup-hash", key)], folderKey: folderKey)
+
+        let recovered = try ChunkKeyRecovery.originalChunkKeys(
+            fromEncryptedManifest: encManifest, folderKey: folderKey)
+        XCTAssertEqual(recovered["dup-hash"]?.withUnsafeBytes { Data($0) }, key.withUnsafeBytes { Data($0) })
+    }
 }

@@ -17,7 +17,7 @@ import CryptoKit
 /// download (AES-GCM authentication failure) — silent, unrecoverable data loss.
 public enum ChunkKeyRecovery {
 
-    public enum RecoveryError: Error, Equatable {
+    public enum RecoveryError: Error {
         /// The encrypted manifest blob could not be decrypted with the
         /// supplied folder key (wrong key, corrupt blob, or truncated data).
         case manifestDecryptFailed
@@ -54,12 +54,30 @@ public enum ChunkKeyRecovery {
             throw RecoveryError.manifestDecodeFailed
         }
 
+        // Two descriptors sharing a hash but wrapping DIFFERENT keys means the
+        // manifest is corrupt or was tampered with — there is no way to know
+        // which key is "correct," and last-writer-wins would silently commit
+        // to a coin flip (adversarial review, 2026-07-27). Track and reject
+        // ambiguous hashes explicitly rather than letting a dictionary
+        // overwrite pick one.
         var keysByHash: [String: SymmetricKey] = [:]
+        var ambiguousHashes: Set<String> = []
         for descriptor in manifest.chunks {
             guard let keyBlob = Data(base64Encoded: descriptor.encryptedKeyB64),
                   let chunkKey = try? VaultCrypto.decryptChunkKey(keyBlob, with: folderKey)
             else { continue }
+            let chunkKeyData = chunkKey.withUnsafeBytes { Data($0) }
+            if let existing = keysByHash[descriptor.hash] {
+                let existingData = existing.withUnsafeBytes { Data($0) }
+                if existingData != chunkKeyData {
+                    ambiguousHashes.insert(descriptor.hash)
+                }
+                continue
+            }
             keysByHash[descriptor.hash] = chunkKey
+        }
+        for hash in ambiguousHashes {
+            keysByHash.removeValue(forKey: hash)
         }
         return keysByHash
     }

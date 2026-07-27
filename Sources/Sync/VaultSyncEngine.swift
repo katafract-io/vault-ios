@@ -707,11 +707,44 @@ public class VaultSyncEngine: ObservableObject {
         // critical bug (#211) this closes: silently mismatched key/ciphertext
         // pairs previously uploaded successfully and were marked "synced"
         // while being permanently undecryptable.
+        // Prefer the local cache (cheap, no network); if the OS evicted it
+        // under storage pressure or the app was force-quit mid-drain, fall
+        // back to the server copy the same way downloadFile already does —
+        // the manifest may well have already been uploaded even though this
+        // particular chunk's ciphertext was later evicted locally. Only a
+        // manifest that's unavailable from BOTH sources is unrecoverable.
+        // (Adversarial review, 2026-07-27: the first cut of this fix declared
+        // permanentFailure on a cache miss with no server fallback, which
+        // could permanently strand a file whose manifest was safely on S3
+        // the whole time.)
         let manifestCacheKey = "__manifest__\(fileId)"
-        guard let encryptedManifest = ChunkCache.get(hash: manifestCacheKey) else {
-            self.logger.error("recovery: manifest cache missing for \(fileId, privacy: .public), cannot recover original chunk key")
-            dlog("recovery permanent: manifest cache missing for \(fileId)", category: "sync", level: .error)
-            return .permanentFailure(reason: "manifest cache missing, cannot recover original chunk key without it")
+        let encryptedManifest: Data
+        if let cached = ChunkCache.get(hash: manifestCacheKey) {
+            encryptedManifest = cached
+        } else {
+            do {
+                let fetched = try await apiClient.fetchManifest(fileId: fileId)
+                // Restore it into the cache too — checkAndFinalizeFile reads
+                // this same key directly and would otherwise mark the file
+                // "conflict" even though we just proved the manifest exists.
+                try? ChunkCache.put(hash: manifestCacheKey, data: fetched)
+                encryptedManifest = fetched
+            } catch let apiError as VaultAPIClientError {
+                if case .httpError(let status, _) = apiError, status == 404 {
+                    self.logger.error("recovery: manifest not found locally or on server for \(fileId, privacy: .public)")
+                    dlog("recovery permanent: manifest missing locally and on server for \(fileId)", category: "sync", level: .error)
+                    return .permanentFailure(reason: "manifest missing locally and on server, cannot recover original chunk key")
+                }
+                // Any other API error (network, 5xx, decoding) is transient —
+                // the manifest may genuinely exist server-side; retry later.
+                self.logger.error("recovery: manifest server fetch failed for \(fileId, privacy: .public): \(apiError)")
+                dlog("recovery transient: manifest server fetch failed for \(fileId): \(apiError)", category: "sync", level: .error)
+                return .transientFailure
+            } catch {
+                self.logger.error("recovery: manifest server fetch failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                dlog("recovery transient: manifest server fetch failed for \(fileId): \(error.localizedDescription)", category: "sync", level: .error)
+                return .transientFailure
+            }
         }
         let originalKeysByHash: [String: SymmetricKey]
         do {
@@ -742,22 +775,37 @@ public class VaultSyncEngine: ObservableObject {
                           !window.isEmpty else { break }
                     for chunk in FastCDC.split(window) {
                         guard let originalKey = originalKeysByHash[chunk.hash] else {
-                            // We don't have this chunk's original key. Do NOT
+                            // We don't have this chunk's original key (missing
+                            // or ambiguous-duplicate-hash descriptor). Do NOT
                             // synthesize a new one and do NOT touch whatever
                             // may already be cached under this hash — only
                             // the specifically-requested target chunk failing
                             // this lookup is fatal to the current recovery
-                            // attempt; other chunks just sit out this pass.
+                            // attempt. Other chunks just sit out this pass;
+                            // they'll get their own permanentFailure if/when
+                            // they're later requested as a target themselves
+                            // (logged here too so the root cause — a partially
+                            // corrupt manifest — isn't only visible one chunk
+                            // at a time across separate recovery attempts).
                             if chunk.hash == targetHash {
                                 throw ChunkRecoveryFailure.missingOriginalKeyForTarget
                             }
+                            dlog("recovery: no original key for non-target chunk \(chunk.hash) in \(fileId) — leaving its cache entry untouched", category: "sync", level: .error)
                             continue
                         }
                         let plaintext = Data(window[chunk.offset..<(chunk.offset + chunk.length)])
                         let encrypted = try VaultCrypto.encrypt(plaintext, key: originalKey)
-                        // Verify the round-trip before this ciphertext is
-                        // trusted anywhere — a key/ciphertext mismatch must
-                        // never reach ChunkCache (and from there, S3).
+                        // Sanity check that encrypt/decrypt round-trips before
+                        // trusting this ciphertext. Note this does NOT prove
+                        // the key matches what the manifest expects for this
+                        // hash — that guarantee comes from originalKeysByHash
+                        // being keyed by the exact same chunk.hash the
+                        // manifest descriptor was keyed by (plus the
+                        // duplicate-hash rejection in ChunkKeyRecovery). This
+                        // check instead guards against a corrupt/malformed
+                        // SymmetricKey or a CryptoKit-level fault producing
+                        // ciphertext that wouldn't even decrypt with its own
+                        // key.
                         guard let roundTrip = try? VaultCrypto.decrypt(encrypted, key: originalKey),
                               roundTrip == plaintext
                         else {
@@ -766,10 +814,21 @@ public class VaultSyncEngine: ObservableObject {
                             }
                             continue
                         }
-                        // Re-cache with looser protection so this doesn't
-                        // happen again on the next screen-lock cycle.
-                        try ChunkCache.put(hash: chunk.hash, data: encrypted)
-                        if chunk.hash == targetHash { found = encrypted }
+                        if chunk.hash == targetHash {
+                            // Must actually land on disk — callers expect the
+                            // target chunk to be present in ChunkCache once
+                            // `.recovered` comes back.
+                            try ChunkCache.put(hash: chunk.hash, data: encrypted)
+                            found = encrypted
+                        } else {
+                            // Re-cache with looser protection so this doesn't
+                            // happen again on the next screen-lock cycle. A
+                            // write failure for a chunk NOBODY asked to
+                            // recover must not blow up the pass that already
+                            // found the chunk we actually needed (adversarial
+                            // review, 2026-07-27).
+                            try? ChunkCache.put(hash: chunk.hash, data: encrypted)
+                        }
                     }
                 }
                 return found
