@@ -124,6 +124,18 @@ public final class SubscriptionStore: ObservableObject {
     private var transactionListener: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
 
+    /// Transaction IDs currently mid-exchange in `handleVerifiedTransaction`.
+    /// Guards against `refreshEntitlements()` (called on init AND every
+    /// foreground), the `Transaction.updates` listener, and `purchase()` all
+    /// being able to reach the same unfinished transaction and fire
+    /// concurrent `validateAppleTransaction` calls for it before any of them
+    /// persists a result (adversarial review, 2026-07-27, on the #207/#208
+    /// fix — `SubscriptionStore` is `@MainActor`, so this is reentrancy at
+    /// the network `await`, not true parallelism, but the reentrancy itself
+    /// is real and worth closing regardless of backend token-rotation
+    /// semantics).
+    private var transactionsBeingExchanged: Set<UInt64> = []
+
     /// True if the user owns a paid entitlement — used for purchase-ownership
     /// UI (paywall dismissal, feature unlock screens). Deliberately permissive
     /// of `.entitledPendingBackend`: the user DID pay, and Codex's acceptance
@@ -190,11 +202,19 @@ public final class SubscriptionStore: ObservableObject {
     }
 
     private func mirrorToEnclaveAppGroup(state: SubscriptionState) {
+        // .entitledPendingBackend must NOT mirror a plan here — this function's
+        // entire purpose is propagating BACKEND authorization to sibling apps
+        // (DocArmor etc.) so they can skip their own server round-trip. Handing
+        // them plan="sovereign" (plus whatever stale token sits in Keychain)
+        // while the main app's own isBackendReady is false would let sibling
+        // processes authorize cloud/crypto operations the main app deliberately
+        // withheld — defeating the entire #208 fix at the App Group boundary
+        // (adversarial review, 2026-07-27, confirmed high-severity).
         let plan: String?
         switch state {
         case .redeemed(let p, _, _):                          plan = p
-        case .subscribed, .entitledPendingBackend:            plan = "sovereign"
-        case .notSubscribed, .unknown:                        plan = nil
+        case .subscribed:                                     plan = "sovereign"
+        case .notSubscribed, .unknown, .entitledPendingBackend: plan = nil
         }
         let token: String? = {
             guard let data = Keychain.get(forKey: Self.authTokenKeychainKey),
@@ -501,7 +521,17 @@ public final class SubscriptionStore: ObservableObject {
                     // its persistence failed). Retry it now using this exact
                     // verified transaction rather than presenting a false
                     // .subscribed with no authorization behind it.
-                    await handleVerifiedTransaction(transaction, jws: verification.jwsRepresentation)
+                    //
+                    // Only finish() on confirmed success (adversarial review,
+                    // 2026-07-27: this call's result was previously discarded
+                    // entirely, so a successful retry here never finished the
+                    // transaction — it would sit permanently unfinished and
+                    // get redelivered via Transaction.updates on every future
+                    // launch, forcing a needless re-exchange each time).
+                    let backendReady = await handleVerifiedTransaction(transaction, jws: verification.jwsRepresentation)
+                    if backendReady {
+                        await transaction.finish()
+                    }
                 }
                 return
             }
@@ -524,6 +554,26 @@ public final class SubscriptionStore: ObservableObject {
     /// why an unfinished transaction matters.
     @discardableResult
     private func handleVerifiedTransaction(_ transaction: Transaction, jws: String) async -> Bool {
+        // Redemption (Stripe/founder token) outranks StoreKit — a background
+        // StoreKit event (this function's other callers besides
+        // refreshEntitlements, which already had this guard) must never
+        // downgrade an already-redeemed grant to entitledPendingBackend just
+        // because a concurrent Apple transaction happened to fail its
+        // exchange (adversarial review, 2026-07-27, low-severity but cheap
+        // to close). Treat as already-handled so the caller can finish() it.
+        if case .redeemed = subscriptionState { return true }
+
+        guard !transactionsBeingExchanged.contains(transaction.id) else {
+            // Another call is already exchanging this exact transaction —
+            // don't fire a second concurrent backend exchange for it. The
+            // in-flight call will resolve state and finish() when it
+            // completes; this call reports "not ready" so ITS caller does
+            // not also finish() a transaction it didn't actually resolve.
+            return false
+        }
+        transactionsBeingExchanged.insert(transaction.id)
+        defer { transactionsBeingExchanged.remove(transaction.id) }
+
         #if targetEnvironment(simulator)
         // Simulator JWS fails server x5c verification (see feedback_simulator_no_token.md).
         // Trust local StoreKit for UI; skip server exchange. Load Keychain token so
