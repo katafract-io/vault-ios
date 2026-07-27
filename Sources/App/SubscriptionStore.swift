@@ -25,10 +25,22 @@ public final class SubscriptionStore: ObservableObject {
     public enum SubscriptionState: Equatable {
         case unknown
         case notSubscribed
-        /// Grant via Apple StoreKit — may or may not have a matching server token yet.
+        /// Grant via Apple StoreKit, CONFIRMED with the backend — a valid
+        /// bearer token is installed and cloud operations are authorized.
         case subscribed(productId: String, expiresAt: Date?)
-        /// Grant via redeemed token (Stripe or founder). Always server-token-backed.
+        /// Grant via redeemed token (Stripe or founder). Always backend-ready
+        /// — redemption IS the backend call, there's no separate exchange.
         case redeemed(plan: String, isFounder: Bool, expiresAt: Date?)
+        /// StoreKit confirms a paid entitlement exists, but the backend
+        /// token exchange hasn't succeeded (or its Keychain persistence
+        /// failed) yet. Purchase-ownership UI may unlock (the user did pay),
+        /// but cloud operations must NOT run — there's no backend
+        /// authorization to run them with. Resolved automatically by
+        /// `refreshEntitlements()` on relaunch/foreground (2026-07-26 Codex
+        /// audit, #208: this used to collapse straight to `.subscribed`,
+        /// with no retry ever actually happening despite the user being told
+        /// "force-quit and relaunch" would fix it).
+        case entitledPendingBackend(productId: String, expiresAt: Date?)
     }
 
     public enum ProductID {
@@ -112,12 +124,30 @@ public final class SubscriptionStore: ObservableObject {
     private var transactionListener: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
 
+    /// True if the user owns a paid entitlement — used for purchase-ownership
+    /// UI (paywall dismissal, feature unlock screens). Deliberately permissive
+    /// of `.entitledPendingBackend`: the user DID pay, and Codex's acceptance
+    /// criteria for #208 is explicit that purchase-ownership UI may unlock
+    /// even while backend sync is still catching up. Do NOT use this to gate
+    /// anything that actually talks to the backend — use `isBackendReady`.
     public var isSubscribed: Bool {
         if ScreenshotMode.mockSubscribed { return true }
         if ScreenshotMode.mockUnsubscribed { return false }
         switch subscriptionState {
-        case .subscribed, .redeemed: return true
+        case .subscribed, .redeemed, .entitledPendingBackend: return true
         case .unknown, .notSubscribed: return false
+        }
+    }
+
+    /// True only once a valid backend bearer token is actually installed.
+    /// This is what must gate cloud uploads/sync — NOT `isSubscribed` — so a
+    /// verified-but-not-yet-exchanged StoreKit purchase can unlock ownership
+    /// UI without cloud operations running unauthorized (2026-07-26 Codex
+    /// audit, #208).
+    public var isBackendReady: Bool {
+        switch subscriptionState {
+        case .subscribed, .redeemed: return true
+        case .unknown, .notSubscribed, .entitledPendingBackend: return false
         }
     }
 
@@ -128,7 +158,7 @@ public final class SubscriptionStore: ObservableObject {
         }
         if ScreenshotMode.mockFounder { return .tb5 }
         switch subscriptionState {
-        case .subscribed(let productId, _):
+        case .subscribed(let productId, _), .entitledPendingBackend(let productId, _):
             return Self.capacity(from: productId)
         case .redeemed(_, let isFounder, _):
             return isFounder ? .tb5 : nil
@@ -162,9 +192,9 @@ public final class SubscriptionStore: ObservableObject {
     private func mirrorToEnclaveAppGroup(state: SubscriptionState) {
         let plan: String?
         switch state {
-        case .redeemed(let p, _, _):    plan = p
-        case .subscribed:               plan = "sovereign"
-        case .notSubscribed, .unknown:  plan = nil
+        case .redeemed(let p, _, _):                          plan = p
+        case .subscribed, .entitledPendingBackend:            plan = "sovereign"
+        case .notSubscribed, .unknown:                        plan = nil
         }
         let token: String? = {
             guard let data = Keychain.get(forKey: Self.authTokenKeychainKey),
@@ -216,11 +246,30 @@ public final class SubscriptionStore: ObservableObject {
         }
     }
 
-    private func persistAuthToken(_ token: String) async {
-        if let data = token.data(using: .utf8) {
-            try? Keychain.set(data, forKey: Self.authTokenKeychainKey, synchronizable: true)
+    /// Persists `token` to Keychain and verifies it actually landed with a
+    /// read-back before injecting it into the API client. Returns false on
+    /// ANY failure (wrap error or a mismatched/missing read-back) — callers
+    /// must not publish a durable-success entitlement state when this
+    /// returns false (2026-07-26 Codex audit, #207: the previous `try?`
+    /// swallowed the failure entirely, and every caller published
+    /// `.redeemed`/`.subscribed` regardless of whether the token actually
+    /// persisted, which for a one-time founder code permanently stranded the
+    /// grant — the server had already marked the code claimed).
+    @discardableResult
+    private func persistAuthToken(_ token: String) async -> Bool {
+        guard let data = token.data(using: .utf8) else { return false }
+        do {
+            try Keychain.set(data, forKey: Self.authTokenKeychainKey, synchronizable: true)
+        } catch {
+            return false
+        }
+        guard let readBack = Keychain.get(forKey: Self.authTokenKeychainKey),
+              String(data: readBack, encoding: .utf8) == token
+        else {
+            return false
         }
         await apiClient.setAuthToken(token)
+        return true
     }
 
     private func clearAuthToken() async {
@@ -249,7 +298,9 @@ public final class SubscriptionStore: ObservableObject {
         guard info.unlocksVaultyx else {
             throw RedeemError.notEligible(info)
         }
-        await persistAuthToken(trimmed)
+        guard await persistAuthToken(trimmed) else {
+            throw RedeemError.persistFailed
+        }
         let expires = info.expires_at.map { Date(timeIntervalSince1970: TimeInterval($0)) }
         subscriptionState = .redeemed(
             plan: info.plan ?? "unknown",
@@ -262,6 +313,10 @@ public final class SubscriptionStore: ObservableObject {
     public enum RedeemError: Error, LocalizedError {
         case empty
         case notEligible(TokenInfoResponse)
+        /// The token is valid, but couldn't be durably saved on this device.
+        /// A pasted token (unlike a one-time founder code) can simply be
+        /// re-entered — this is recoverable, just not silently "successful."
+        case persistFailed
 
         public var errorDescription: String? {
             switch self {
@@ -274,6 +329,8 @@ public final class SubscriptionStore: ObservableObject {
                     return "Token grants plan '\(plan)' which does not include Vaultyx Sovereign."
                 }
                 return "Token does not grant Vaultyx access."
+            case .persistFailed:
+                return "This token is valid, but couldn't be saved securely on this device. Please try again."
             }
         }
     }
@@ -310,8 +367,18 @@ public final class SubscriptionStore: ObservableObject {
             throw error
         }
 
-        // Persist token
-        await persistAuthToken(response.token)
+        // Persist token. The server has ALREADY marked this code claimed at
+        // this point — if persistence fails, there is no way to retry
+        // through this flow (the same code will now return "already
+        // claimed"). Surface a clear, actionable error instead of silently
+        // reporting success (2026-07-26 Codex audit, #207): direct the user
+        // to support with the device id + plan so the grant can be
+        // reconciled manually. There is no client-side recovery path for an
+        // already-consumed one-time code without a dedicated backend
+        // recovery endpoint, which is out of scope for this fix.
+        guard await persistAuthToken(response.token) else {
+            throw FounderRedeemError.persistedTokenLostAfterClaim(deviceId: deviceId, plan: response.plan)
+        }
 
         // Update subscription state
         let expires = response.expires_at.map { Date(timeIntervalSince1970: TimeInterval($0)) }
@@ -329,11 +396,20 @@ public final class SubscriptionStore: ObservableObject {
     public enum FounderRedeemError: Error, LocalizedError {
         case empty
         case alreadyClaimed
+        /// The code WAS successfully claimed server-side, but the resulting
+        /// token couldn't be saved on this device. Retrying the same code
+        /// will only return `alreadyClaimed` — this needs manual backend
+        /// reconciliation via support.
+        case persistedTokenLostAfterClaim(deviceId: String, plan: String)
 
         public var errorDescription: String? {
             switch self {
             case .empty: return "Code is empty."
             case .alreadyClaimed: return "This code has already been redeemed."
+            case .persistedTokenLostAfterClaim(let deviceId, let plan):
+                return "Your code was successfully redeemed for \(plan), but we couldn't save your access " +
+                    "securely on this device. Please contact support@katafract.com with this device ID so " +
+                    "we can restore your access: \(deviceId)"
             }
         }
     }
@@ -362,8 +438,18 @@ public final class SubscriptionStore: ObservableObject {
             switch result {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
-                await handleVerifiedTransaction(transaction, jws: verification.jwsRepresentation)
-                await transaction.finish()
+                let backendReady = await handleVerifiedTransaction(transaction, jws: verification.jwsRepresentation)
+                // Only finish on confirmed backend success. Finishing on
+                // failure would let StoreKit consider this transaction fully
+                // handled — it won't reliably reappear on Transaction.updates,
+                // and Transaction.currentEntitlements (what refreshEntitlements
+                // retries against) is the only remaining recovery path. An
+                // unfinished transaction is exactly what needs to survive for
+                // that retry to have anything to retry (2026-07-26 Codex
+                // audit, #208).
+                if backendReady {
+                    await transaction.finish()
+                }
             case .userCancelled: break
             case .pending:
                 purchaseError = "Purchase pending (awaiting approval)."
@@ -386,6 +472,14 @@ public final class SubscriptionStore: ObservableObject {
 
     // MARK: - Entitlement scan (client-side StoreKit truth)
 
+    /// Scans StoreKit's local entitlement truth and reconciles it against
+    /// backend readiness. Called on launch and on every foreground
+    /// (`VaultApp`'s scenePhase `.active`) so a previously-failed server
+    /// exchange gets retried automatically — this is what "force-quit and
+    /// relaunch" was always supposed to do (2026-07-26 Codex audit, #208:
+    /// this used to just trust `Transaction.currentEntitlements` and publish
+    /// `.subscribed` with no backend token at all, and no retry ever
+    /// happened; the promised relaunch-retry didn't exist).
     public func refreshEntitlements() async {
         for await verification in Transaction.currentEntitlements {
             guard let transaction = try? checkVerified(verification) else { continue }
@@ -393,9 +487,22 @@ public final class SubscriptionStore: ObservableObject {
                 // Only update state if not already redeemed via token —
                 // redemption outranks StoreKit because it carries founder status.
                 if case .redeemed = subscriptionState { return }
-                subscriptionState = .subscribed(
-                    productId: transaction.productID,
-                    expiresAt: transaction.expirationDate)
+                let hasBackendToken = Keychain.get(forKey: Self.authTokenKeychainKey) != nil
+                if hasBackendToken {
+                    // restoreAuthToken() already validated this token at
+                    // launch (called before refreshEntitlements in init).
+                    // Trust it — StoreKit and the backend agree.
+                    subscriptionState = .subscribed(
+                        productId: transaction.productID,
+                        expiresAt: transaction.expirationDate)
+                } else {
+                    // StoreKit confirms a paid entitlement but there's no
+                    // backend token — a prior exchange attempt failed (or
+                    // its persistence failed). Retry it now using this exact
+                    // verified transaction rather than presenting a false
+                    // .subscribed with no authorization behind it.
+                    await handleVerifiedTransaction(transaction, jws: verification.jwsRepresentation)
+                }
                 return
             }
         }
@@ -406,10 +513,17 @@ public final class SubscriptionStore: ObservableObject {
 
     // MARK: - Server JWS exchange (device only)
 
-    /// Called after a StoreKit purchase or a background `Transaction.updates`
-    /// event. `jws` comes from the `VerificationResult` (StoreKit 2 exposes
-    /// `jwsRepresentation` on the wrapper, NOT on the unwrapped Transaction).
-    private func handleVerifiedTransaction(_ transaction: Transaction, jws: String) async {
+    /// Called after a StoreKit purchase, a background `Transaction.updates`
+    /// event, or a `refreshEntitlements()` retry. `jws` comes from the
+    /// `VerificationResult` (StoreKit 2 exposes `jwsRepresentation` on the
+    /// wrapper, NOT on the unwrapped Transaction).
+    ///
+    /// Returns true only if the backend now has a valid, durably-persisted
+    /// token for this transaction — callers use this to decide whether the
+    /// transaction is safe to `finish()`. See the doc on `purchase(_:)` for
+    /// why an unfinished transaction matters.
+    @discardableResult
+    private func handleVerifiedTransaction(_ transaction: Transaction, jws: String) async -> Bool {
         #if targetEnvironment(simulator)
         // Simulator JWS fails server x5c verification (see feedback_simulator_no_token.md).
         // Trust local StoreKit for UI; skip server exchange. Load Keychain token so
@@ -420,6 +534,7 @@ public final class SubscriptionStore: ObservableObject {
         subscriptionState = .subscribed(
             productId: transaction.productID,
             expiresAt: transaction.expirationDate)
+        return true
         #else
         do {
             let response = try await apiClient.validateAppleTransaction(
@@ -429,17 +544,36 @@ public final class SubscriptionStore: ObservableObject {
                 productID: transaction.productID,
                 bundleID: Self.bundleID
             )
-            await persistAuthToken(response.token)
+            guard await persistAuthToken(response.token) else {
+                // Server accepted the exchange but the token couldn't be
+                // durably saved — do NOT claim backend-ready (2026-07-26
+                // Codex audit, #207/#208).
+                purchaseError = "Your purchase is valid, but we couldn't save your access securely on " +
+                    "this device. We'll retry automatically the next time you open the app."
+                subscriptionState = .entitledPendingBackend(
+                    productId: transaction.productID,
+                    expiresAt: transaction.expirationDate)
+                return false
+            }
             subscriptionState = .subscribed(
                 productId: transaction.productID,
                 expiresAt: Date(timeIntervalSince1970: TimeInterval(response.expires_at)))
             await ensureVaultInitialized()
+            return true
         } catch {
-            purchaseError = "Server validation failed: \(error). Your StoreKit purchase is valid, " +
-                "but you won't be able to sync until we retry. Force-quit the app and relaunch."
-            subscriptionState = .subscribed(
+            // The recovery instruction now matches reality: refreshEntitlements()
+            // retries this automatically on every relaunch AND foreground —
+            // see VaultApp's scenePhase .active handler — so the user genuinely
+            // doesn't have to do anything (2026-07-26 Codex audit, #208: the
+            // old copy promised a force-quit/relaunch retry that never
+            // actually existed in code).
+            purchaseError = "Server validation failed: \(error.localizedDescription). Your purchase is " +
+                "valid — we'll finish setting up cloud sync automatically the next time you open the " +
+                "app or regain network connectivity."
+            subscriptionState = .entitledPendingBackend(
                 productId: transaction.productID,
                 expiresAt: transaction.expirationDate)
+            return false
         }
         #endif
     }
@@ -457,10 +591,15 @@ public final class SubscriptionStore: ObservableObject {
                 guard let self else { return }
                 do {
                     let transaction = try await self.checkVerified(verification)
-                    await self.handleVerifiedTransaction(
+                    let backendReady = await self.handleVerifiedTransaction(
                         transaction,
                         jws: verification.jwsRepresentation)
-                    await transaction.finish()
+                    // Same reasoning as purchase(_:) — only finish on
+                    // confirmed backend success so a failed exchange survives
+                    // for refreshEntitlements() to retry.
+                    if backendReady {
+                        await transaction.finish()
+                    }
                 } catch {
                     await MainActor.run {
                         self.purchaseError = "Unverified transaction ignored: \(error.localizedDescription)"
