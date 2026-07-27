@@ -431,52 +431,96 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             removed += 1
         }
 
-        // Remove the album's vault folder (Media/<Album>) now its photos are gone.
+        // Remove the album's vault folder (Media/<Album>) now its photos are
+        // gone. Only clear the local folder pointer/VaultFolder row on a
+        // CONFIRMED remote delete — previously both were cleared
+        // unconditionally, so a failed deleteFolder call left the local
+        // pointer gone while the remote folder (and its confirmation state)
+        // was unknown, with no way to retry (2026-07-26 Codex audit, #209).
+        // On failure, leave everything as-is: the next unsyncAlbum call for
+        // this album (or a future explicit retry path) will see the same
+        // folderId and try again.
         if let folderId = albumFolderId(for: albumId) {
             do {
                 try await apiClient.deleteFolder(folderId: folderId)
+                if let vf = (try? modelContext.fetch(FetchDescriptor<VaultFolder>()))?
+                    .first(where: { $0.folderId == folderId }) {
+                    modelContext.delete(vf)
+                    try? modelContext.save()
+                }
+                clearAlbumFolderId(for: albumId)
             } catch {
-                logger.error("unsyncAlbum: deleteFolder \(folderId, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("unsyncAlbum: deleteFolder \(folderId, privacy: .public) failed: \(error.localizedDescription, privacy: .public) — local folder pointer retained for retry")
             }
-            if let vf = (try? modelContext.fetch(FetchDescriptor<VaultFolder>()))?
-                .first(where: { $0.folderId == folderId }) {
-                modelContext.delete(vf)
-                try? modelContext.save()
-            }
-            clearAlbumFolderId(for: albumId)
         }
         logger.info("unsync complete for album \(albumId, privacy: .public) — touched \(removed, privacy: .public) asset(s)")
     }
 
-    /// Remove the vault copy for a single backed-up asset. Idempotent: if
-    /// there's no matching `BackedUpAsset` row, returns silently.
-    /// Adds `assetIdentifier` to the exclusion list so a subsequent Backup
-    /// Now / library-change observer will NOT re-upload it. The exclusion
-    /// is removed when the user re-enables an album containing this photo.
-    public func removeBackup(assetIdentifier: String, apiClient: VaultAPIClient) async {
+    /// Outcome of a single-asset removal attempt — see `removeBackup`.
+    public enum RemovalOutcome {
+        /// Remote soft-delete confirmed; local ledger + file rows cleaned up.
+        case removed
+        /// Remote soft-delete failed (network/auth/server/timeout). The
+        /// `BackedUpAsset` row is kept and marked `removalPendingSince` —
+        /// the backend copy has NOT been touched, and `retryPendingRemovals`
+        /// will retry it later. Never presented to the user as success.
+        case pendingRetry
+        /// No matching `BackedUpAsset` row existed for this identifier —
+        /// nothing to remove (removal is idempotent).
+        case noSuchAsset
+    }
+
+    /// Remove the vault copy for a single backed-up asset. Adds
+    /// `assetIdentifier` to the exclusion list immediately (so a concurrent
+    /// Backup Now / library-change observer can't race a re-upload while
+    /// removal is pending or retrying) — the exclusion is removed when the
+    /// user re-enables an album containing this photo.
+    ///
+    /// Does NOT delete the local ledger row or its `LocalFile` rows until the
+    /// remote soft-delete is CONFIRMED. Before this fix (2026-07-26 Codex
+    /// audit, #209), the local rows were deleted unconditionally regardless
+    /// of whether `softDeleteFile` succeeded — a failed remote delete looked
+    /// identical to a successful one, silently orphaning the backend copy
+    /// with the local UI showing the photo as "removed" and nothing left to
+    /// ever retry the deletion.
+    @discardableResult
+    public func removeBackup(assetIdentifier: String, apiClient: VaultAPIClient) async -> RemovalOutcome {
         excludeFromBackup(assetIdentifier)
         let descriptor = FetchDescriptor<BackedUpAsset>(
             predicate: #Predicate { $0.assetIdentifier == assetIdentifier })
-        if let row = (try? modelContext.fetch(descriptor))?.first {
-            let fileId = row.fileId
-            do {
-                try await apiClient.softDeleteFile(fileId: fileId)
-            } catch {
-                logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                dlog("vault soft-delete failed for \(assetIdentifier): \(error.localizedDescription)", category: "photos", level: .error)
-            }
-            let lfDescriptor = FetchDescriptor<LocalFile>(
-                predicate: #Predicate { $0.fileId == fileId })
-            if let localRows = try? modelContext.fetch(lfDescriptor) {
-                for r in localRows { modelContext.delete(r) }
-            }
-            modelContext.delete(row)
-            backedUpIdentifiers.remove(assetIdentifier)
+        guard let row = (try? modelContext.fetch(descriptor))?.first else {
+            return .noSuchAsset
         }
+        let fileId = row.fileId
+        // Preserve the original pending timestamp across retries rather than
+        // resetting it — callers/diagnostics can see how long this has been
+        // stuck, and a retry attempt is not itself a "new" removal request.
+        row.removalPendingSince = row.removalPendingSince ?? Date()
+        try? modelContext.save()
+
+        do {
+            try await apiClient.softDeleteFile(fileId: fileId)
+        } catch {
+            logger.error("vault soft-delete failed for asset \(assetIdentifier, privacy: .public) / file \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public) — will retry")
+            dlog("vault soft-delete failed for \(assetIdentifier): \(error.localizedDescription) — will retry", category: "photos", level: .error)
+            return .pendingRetry
+        }
+
+        // Remote confirmed. Now — and only now — safe to clean up local
+        // pointers; the backend copy is genuinely gone.
+        let lfDescriptor = FetchDescriptor<LocalFile>(
+            predicate: #Predicate { $0.fileId == fileId })
+        if let localRows = try? modelContext.fetch(lfDescriptor) {
+            for r in localRows { modelContext.delete(r) }
+        }
+        modelContext.delete(row)
+        backedUpIdentifiers.remove(assetIdentifier)
 
         // Sweep any orphan LocalFile rows for this asset: rows created by
         // importFile during a failed/cancelled backup that never reached
-        // markBackedUp. Without this, disabling an album leaves ghost chunks
+        // markBackedUp (so they never had a BackedUpAsset row / remote copy
+        // to begin with — safe to clean up unconditionally, unlike the row
+        // above). Without this, disabling an album leaves ghost chunks
         // retrying forever in the upload queue.
         let orphanDesc = FetchDescriptor<LocalFile>(
             predicate: #Predicate<LocalFile> { $0.sourceAssetIdentifier == assetIdentifier })
@@ -494,6 +538,23 @@ public class PhotoBackupManager: NSObject, PHPhotoLibraryChangeObserver {
             }
         }
         try? modelContext.save()
+        return .removed
+    }
+
+    /// Retries every `BackedUpAsset` row whose removal is still pending (a
+    /// previous `removeBackup` call's remote soft-delete failed). Called
+    /// from app-foreground reconciliation (`VaultApp`'s scenePhase `.active`
+    /// handler) so a failed removal is retried automatically — the user
+    /// should never have to notice a stuck removal and retry it themselves.
+    public func retryPendingRemovals(apiClient: VaultAPIClient) async {
+        let descriptor = FetchDescriptor<BackedUpAsset>(
+            predicate: #Predicate { $0.removalPendingSince != nil })
+        guard let pending = try? modelContext.fetch(descriptor), !pending.isEmpty else { return }
+        logger.info("retrying \(pending.count, privacy: .public) pending photo removal(s)")
+        dlog("retrying \(pending.count) pending photo removal(s)", category: "photos", level: .info)
+        for row in pending {
+            await removeBackup(assetIdentifier: row.assetIdentifier, apiClient: apiClient)
+        }
     }
 
     private func runAlbumBackup(albumId: String, apiClient: VaultAPIClient) async {

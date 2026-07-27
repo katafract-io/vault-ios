@@ -15,6 +15,7 @@
 		0B14464E34124455D8BF8D87 /* PhotosViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E8E9F8455365798092C4DFB /* PhotosViewModel.swift */; };
 		0C0E5E9208BCB9FBFBBD910B /* VaultFileItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42209600639B9C22079E9670 /* VaultFileItem.swift */; };
 		0ED0E21705C12269486A78EC /* RestoreFromPhraseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3055AC015F92D31B18995F7D /* RestoreFromPhraseView.swift */; };
+		0FE5BE0B91B485813EB9F394 /* BackedUpAssetRemovalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32FC97F7D24B0EBAE6CCD1E9 /* BackedUpAssetRemovalTests.swift */; };
 		120B7D1FFD2218AF6D7987ED /* CategoryFilterBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A384B3D2F8EC8DBD41F67626 /* CategoryFilterBar.swift */; };
 		137A3CB27F8EEE16D7AE3A88 /* PhotosPermissionStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3455D2D54E1882A2C67EBA8 /* PhotosPermissionStep.swift */; };
 		1529D9338CD8D591980B8E64 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B45DCA47E925C170193E244 /* OnboardingView.swift */; };
@@ -197,6 +198,7 @@
 		3055AC015F92D31B18995F7D /* RestoreFromPhraseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreFromPhraseView.swift; sourceTree = "<group>"; };
 		324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhrase.swift; sourceTree = "<group>"; };
 		32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		32FC97F7D24B0EBAE6CCD1E9 /* BackedUpAssetRemovalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackedUpAssetRemovalTests.swift; sourceTree = "<group>"; };
 		39481199B6CB3F3482004760 /* VaultAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultAPIClient.swift; sourceTree = "<group>"; };
 		3C42BCDD24AE3DCEA9C6E315 /* FileBrowserListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserListRow.swift; sourceTree = "<group>"; };
 		3CDB6AC8787718497BAA20B0 /* VaultServicesBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultServicesBootstrapTests.swift; sourceTree = "<group>"; };
@@ -525,6 +527,7 @@
 		B161C15C0F66B768508B90B1 /* VaultyxTests */ = {
 			isa = PBXGroup;
 			children = (
+				32FC97F7D24B0EBAE6CCD1E9 /* BackedUpAssetRemovalTests.swift */,
 				08014DAC553EC97E88C36DFE /* ChunkKeyRecoveryTests.swift */,
 				0D3D01BB41C6D2A5909C4800 /* RecoveryRoundTripTests.swift */,
 				3CDB6AC8787718497BAA20B0 /* VaultServicesBootstrapTests.swift */,
@@ -992,6 +995,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0FE5BE0B91B485813EB9F394 /* BackedUpAssetRemovalTests.swift in Sources */,
 				8EF7F99D962D4C3E08739C5E /* ChunkKeyRecoveryTests.swift in Sources */,
 				174C5F3B6BC59D3AF65E7095 /* RecoveryRoundTripTests.swift in Sources */,
 				BDD606049A5B6F7780464D68 /* VaultServicesBootstrapTests.swift in Sources */,

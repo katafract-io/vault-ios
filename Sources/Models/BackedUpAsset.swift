@@ -26,17 +26,28 @@ import SwiftData
     /// Original filename at upload time, used for cloud-only thumbnails + restore.
     var originalFilename: String
 
+    /// Non-nil while a `removeBackup` request for this asset is in flight or
+    /// has failed remotely and is awaiting retry. The row (and its backend
+    /// copy) is authoritatively "still backed up" until this clears AND the
+    /// row itself is deleted — never both changed in the same step without a
+    /// confirmed remote success (2026-07-26 Codex audit, #209: a failed
+    /// remote soft-delete used to be indistinguishable from a successful one,
+    /// silently orphaning the backend copy with no retry path).
+    var removalPendingSince: Date?
+
     init(assetIdentifier: String,
          fileId: String,
          folderId: String,
          backedUpAt: Date = Date(),
          sizeBytes: Int64 = 0,
-         originalFilename: String = "IMG") {
+         originalFilename: String = "IMG",
+         removalPendingSince: Date? = nil) {
         self.assetIdentifier = assetIdentifier
         self.fileId = fileId
         self.folderId = folderId
         self.backedUpAt = backedUpAt
         self.sizeBytes = sizeBytes
         self.originalFilename = originalFilename
+        self.removalPendingSince = removalPendingSince
     }
 }

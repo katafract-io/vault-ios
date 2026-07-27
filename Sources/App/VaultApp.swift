@@ -239,6 +239,10 @@ struct VaultApp: App {
                     services.logQueueSummary()
                     await services.drainShareExtensionInbox()
                     await services.syncEngine.syncPending()
+                    // Retry any photo removals whose remote soft-delete
+                    // previously failed (#209) — the user should never have
+                    // to notice a stuck removal and retry it themselves.
+                    await services.photoBackup.retryPendingRemovals(apiClient: services.apiClient)
                     // Make Vaultyx appear as a source in Files.app and refresh it.
                     await VaultFileProviderDomain.ensureRegistered()
                     VaultFileProviderDomain.signalChange()

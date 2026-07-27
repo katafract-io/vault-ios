@@ -411,6 +411,12 @@ struct BackupStateBadge: View {
                     .frame(width: 14, height: 14)
                     .rotationEffect(.degrees(-90))
             }
+        case .removing:
+            Image(systemName: "xmark.icloud")
+                .font(.caption2)
+                .foregroundStyle(.white)
+                .padding(3)
+                .background(Circle().fill(Color.black.opacity(0.4)))
         }
     }
 }
@@ -490,6 +496,9 @@ struct PhotoDetailView: View {
 
             case .cloudOnly:
                 cloudOnlyState
+
+            case .removing:
+                removingState
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -564,6 +573,24 @@ struct PhotoDetailView: View {
                     .fontWeight(.semibold)
             }
             Text("This photo was deleted from your device")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Shown while a remove-from-backup request hasn't been confirmed by the
+    /// server yet — including a failed attempt awaiting automatic retry
+    /// (#209: this must never look like "removed" until it actually is).
+    private var removingState: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Removing…")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+            Text("This will retry automatically if it doesn't complete right away")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
