@@ -698,15 +698,35 @@ public class VaultSyncEngine: ObservableObject {
             return .transientFailure
         }
 
-        // Re-chunk + re-encrypt off main thread. We rebuild ALL chunks for
-        // the file, not just the requested one, because FastCDC is
-        // deterministic — every chunk hash will match what's in the queue —
-        // and one drain pass usually needs many chunks back. Cheap to do once.
-        // folderKey is unused inside the closure today (per-chunk keys are
-        // freshly generated and the existing manifest already references the
-        // hashes), but is held in scope so future code that needs to wrap the
-        // chunk key with the folder key can reach it.
-        _ = folderKey
+        // Recover each chunk's ORIGINAL key from the already-encrypted,
+        // already-cached manifest before re-encrypting anything. The manifest
+        // is what will actually be uploaded (unchanged) once all chunks are
+        // present, so any chunk we rewrite MUST be re-encrypted under the
+        // exact key that manifest already commits to via encryptedKeyB64 —
+        // never a fresh random key. See ChunkKeyRecovery's doc for the
+        // critical bug (#211) this closes: silently mismatched key/ciphertext
+        // pairs previously uploaded successfully and were marked "synced"
+        // while being permanently undecryptable.
+        let manifestCacheKey = "__manifest__\(fileId)"
+        guard let encryptedManifest = ChunkCache.get(hash: manifestCacheKey) else {
+            self.logger.error("recovery: manifest cache missing for \(fileId, privacy: .public), cannot recover original chunk key")
+            dlog("recovery permanent: manifest cache missing for \(fileId)", category: "sync", level: .error)
+            return .permanentFailure(reason: "manifest cache missing, cannot recover original chunk key without it")
+        }
+        let originalKeysByHash: [String: SymmetricKey]
+        do {
+            originalKeysByHash = try ChunkKeyRecovery.originalChunkKeys(
+                fromEncryptedManifest: encryptedManifest, folderKey: folderKey)
+        } catch {
+            self.logger.error("recovery: manifest decrypt/decode failed for \(fileId, privacy: .public): \(error)")
+            dlog("recovery permanent: manifest decrypt/decode failed for \(fileId): \(error)", category: "sync", level: .error)
+            return .permanentFailure(reason: "manifest decrypt/decode failed, cannot recover original chunk key")
+        }
+
+        // Re-chunk off main thread. We rebuild ALL chunks for the file, not
+        // just the requested one, because FastCDC is deterministic — every
+        // chunk hash will match what's in the queue — and one drain pass
+        // usually needs many chunks back. Cheap to do once.
         let url = URL(fileURLWithPath: path)
         let targetHash = chunkHash
         do {
@@ -721,9 +741,31 @@ public class VaultSyncEngine: ObservableObject {
                     guard let window = try fileHandle.read(upToCount: readChunkSize),
                           !window.isEmpty else { break }
                     for chunk in FastCDC.split(window) {
+                        guard let originalKey = originalKeysByHash[chunk.hash] else {
+                            // We don't have this chunk's original key. Do NOT
+                            // synthesize a new one and do NOT touch whatever
+                            // may already be cached under this hash — only
+                            // the specifically-requested target chunk failing
+                            // this lookup is fatal to the current recovery
+                            // attempt; other chunks just sit out this pass.
+                            if chunk.hash == targetHash {
+                                throw ChunkRecoveryFailure.missingOriginalKeyForTarget
+                            }
+                            continue
+                        }
                         let plaintext = Data(window[chunk.offset..<(chunk.offset + chunk.length)])
-                        let chunkKey = VaultCrypto.generateChunkKey()
-                        let encrypted = try VaultCrypto.encrypt(plaintext, key: chunkKey)
+                        let encrypted = try VaultCrypto.encrypt(plaintext, key: originalKey)
+                        // Verify the round-trip before this ciphertext is
+                        // trusted anywhere — a key/ciphertext mismatch must
+                        // never reach ChunkCache (and from there, S3).
+                        guard let roundTrip = try? VaultCrypto.decrypt(encrypted, key: originalKey),
+                              roundTrip == plaintext
+                        else {
+                            if chunk.hash == targetHash {
+                                throw ChunkRecoveryFailure.roundTripVerificationFailed
+                            }
+                            continue
+                        }
                         // Re-cache with looser protection so this doesn't
                         // happen again on the next screen-lock cycle.
                         try ChunkCache.put(hash: chunk.hash, data: encrypted)
@@ -737,11 +779,28 @@ public class VaultSyncEngine: ObservableObject {
             // requested hash — the file changed since import or the recorded
             // hash was wrong. No retry will fix that.
             return .permanentFailure(reason: "target chunk hash not produced by re-chunk")
+        } catch ChunkRecoveryFailure.missingOriginalKeyForTarget {
+            self.logger.error("recovery: original key missing in manifest for \(fileId, privacy: .public) chunk \(targetHash, privacy: .public)")
+            dlog("recovery permanent: original key missing in manifest for \(fileId) chunk \(targetHash)", category: "sync", level: .error)
+            return .permanentFailure(reason: "original chunk key not found in manifest")
+        } catch ChunkRecoveryFailure.roundTripVerificationFailed {
+            self.logger.error("recovery: round-trip verification failed for \(fileId, privacy: .public) chunk \(targetHash, privacy: .public)")
+            dlog("recovery permanent: round-trip verification failed for \(fileId) chunk \(targetHash)", category: "sync", level: .error)
+            return .permanentFailure(reason: "recovered chunk failed round-trip verification")
         } catch {
             self.logger.error("recovery: re-chunk failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
             dlog("recovery transient: re-chunk error for \(fileId): \(error.localizedDescription)", category: "sync", level: .error)
             return .transientFailure
         }
+    }
+
+    /// Fatal, non-retryable failures specific to the target chunk during a
+    /// re-chunk recovery pass — distinguished from generic I/O errors (which
+    /// remain `.transientFailure`, since a future retry might succeed once
+    /// e.g. disk pressure clears) by being surfaced as `.permanentFailure`.
+    private enum ChunkRecoveryFailure: Error {
+        case missingOriginalKeyForTarget
+        case roundTripVerificationFailed
     }
 
     /// After all chunks for a file are confirmed, post the manifest and mark synced.
