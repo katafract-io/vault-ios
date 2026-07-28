@@ -181,13 +181,15 @@ struct VaultApp: App {
                 // captured the still-`.unknown` value at cold launch and left
                 // paying users stuck local-only with chunks queued forever.
                 // Drive the engine reactively off the resolved state instead.
-                // NB: read the emitted `state`, not `subscriptionStore.isSubscribed`
+                // NB: read the emitted `state`, not `subscriptionStore.isBackendReady`
                 // — @Published fires on willSet, so the stored value is still
-                // stale inside this closure.
+                // stale inside this closure. Gated on backend readiness, NOT
+                // StoreKit ownership — entitledPendingBackend means the user
+                // paid but there's no authorized backend token yet (#208).
                 let subscribed: Bool
                 switch state {
                 case .subscribed, .redeemed: subscribed = true
-                case .unknown, .notSubscribed: subscribed = false
+                case .unknown, .notSubscribed, .entitledPendingBackend: subscribed = false
                 }
                 services.syncEngine.cloudUploadsEnabled = subscribed
                 if subscribed && !services.isDegraded {
@@ -220,12 +222,22 @@ struct VaultApp: App {
                     await engine.syncPending()
                 }
             case .active:
-                // Free tier is local-only; cloud upload/sync requires Sovereign.
-                services.syncEngine.cloudUploadsEnabled = subscriptionStore.isSubscribed
+                // Free tier is local-only; cloud upload/sync requires a
+                // CONFIRMED backend token, not just StoreKit ownership —
+                // isSubscribed is permissive of entitledPendingBackend (so
+                // purchase-ownership UI can unlock), isBackendReady is not
+                // (2026-07-26 Codex audit, #208).
+                services.syncEngine.cloudUploadsEnabled = subscriptionStore.isBackendReady
                 // If the app is locked, prompt for biometric/passcode unlock now
                 // that we're back in the foreground.
                 if lock.isLocked && lock.isEnabled {
                     Task { await lock.unlock() }
+                }
+                // Retry a failed StoreKit→backend token exchange on every
+                // foreground, not just relaunch — this is what "force-quit
+                // and relaunch to retry" was always supposed to do (#208).
+                Task {
+                    await subscriptionStore.refreshEntitlements()
                 }
                 // Drain the share-extension import inbox FIRST — convert any
                 // dropped files into proper LocalFile + chunk-queue rows. Then
