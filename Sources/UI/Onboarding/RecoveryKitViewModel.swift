@@ -366,8 +366,14 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
             switch self {
             case .wrappingFailed:
                 return "We couldn't prepare your recovery key for secure storage. Please try again."
-            case .keychainWriteFailed(let status):
-                return "We couldn't save your recovery key securely on this device (error \(status)). Please try again."
+            case .keychainWriteFailed:
+                // Deliberately does not interpolate the raw OSStatus here --
+                // it is logged via dlog() at the throw site for diagnostics,
+                // but showing a numeric Keychain/Security-framework error
+                // code in user-facing UI discloses device protection-class
+                // and daemon state for no user benefit (adversarial-review
+                // finding on #217 round 2).
+                return "We couldn't save your recovery key securely on this device. Please try again."
             case .readBackMismatch:
                 return "Your recovery key didn't save correctly. Please try again."
             }
@@ -396,13 +402,31 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
             kSecAttrAccount as String: sigilID,
             kSecAttrAccessGroup as String: "group.com.katafract.enclave",
         ]
-        SecItemDelete(matchQuery as CFDictionary)
 
+        // Add-first, update-on-duplicate instead of delete-then-add: the
+        // prior delete-then-add sequence had a window where, if the app was
+        // killed between SecItemDelete succeeding and SecItemAdd running
+        // (crash, OOM, swipe-kill), the old valid wrapped key was gone and
+        // the new one was never written -- an irrecoverable loss of the
+        // exact artifact this function exists to protect (adversarial-review
+        // finding on #217 round 2). SecItemAdd/SecItemUpdate are each a
+        // single atomic Keychain operation, so there is no window where
+        // neither the old nor the new value is present.
         var addQuery = matchQuery
         addQuery[kSecValueData as String] = valueData
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-        guard addStatus == errSecSuccess else {
+        if addStatus == errSecDuplicateItem {
+            let updateStatus = SecItemUpdate(
+                matchQuery as CFDictionary,
+                [kSecValueData as String: valueData] as CFDictionary
+            )
+            guard updateStatus == errSecSuccess else {
+                dlog("recovery-kit keychain update failed: \(updateStatus)", category: "recovery-kit", level: .error)
+                throw RecoveryKitStorageError.keychainWriteFailed(updateStatus)
+            }
+        } else if addStatus != errSecSuccess {
+            dlog("recovery-kit keychain add failed: \(addStatus)", category: "recovery-kit", level: .error)
             throw RecoveryKitStorageError.keychainWriteFailed(addStatus)
         }
 
@@ -443,6 +467,13 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
         case errSecItemNotFound:
             return false
         default:
+            // Deliberately fails open (assume present) rather than treating
+            // an unrecognized status as proof of absence -- but that means
+            // a genuinely-wiped artifact under a persistently-failing
+            // Keychain (e.g. MDM-locked device) would go undetected with no
+            // diagnostics at all. Log it so at least it's visible in
+            // DebugLog (adversarial-review finding on #217 round 2).
+            dlog("recoveryKeyExists: unexpected Keychain status \(status), assuming present", category: "recovery-kit", level: .warn)
             return true
         }
     }
