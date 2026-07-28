@@ -22,6 +22,19 @@ struct ContentView: View {
                 OnboardingView()
             }
         }
+        .onAppear {
+            // A stale recoveryKitConfirmed=true with no backing Keychain
+            // artifact must never be trusted as proof the recovery step's
+            // durable storage actually happened — this step's fix (2026-07-26
+            // Codex audit, #206) now only sets this flag after a verified
+            // write, but a PRE-EXISTING true flag with a since-vanished
+            // artifact (external Keychain reset, a restore that excludes
+            // Keychain items) must still be caught and re-prompted rather
+            // than silently trusted forever.
+            if recoveryKitConfirmed && !RecoveryKitViewModel.recoveryKeyExists(sigilID: "") {
+                recoveryKitConfirmed = false
+            }
+        }
     }
 }
 

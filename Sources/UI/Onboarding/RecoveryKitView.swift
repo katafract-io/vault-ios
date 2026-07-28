@@ -7,6 +7,8 @@ struct RecoveryKitView: View {
     @StateObject private var viewModel: RecoveryKitViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var pdfItem: PDFDocumentItem?
+    @State private var storageError: RecoveryKitViewModel.RecoveryKitStorageError?
+    @State private var isSavingRecoveryKey = false
 
     init(masterKey: SymmetricKey, sigilID: String = "", vaultEndpoint: String = "vault.katafract.com", onComplete: @escaping () -> Void) {
         let vm = RecoveryKitViewModel(masterKey: masterKey, sigilID: sigilID, vaultEndpoint: vaultEndpoint)
@@ -351,15 +353,28 @@ struct RecoveryKitView: View {
                     .font(.system(size: 64))
                     .foregroundStyle(Color.kataGold)
 
-                Text("Recovery Kit Confirmed")
+                Text("Recovery Phrase Confirmed")
                     .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(.white)
 
-                Text("Your recovery phrase has been verified and secured. You can now access your vault.")
+                // Deliberately describes what's ABOUT to happen, not a
+                // completed-tense "secured" claim — that claim only becomes
+                // true once the Keychain write below actually succeeds
+                // (2026-07-26 Codex audit, #206: this used to say "has been
+                // ...secured" unconditionally, before any storage attempt).
+                Text("Tap Continue to securely save your recovery key and access your vault.")
                     .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.72))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
+
+                if let storageError {
+                    Text(storageError.errorDescription ?? "Something went wrong.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
             }
 
             Spacer()
@@ -380,12 +395,30 @@ struct RecoveryKitView: View {
                 }
 
                 Button {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    _ = viewModel.storeWrappedKeyInKeychain()
-                    onComplete()
-                    dismiss()
+                    // Guard against double-tap while the (synchronous)
+                    // Keychain write is in flight.
+                    guard !isSavingRecoveryKey else { return }
+                    isSavingRecoveryKey = true
+                    defer { isSavingRecoveryKey = false }
+                    do {
+                        try viewModel.storeWrappedKeyInKeychain()
+                        storageError = nil
+                        // Success haptics/completion/dismiss now happen ONLY
+                        // after the write is verified durable — previously
+                        // this fired unconditionally before the storage
+                        // attempt even ran (2026-07-26 Codex audit, #206).
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        onComplete()
+                        dismiss()
+                    } catch {
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                        // Logged without the phrase, key, or wrapped payload —
+                        // RecoveryKitStorageError's cases never carry them.
+                        dlog("recovery kit keychain store failed: \(error.localizedDescription)", category: "onboarding", level: .error)
+                        storageError = error as? RecoveryKitViewModel.RecoveryKitStorageError
+                    }
                 } label: {
-                    Text("Continue to Vault")
+                    Text(isSavingRecoveryKey ? "Saving…" : (storageError != nil ? "Try Again" : "Continue to Vault"))
                         .font(.system(size: 16, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
@@ -393,6 +426,7 @@ struct RecoveryKitView: View {
                         .foregroundStyle(Color.black.opacity(0.85))
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
+                .disabled(isSavingRecoveryKey)
             }
         }
         .padding(24)
