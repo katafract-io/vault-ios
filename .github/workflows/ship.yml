@@ -98,10 +98,12 @@ jobs:
 
           # Single source of truth for build-number selection across XCC + all
           # self-hosted Mac runners (cmfmbp / chronos-macbuilder / mjolnir).
-          # Helper queries ASC for max(CFBundleVersion) on the current
-          # marketing version (preReleaseVersion train) and emits max+1, so
-          # build numbers stay strictly monotonic per-train regardless of
-          # which runner ships first.
+          # Helper queries ASC for max(CFBundleVersion) APP-WIDE (every train)
+          # as well as on the current marketing version, and emits max+1, so
+          # build numbers stay strictly monotonic regardless of which runner
+          # ships first AND stay above the build attached to the live App
+          # Store version — a per-train-only max is not enough (Vaultyx 1.0.6
+          # shipped build 19 against live 1.0.5 build 511 -> INVALID_BINARY).
           #
           # Helper requires: ASC_KEY_ID, ASC_ISSUER_ID, and either
           # ASC_KEY_CONTENT (GH Actions secret, preferred — runner-agnostic)
@@ -129,22 +131,37 @@ jobs:
           echo "marketing train: $TRAIN"
           python3 ci_scripts/lib/check-marketing-version.py --app-id "$APP_ID" --train "$TRAIN"
 
+          # Keep stderr OUT of the captured value: the helper writes its
+          # resolution trace to stderr, and `2>&1` would splice that text into
+          # BUILD_NUM.
+          HELPER_ERR="${RUNNER_TEMP:-/tmp}/next-build-number.err"
           BUILD_NUM=""
           if { [ -n "${ASC_KEY_CONTENT:-}" ] || [ -n "${ASC_KEY_PATH:-}" ]; } && [ -n "$TRAIN" ]; then
             if BUILD_NUM=$(python3 ci_scripts/lib/next-build-number.py \
-                            --app-id "$APP_ID" --train "$TRAIN" --floor 1 2>&1); then
+                            --app-id "$APP_ID" --train "$TRAIN" --floor 1 2>"$HELPER_ERR"); then
               echo "asc-resolved next build for $TRAIN: $BUILD_NUM"
+              cat "$HELPER_ERR"
             else
-              echo "::warning::next-build-number.py failed: $BUILD_NUM"
+              echo "::warning::next-build-number.py failed: $(cat "$HELPER_ERR" 2>/dev/null)"
               BUILD_NUM=""
             fi
           else
             echo "::warning::ASC_KEY (content+path both missing) or TRAIN missing; helper skipped"
           fi
-          if [ -z "$BUILD_NUM" ]; then
-            BUILD_NUM=$((GITHUB_RUN_NUMBER + 400))
-            echo "::warning::falling back to GITHUB_RUN_NUMBER+400 = $BUILD_NUM"
-          fi
+
+          # No local fallback. The previous `GITHUB_RUN_NUMBER + 400` formula
+          # had no relationship to the app-wide max and could drift below it
+          # (each ASC-driven upload raises both by 1, but any upload from
+          # another runner/XCC raises only the app-wide max). A too-low
+          # CFBundleVersion uploads fine to TestFlight yet makes the App Store
+          # version INVALID_BINARY, which costs a review cycle. A red run here
+          # is re-runnable; a poisoned App Store version is not.
+          case "$BUILD_NUM" in
+            ''|*[!0-9]*)
+              echo "::error::Could not resolve a build number from App Store Connect (got '$BUILD_NUM'). Refusing to guess — fix ASC access and re-run."
+              exit 1
+              ;;
+          esac
 
           find . -name project.pbxproj -not -path "*/.git/*" -exec sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUM/g" {} +
 
