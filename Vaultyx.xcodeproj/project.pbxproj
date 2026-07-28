@@ -120,7 +120,6 @@
 		E66703D0A812B99E037A6F5C /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C82E3F9197932F80C91151 /* LockScreenView.swift */; };
 		E819F4F755796FE2B7FAE42A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 32A38DDDC3DFC33B9DE97DF8 /* PrivacyInfo.xcprivacy */; };
 		E86A967D031B67F4AAF9D387 /* VaultIndexDeltaSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FA672892FCE157DA46E160 /* VaultIndexDeltaSync.swift */; };
-		E9A63BDCFED18CD64072C111 /* FileBrowserDeleteLedgerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F540881307E36041DAB4C3F1 /* FileBrowserDeleteLedgerTests.swift */; };
 		F458FECDE0791AE6B7923125 /* RecoveryPhrase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324A7E5B5C48C223A9481A96 /* RecoveryPhrase.swift */; };
 		F65F1D719509E9505B9B9663 /* VaultFileProviderDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9105049EC27233A2E946FDC4 /* VaultFileProviderDomain.swift */; };
 		F8704CEBE0B1DE2580CAA919 /* FounderRedeemSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842697680013FF51CC00E52D /* FounderRedeemSheet.swift */; };
@@ -293,7 +292,6 @@
 		E99F9D00876693B1D808BA2C /* VaultApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultApp.swift; sourceTree = "<group>"; };
 		EA3AE803C9F313353B48A89C /* BIP39WordList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39WordList.swift; sourceTree = "<group>"; };
 		EA9CF8C324A8C46F90487154 /* 2024_Tax_Returns.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = 2024_Tax_Returns.pdf; sourceTree = "<group>"; };
-		F540881307E36041DAB4C3F1 /* FileBrowserDeleteLedgerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserDeleteLedgerTests.swift; sourceTree = "<group>"; };
 		F57C404ABEC3E05EC6128B26 /* RecoveryPhraseVerifyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPhraseVerifyView.swift; sourceTree = "<group>"; };
 		F636B91FAABC34F1A337444B /* CustodyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustodyState.swift; sourceTree = "<group>"; };
 		F830083E2B12A292C784C99C /* VaultEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultEnumerator.swift; sourceTree = "<group>"; };
@@ -533,7 +531,6 @@
 			children = (
 				32FC97F7D24B0EBAE6CCD1E9 /* BackedUpAssetRemovalTests.swift */,
 				08014DAC553EC97E88C36DFE /* ChunkKeyRecoveryTests.swift */,
-				F540881307E36041DAB4C3F1 /* FileBrowserDeleteLedgerTests.swift */,
 				A5C8AD8397D3339244CA896F /* RecoveryKitStorageTests.swift */,
 				0D3D01BB41C6D2A5909C4800 /* RecoveryRoundTripTests.swift */,
 				3CDB6AC8787718497BAA20B0 /* VaultServicesBootstrapTests.swift */,
@@ -1003,7 +1000,6 @@
 			files = (
 				0FE5BE0B91B485813EB9F394 /* BackedUpAssetRemovalTests.swift in Sources */,
 				8EF7F99D962D4C3E08739C5E /* ChunkKeyRecoveryTests.swift in Sources */,
-				E9A63BDCFED18CD64072C111 /* FileBrowserDeleteLedgerTests.swift in Sources */,
 				ABC6F1FF1A1E814E17D474C4 /* RecoveryKitStorageTests.swift in Sources */,
 				174C5F3B6BC59D3AF65E7095 /* RecoveryRoundTripTests.swift in Sources */,
 				BDD606049A5B6F7780464D68 /* VaultServicesBootstrapTests.swift in Sources */,
