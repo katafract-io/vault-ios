@@ -428,7 +428,23 @@ class RecoveryKitViewModel: NSObject, ObservableObject {
             kSecAttrAccount as String: sigilID,
             kSecAttrAccessGroup as String: "group.com.katafract.enclave",
         ]
-        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        // errSecItemNotFound is the only status that proves the record is
+        // genuinely absent. Any other non-success status (e.g. the device
+        // is locked and the item is kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        // or a transient keychain-daemon error) means "unknown" -- treating
+        // that as "absent" would let onAppear wipe a valid completion flag
+        // and force RecoveryKitView to draw a fresh mnemonic over an intact
+        // wrapped key, silently invalidating a phrase the user already
+        // printed. Assume present rather than risk destroying real state.
+        switch status {
+        case errSecSuccess:
+            return true
+        case errSecItemNotFound:
+            return false
+        default:
+            return true
+        }
     }
 }
 
