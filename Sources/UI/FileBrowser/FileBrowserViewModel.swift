@@ -14,6 +14,16 @@ class FileBrowserViewModel: ObservableObject {
     /// row (which would hit the server for an already-deleted item and hard-error).
     private var deletingIds = Set<String>()
 
+    /// The in-flight delete Task for each item, keyed by item id. Undo awaits
+    /// this (rather than firing the restore call immediately) so it always
+    /// resolves AFTER the delete it is undoing, never racing ahead of it
+    /// (2026-07-27 Codex audit, #212: Undo tapped immediately after Delete
+    /// used to call restore before the server had even trashed the item,
+    /// fail as not-found/not-trashed, and then the delete would go on to
+    /// complete anyway -- silently overriding the user's explicit Undo).
+    /// Value is whether the delete ultimately succeeded.
+    private var deletingTasks: [String: Task<Bool, Never>] = [:]
+
     // Upload progress state — drives FileUploadProgressBanner
     @Published var uploadInProgress: Bool = false
     @Published var batchBytesUploaded: Int64 = 0
@@ -393,15 +403,21 @@ class FileBrowserViewModel: ObservableObject {
         // Also drop the matching BackedUpAsset row(s) so the Photos grid
         // flips back to .pending if this file was a backed-up photo. Done
         // synchronously on the main actor so the row vanishes immediately.
+        // The full field values are snapshotted first so they can be
+        // reinserted if the server delete below ends up failing — previously
+        // this row was gone for good even when the file itself was never
+        // actually deleted server-side, permanently and silently flipping
+        // the Photos grid's backup state for a file that's still backed up
+        // (2026-07-27 Codex audit, #212).
+        var deletedAssetSnapshots: [BackedUpAssetSnapshot] = []
         if !itemIsFolder {
             let context = ModelContext(services.modelContainer)
             if let rows = try? context.fetch(FetchDescriptor<BackedUpAsset>()) {
-                var touched = false
                 for row in rows where row.fileId == itemId {
+                    deletedAssetSnapshots.append(BackedUpAssetSnapshot(row))
                     context.delete(row)
-                    touched = true
                 }
-                if touched {
+                if !deletedAssetSnapshots.isEmpty {
                     saveOrLog(context)
                     services.photoBackup.refresh()
                 }
@@ -411,8 +427,13 @@ class FileBrowserViewModel: ObservableObject {
         // Network + local-cache cleanup. Explicit @MainActor on the Task so
         // SwiftData operations always run on the actor that owns the context;
         // capturing services + itemId by value avoids any non-Sendable hops.
-        Task { @MainActor [weak self] in
-            defer { self?.deletingIds.remove(itemId) }
+        // The Task handle is stored in deletingTasks so undo (below) can
+        // await its actual resolution instead of firing blind.
+        let deleteTask = Task<Bool, Never> { @MainActor [weak self] in
+            defer {
+                self?.deletingIds.remove(itemId)
+                self?.deletingTasks[itemId] = nil
+            }
             do {
                 let context = ModelContext(services.modelContainer)
                 if itemIsFolder {
@@ -437,17 +458,47 @@ class FileBrowserViewModel: ObservableObject {
                     }
                 }
                 self?.refreshFromCache()
+                return true
             } catch {
                 // Reconcile against the real cache so a failed/duplicate delete
                 // doesn't leave a phantom row, and surface the error softly.
                 self?.refreshFromCache()
                 self?.error = "Delete failed: \(error.localizedDescription)"
+                // The server delete never happened -- restore the
+                // BackedUpAsset row(s) dropped optimistically above so the
+                // Photos grid doesn't drift out of sync with a file that's
+                // still actually backed up.
+                if !deletedAssetSnapshots.isEmpty {
+                    let context = ModelContext(services.modelContainer)
+                    for snapshot in deletedAssetSnapshots {
+                        context.insert(snapshot.makeRow())
+                    }
+                    saveOrLog(context)
+                    services.photoBackup.refresh()
+                }
+                return false
             }
         }
+        deletingTasks[itemId] = deleteTask
 
         return DeleteResult(
             message: "Deleted \(snapshotName)",
             undo: { [weak self] in
+                // Wait for the delete this is undoing to actually resolve
+                // before doing anything -- calling restore against an item
+                // the server hasn't finished trashing yet fails as
+                // not-found/not-trashed, and the delete would then complete
+                // afterward and silently win over the user's explicit Undo
+                // (2026-07-27 Codex audit, #212).
+                if let pendingDelete = self?.deletingTasks[itemId] {
+                    let deleteSucceeded = await pendingDelete.value
+                    guard deleteSucceeded else {
+                        // The delete never took effect server-side (and its
+                        // local/ledger state was already rolled back above)
+                        // -- there is nothing to restore.
+                        return
+                    }
+                }
                 do {
                     if itemIsFolder {
                         _ = try await services.apiClient.restoreFolder(folderId: itemId)
@@ -461,6 +512,42 @@ class FileBrowserViewModel: ObservableObject {
                     self?.error = "Undo failed: \(error.localizedDescription)"
                 }
             })
+    }
+
+    /// Value-type snapshot of a `BackedUpAsset` row, taken before an
+    /// optimistic delete, so it can be reinserted verbatim if the
+    /// corresponding server delete turns out to fail (2026-07-27 Codex
+    /// audit, #212). Deliberately not just holding the SwiftData model
+    /// object itself -- it's about to be deleted from its context.
+    struct BackedUpAssetSnapshot {
+        let assetIdentifier: String
+        let fileId: String
+        let folderId: String
+        let backedUpAt: Date
+        let sizeBytes: Int64
+        let originalFilename: String
+        let removalPendingSince: Date?
+
+        init(_ row: BackedUpAsset) {
+            assetIdentifier = row.assetIdentifier
+            fileId = row.fileId
+            folderId = row.folderId
+            backedUpAt = row.backedUpAt
+            sizeBytes = row.sizeBytes
+            originalFilename = row.originalFilename
+            removalPendingSince = row.removalPendingSince
+        }
+
+        func makeRow() -> BackedUpAsset {
+            BackedUpAsset(
+                assetIdentifier: assetIdentifier,
+                fileId: fileId,
+                folderId: folderId,
+                backedUpAt: backedUpAt,
+                sizeBytes: sizeBytes,
+                originalFilename: originalFilename,
+                removalPendingSince: removalPendingSince)
+        }
     }
 
     /// Carries the message to show in the Undo toast and the closure that
