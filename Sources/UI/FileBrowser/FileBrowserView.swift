@@ -88,6 +88,26 @@ struct FileBrowserView: View {
         undo.show(message: result.message, onUndo: result.undo)
     }
 
+    /// Export a decrypted copy for drag-out on macOS.
+    #if targetEnvironment(macCatalyst)
+    @MainActor
+    private func dragExportFile(_ item: VaultFileItem) async -> URL? {
+        let context = ModelContext(services.modelContainer)
+        guard let localFile = (try? context.fetch(FetchDescriptor<LocalFile>()))?
+            .first(where: { $0.fileId == item.id }) else {
+            return nil
+        }
+        let folderId = folderId ?? "root"
+        do {
+            let url = try await services.exportDecryptedCopy(for: localFile, folderId: folderId)
+            return url
+        } catch {
+            dlog("drag export failed: \(error.localizedDescription)", category: "share", level: .error)
+            return nil
+        }
+    }
+    #endif
+
     /// Bulk delete selected items and show Undo toast.
     private func bulkDelete() {
         let selectedItems = sortedItems.filter { selectedIds.contains($0.id) }
@@ -662,7 +682,14 @@ struct FileBrowserView: View {
                         onMove: { moveTarget = item },
                         onDuplicate: { viewModel.duplicateItem(item) },
                         onToggleStar: { viewModel.toggleStar(item) },
-                        onToggleOffline: { viewModel.toggleOffline(item) }
+                        onToggleOffline: { viewModel.toggleOffline(item) },
+                        onDragExport: {
+                            #if targetEnvironment(macCatalyst)
+                            return await dragExportFile(item)
+                            #else
+                            return nil
+                            #endif
+                        }
                     )
                     if item.isFolder && !isEditing {
                         NavigationLink(value: item) { EmptyView() }

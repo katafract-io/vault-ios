@@ -127,6 +127,12 @@ private struct QuickLookPreview: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> QLPreviewController {
         let controller = QLPreviewController()
         controller.dataSource = context.coordinator
+
+        // Set appropriate size for Mac Catalyst
+        #if targetEnvironment(macCatalyst)
+        controller.preferredContentSize = CGSize(width: 900, height: 700)
+        #endif
+
         return controller
     }
 

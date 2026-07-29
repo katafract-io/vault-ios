@@ -1,5 +1,6 @@
 import SwiftUI
 import KatafractStyle
+import UniformTypeIdentifiers
 
 extension View {
     @ViewBuilder
@@ -9,6 +10,39 @@ extension View {
         } else {
             self
         }
+    }
+
+    /// Mac Catalyst drag-out support for file rows.
+    /// Enables dragging decrypted files to Finder.
+    @ViewBuilder
+    func macDragOut(item: VaultFileItem, onDragExport: (() async -> URL?)?) -> some View {
+        #if targetEnvironment(macCatalyst)
+        if !item.isFolder, let onDragExport = onDragExport {
+            self.onDrag {
+                let provider = NSItemProvider()
+                // Register the file representation async on drag start.
+                // The closure captures onDragExport and runs it to fetch the decrypted file URL.
+                provider.registerFileRepresentation(
+                    forTypeIdentifier: UTType.data.identifier,
+                    fileOptions: [],
+                    visibility: .all) { completionHandler in
+                        Task {
+                            if let url = await onDragExport() {
+                                completionHandler(url, true, nil)
+                            } else {
+                                completionHandler(nil, false, NSError(domain: "VaultDrag", code: -1))
+                            }
+                        }
+                        return Progress()
+                    }
+                return provider
+            }
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 }
 
@@ -33,6 +67,7 @@ struct FileBrowserListRow: View {
     let onDuplicate: () -> Void
     let onToggleStar: () -> Void
     let onToggleOffline: () -> Void
+    let onDragExport: (() async -> URL?)?  // Mac drag-out export
 
     var body: some View {
         Group {
@@ -52,6 +87,7 @@ struct FileBrowserListRow: View {
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onTap)
                     .onLongPressGesture(perform: onLongPress)
+                    .macDragOut(item: item, onDragExport: onDragExport)
             }
         }
         .if(!isEditing) { view in
