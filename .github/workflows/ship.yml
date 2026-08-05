@@ -91,7 +91,11 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          # No `secrets.ASC_KEY_CONTENT` — that secret has never existed (the repo
+          # secret is ASC_PRIVATE_KEY). Infisical `prod/apple` is the canonical source,
+          # rendered at runtime below. This file's fallback chain is already correct
+          # (it prefers the runner-env ASC_KEY_PATH instead of clobbering it) and is
+          # deliberately left intact.
           APP_ID: ${{ secrets.APP_ID }}
         run: |
           set -eo pipefail
@@ -114,8 +118,45 @@ jobs:
           # ASC_KEY_PATH already exported by the runner's vault.env (which
           # the "Load runner env" step above sourced into $GITHUB_ENV);
           # only search ~/runner-env/AuthKey_*.p8 as a last-ditch fallback.
+          _mask() { printf '%s\n' "$1" | while IFS= read -r _l; do
+              if [ -n "$_l" ]; then printf '::add-mask::%s\n' "$_l"; fi
+            done; return 0; }
+
+          # Render ASC creds from Infisical prod/apple. Every failure warns and leaves
+          # ASC_KEY_CONTENT empty so the existing on-disk chain below takes over.
+          ASC_KEY_CONTENT=""
+          if [ ! -f "$HOME/runner-env/infisical.env" ]; then
+            echo "::warning::no $HOME/runner-env/infisical.env — using on-disk ASC key"
+          else
+            set -a; . "$HOME/runner-env/infisical.env"; set +a
+            _mask "$INFISICAL_CLIENT_SECRET"
+            _TOK=$(curl -sf -X POST "$INFISICAL_API_URL/api/v1/auth/universal-auth/login" \
+              -H 'Content-Type: application/json' \
+              -d "{\"clientId\":\"$INFISICAL_CLIENT_ID\",\"clientSecret\":\"$INFISICAL_CLIENT_SECRET\"}" \
+              | python3 -c 'import sys,json;print(json.load(sys.stdin)["accessToken"])') || _TOK=""
+            _mask "$_TOK"
+            if [ -z "$_TOK" ]; then
+              echo "::warning::Infisical auth failed — using on-disk ASC key"
+            else
+              _sec() {
+                curl -sf "$INFISICAL_API_URL/api/v3/secrets/raw/$1?environment=prod&workspaceId=$INFISICAL_PROJECT_ID&secretPath=%2Fapple" \
+                  -H "Authorization: Bearer $_TOK" \
+                  | python3 -c 'import sys,json;print(json.load(sys.stdin)["secret"]["secretValue"])'
+              }
+              _k=$(_sec ASC_KEY_ID || echo ""); _i=$(_sec ASC_ISSUER_ID || echo "")
+              _p=$(_sec ASC_PRIVATE_KEY || echo "")
+              _mask "$_p"
+              if [ -n "$_k" ] && [ -n "$_i" ] && [ -n "$_p" ]; then
+                ASC_KEY_ID=$_k; ASC_ISSUER_ID=$_i; ASC_KEY_CONTENT=$_p
+                export ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT
+              else
+                echo "::warning::Infisical prod/apple empty value — using on-disk ASC key"
+              fi
+            fi
+          fi
+
           if [ -n "${ASC_KEY_CONTENT:-}" ]; then
-            echo "using ASC_KEY_CONTENT GH Actions secret"
+            echo "using ASC_KEY_CONTENT rendered from Infisical"
           elif [ -n "${ASC_KEY_PATH:-}" ] && [ -f "${ASC_KEY_PATH}" ]; then
             echo "using ASC_KEY_PATH from runner env: $ASC_KEY_PATH"
           else
