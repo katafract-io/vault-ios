@@ -39,7 +39,7 @@ jobs:
     steps:
       - name: Mint autofix[bot] token (separate reviewer identity)
         id: apptoken
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.AUTOFIX_APP_ID }}
           private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
